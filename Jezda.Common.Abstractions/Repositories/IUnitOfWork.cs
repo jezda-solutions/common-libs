@@ -1,4 +1,7 @@
-﻿namespace Jezda.Common.Abstractions.Repositories;
+﻿using System.Threading;
+using System.Threading.Tasks;
+
+namespace Jezda.Common.Abstractions.Repositories;
 
 public interface IUnitOfWork
 {

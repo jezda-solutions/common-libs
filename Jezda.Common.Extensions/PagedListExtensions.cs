@@ -1,8 +1,11 @@
 ﻿using Jezda.Common.Domain.Paged;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace Jezda.Common.Abstractions.Extensions;
+namespace Jezda.Common.Extensions;
 
 public static class PagedListExtensions
 {
