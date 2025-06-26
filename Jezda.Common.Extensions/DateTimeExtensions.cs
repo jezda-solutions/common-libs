@@ -1,4 +1,6 @@
-﻿namespace JezdaSolutions.Core.Extensions;
+﻿using System;
+
+namespace Jezda.Common.Extensions;
 
 public static class DateTimeExtensions
 {

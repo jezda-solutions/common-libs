@@ -1,4 +1,7 @@
-﻿namespace Jezda.Common.Helpers;
+﻿using System;
+using System.Linq;
+
+namespace Jezda.Common.Helpers;
 
 public static class DisplayMasker
 {

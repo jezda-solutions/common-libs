@@ -1,4 +1,7 @@
-﻿namespace Jezda.Common.Abstractions.Identity;
+﻿using System;
+using System.Collections.Generic;
+
+namespace Jezda.Common.Abstractions.Identity;
 
 public interface IUserContext
 {

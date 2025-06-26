@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Jezda.Common.Abstractions\Jezda.Common.Abstractions.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Extensions\Jezda.Common.Extensions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
