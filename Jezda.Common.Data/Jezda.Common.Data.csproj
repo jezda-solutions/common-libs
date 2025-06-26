@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>Jezda.Common.Data</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Jezda Solutions Team</Authors>
+    <Company>Jezda Solutions</Company>
+    <Description>Entity Framework Core data access implementations including generic repository and unit of work patterns.</Description>
+    <PackageTags>jezda data repository efcore uow unitofwork repository-pattern</PackageTags>
+    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jezda.Common.Abstractions\Jezda.Common.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

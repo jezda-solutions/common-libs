@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>Jezda.Common.Domain</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Jezda Solutions Team</Authors>
+    <Company>Jezda Solutions</Company>
+    <Description>Common domain models and base entities for Jezda microservices.</Description>
+    <PackageTags>jezda domain common base-entities</PackageTags>
+    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

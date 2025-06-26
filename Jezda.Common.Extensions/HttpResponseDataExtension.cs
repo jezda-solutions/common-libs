@@ -1,0 +1,22 @@
+﻿using Jezda.Common.Domain;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace Jezda.Common.Abstractions.Extensions;
+
+public static class HttpResponseMessageExtensions
+{
+    public static async Task<T?> ReadApiResponseDataAsync<T>(this HttpResponseMessage response, CancellationToken ct = default)
+        where T : class
+    {
+        if (!response.IsSuccessStatusCode)
+            return default;
+
+        var wrapper = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        }, cancellationToken: ct);
+
+        return wrapper?.Data;
+    }
+}
