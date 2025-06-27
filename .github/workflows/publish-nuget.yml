@@ -70,5 +70,5 @@ jobs:
         run: |
           for pkg in ./nupkgs/*.nupkg; do
             echo "Pushing package: $pkg"
-            dotnet nuget push "$pkg" --api-key ${{ secrets.NUGET_PUSH_TOKEN }} --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --skip-duplicate
+            dotnet nuget push "$pkg" --api-key ${{ secrets.CLASSIC_PAT }} --source "https://nuget.pkg.github.com/jezdimirovic/index.json" --skip-duplicate
           done
