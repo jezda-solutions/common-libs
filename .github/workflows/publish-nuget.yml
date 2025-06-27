@@ -66,6 +66,9 @@ jobs:
       - name: List generated packages
         run: ls -la ./nupkgs/
 
+      - name: Add GitHub NuGet source
+        run: dotnet nuget add source --username jezda-solutions --password ${{ secrets.CLASSIC_PAT }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/jezda-solutions/index.json"
+
       - name: Push packages to GitHub Packages
         run: |
           for pkg in ./nupkgs/*.nupkg; do
