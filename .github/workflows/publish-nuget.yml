@@ -4,6 +4,26 @@ on:
   push:
     tags:
       - 'v*'       # pokreće se samo kad pushuješ tag v1.0.0, v2.0.0 itd.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: false
+        type: boolean
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'github'
+        type: choice
+        options:
+        - github
+        - nuget.org
 
 jobs:
   build-and-publish:
@@ -18,9 +38,17 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Extract version from tag
+      - name: Extract version from tag or input
         id: version
-        run: echo "PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "PACKAGE_VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          fi
+
+      - name: Create output directory
+        run: mkdir -p ./nupkgs
 
       - name: Create output directory
         run: mkdir -p ./nupkgs
