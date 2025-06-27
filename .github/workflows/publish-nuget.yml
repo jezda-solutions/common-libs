@@ -22,6 +22,9 @@ jobs:
         id: version
         run: echo "PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
+      - name: Create output directory
+        run: mkdir -p ./nupkgs
+
       - name: Restore dependencies
         run: dotnet restore
 
@@ -30,12 +33,17 @@ jobs:
 
       - name: Pack all projects
         run: |
-          for proj in $(find ./src -name '*.csproj'); do
+          for proj in $(find . -name 'Jezda.Common*.csproj'); do
+            echo "Packing project: $proj"
             dotnet pack "$proj" --configuration Release -p:PackageVersion=${PACKAGE_VERSION} --output ./nupkgs
           done
+
+      - name: List generated packages
+        run: ls -la ./nupkgs/
 
       - name: Push packages to GitHub Packages
         run: |
           for pkg in ./nupkgs/*.nupkg; do
+            echo "Pushing package: $pkg"
             dotnet nuget push "$pkg" --api-key ${{ secrets.GITHUB_TOKEN }} --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --skip-duplicate
           done
