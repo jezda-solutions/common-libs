@@ -16,14 +16,6 @@ on:
         required: false
         default: false
         type: boolean
-      environment:
-        description: 'Target environment'
-        required: false
-        default: 'github'
-        type: choice
-        options:
-        - github
-        - nuget.org
 
 jobs:
   build-and-publish:
@@ -36,7 +28,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 9.x
 
       - name: Extract version from tag or input
         id: version
