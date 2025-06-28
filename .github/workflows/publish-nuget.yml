@@ -14,16 +14,8 @@ on:
       skip_tests:
         description: 'Skip tests'
         required: false
-        default: false
+        default: true
         type: boolean
-      environment:
-        description: 'Target environment'
-        required: false
-        default: 'github'
-        type: choice
-        options:
-        - github
-        - nuget.org
 
 jobs:
   build-and-publish:
@@ -36,7 +28,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 9.x
 
       - name: Extract version from tag or input
         id: version
@@ -66,12 +58,8 @@ jobs:
       - name: List generated packages
         run: ls -la ./nupkgs/
 
-      - name: Add GitHub NuGet source
-        run: dotnet nuget add source --username jezda-solutions --password ${{ secrets.CLASSIC_PAT }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/jezda-solutions/index.json"
-
-      - name: Push packages to GitHub Packages
+      - name: Push packages to NuGet.org
         run: |
           for pkg in ./nupkgs/*.nupkg; do
-            echo "Pushing package: $pkg"
-            dotnet nuget push "$pkg" --api-key ${{ secrets.CLASSIC_PAT }} --source "https://nuget.pkg.github.com/jezda-solutions/index.json" --skip-duplicate
+            dotnet nuget push "$pkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
           done

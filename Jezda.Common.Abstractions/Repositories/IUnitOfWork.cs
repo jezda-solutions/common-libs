@@ -1,14 +1,26 @@
-﻿using System.Threading;
+﻿using Microsoft.EntityFrameworkCore.Storage;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Jezda.Common.Abstractions.Repositories;
 
-public interface IUnitOfWork
+public interface IUnitOfWork : IDisposable, IAsyncDisposable
 {
-    IGenericRepository<T> Repository<T>() where T : class;
-    
+    int SaveChanges();
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
-    void Rollback();
-}
+    IDbContextTransaction BeginTransaction();
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 
+    void CommitTransaction();
+    Task CommitTransactionAsync(CancellationToken cancellationToken = default);
+
+    void RollbackTransaction();
+    Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
+
+    IGenericRepository<T> Repository<T>() where T : class;
+
+    void DetachAllEntities();
+    bool HasChanges();
+}
