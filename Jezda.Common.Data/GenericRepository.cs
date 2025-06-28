@@ -148,11 +148,12 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region PAGING
 
-    public PagedList<T> GetPagedResponse(
+    public async Task<PagedList<T>> GetPagedItemsAsync(
         PagingInfo pagingInfo,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
-        Func<IQueryable<T>, IQueryable<T>>? include = null)
+        Func<IQueryable<T>, IQueryable<T>>? include = null,
+        CancellationToken cancellationToken = default)
     {
         var query = _dbSet.AsQueryable();
 
@@ -162,16 +163,22 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         if (include != null)
             query = include(query);
 
-        return query.ApplyPagingAndFiltering(pagingInfo, defaultSortColumn);
+        return await query.ApplyPagingAndFilteringAsync(
+            pagingInfo,
+            defaultSortColumn, 
+            searchProjection: true,
+            cancellationToken: cancellationToken
+        );
     }
 
-    public PagedList<Tprojection> GetPagedProjection<Tprojection>(
+    public async Task<PagedList<Tprojection>> GetPagedProjection<Tprojection>(
         PagingInfo pagingInfo,
         Expression<Func<T, Tprojection>> projection,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
         Func<IQueryable<T>, IQueryable<T>>? include = null,
-        bool searchProjection = true)
+        bool searchProjection = true,
+        CancellationToken cancellationToken = default)
     {
         var query = _dbSet.AsQueryable();
 
@@ -191,10 +198,12 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
         var projectedQuery = query.Select(projection);
 
-        return projectedQuery.ApplyPagingAndFiltering(
+        return await projectedQuery.ApplyPagingAndFilteringAsync(
             pagingInfo,
             defaultSortColumn,
-            searchProjection);
+            searchProjection,
+            cancellationToken
+        );
     }
 
     #endregion

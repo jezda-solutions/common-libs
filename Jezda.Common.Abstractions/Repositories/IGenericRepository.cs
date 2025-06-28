@@ -115,11 +115,12 @@ public interface IGenericRepository<T> where T : class
     /// <param name="defaultSortColumn"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    PagedList<T> GetPagedResponse(
+    Task<PagedList<T>> GetPagedItemsAsync(
         PagingInfo pagingInfo,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
-        Func<IQueryable<T>, IQueryable<T>>? include = null);
+        Func<IQueryable<T>, IQueryable<T>>? include = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a paged list of projected entities.
@@ -131,13 +132,14 @@ public interface IGenericRepository<T> where T : class
     /// <param name="cancellationToken">Stopping token,</param>
     /// <typeparam name="TProjection">Type of the projected entity.</typeparam>
     /// <returns><see cref="PagedList{TProjection}"/> of items of type TProjection.</returns>
-    PagedList<Tprojection> GetPagedProjection<Tprojection>(
+    Task<PagedList<Tprojection>> GetPagedProjection<Tprojection>(
         PagingInfo pagingInfo,
         Expression<Func<T, Tprojection>> projection,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
         Func<IQueryable<T>, IQueryable<T>>? include = null,
-        bool searchProjection = true);
+        bool searchProjection = true,
+        CancellationToken cancellationToken = default);
 
     #endregion
 
