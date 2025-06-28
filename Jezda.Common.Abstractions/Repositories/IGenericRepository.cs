@@ -74,7 +74,7 @@ public interface IGenericRepository<T> where T : class
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public Task<TProjection?> FirstWithIncludesOrProjectionAsync<TProjection>(
+    public Task<TProjection?> GetFirstOrDefaultAsync<TProjection>(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, TProjection>>? projection = null,
@@ -87,8 +87,8 @@ public interface IGenericRepository<T> where T : class
     /// <param name="where">The filter expression.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of entities that match the filter.</returns>
-    Task<List<TProjection>> GetProjectionsAsync<TProjection>(
-        Expression<Func<T, TProjection>> projection,
+    Task<List<TProjection>> GetAsync<TProjection>(
+        Expression<Func<T, TProjection>>? projection = null,
         Expression<Func<T, bool>>? where = null,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, object>>? orderBy = null,
@@ -150,7 +150,7 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <param name="entity"></param>
     /// <returns></returns>
-    EntityEntry<T> Add(T entity);
+    T Add(T entity);
 
     /// <summary>
     /// Adds a range of new entities.
