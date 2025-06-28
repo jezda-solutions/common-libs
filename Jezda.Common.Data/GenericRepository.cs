@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Jezda.Common.Data;
 
-internal abstract class GenericRepository<T>(DbContext context) : IGenericRepository<T> where T : class
+public abstract class GenericRepository<T>(DbContext context) : IGenericRepository<T> where T : class
 {
     protected readonly DbContext _context = context;
     protected readonly DbSet<T> _dbSet = context.Set<T>();
