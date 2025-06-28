@@ -9,17 +9,14 @@ using System.Threading.Tasks;
 
 namespace Jezda.Common.Data;
 
-public abstract class UnitOfWork : IUnitOfWork
+public abstract class UnitOfWork<TContext>(TContext context) : IUnitOfWork
+    where TContext : DbContext
 {
-    protected readonly DbContext _context;
+    protected readonly TContext _context = context ?? throw new ArgumentNullException(nameof(context));
+
     private IDbContextTransaction? _transaction;
     private bool _disposed = false;
     private readonly Dictionary<Type, Type> _repositories = new();
-
-    protected UnitOfWork(DbContext context)
-    {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-    }
 
     // Abstract methods for microservices to implement
     protected abstract void ConfigureRepositories();
