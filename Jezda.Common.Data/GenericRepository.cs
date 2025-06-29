@@ -19,6 +19,16 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region GET
 
+    public T? GetById<TId>(TId id)
+    {
+        return _dbSet.Find(id);
+    }
+
+    public ValueTask<T?> GetByIdsAsync<TId>(TId[] ids, CancellationToken cancellationToken = default)
+    {
+        return _dbSet.FindAsync([ids], cancellationToken);
+    }
+
     public ValueTask<T?> GetByIdAsync<TId>(TId id, CancellationToken cancellationToken = default)
     {
         return _dbSet.FindAsync([id], cancellationToken);
@@ -255,7 +265,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         return _dbSet.Update(entity);
     }
 
-    public void UpdateRangeAsync(IEnumerable<T> entities)
+    public void UpdateRange(IEnumerable<T> entities)
     {
         _dbSet.UpdateRange(entities);
     }

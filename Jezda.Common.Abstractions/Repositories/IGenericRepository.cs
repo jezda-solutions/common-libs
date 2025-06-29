@@ -18,6 +18,16 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <typeparam name="TId"></typeparam>
     /// <param name="id"></param>
+    /// <returns></returns>
+    T? GetById<TId>(TId id);
+
+    ValueTask<T?> GetByIdsAsync<TId>(TId[] ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets an entity by its identifier.
+    /// </summary>
+    /// <typeparam name="TId"></typeparam>
+    /// <param name="id"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     ValueTask<T?> GetByIdAsync<TId>(TId id, CancellationToken cancellationToken = default);
@@ -192,7 +202,7 @@ public interface IGenericRepository<T> where T : class
     /// Updates a range of entities in the database context and marks them as modified.
     /// </summary>
     /// <param name="entities"></param>
-    void UpdateRangeAsync(IEnumerable<T> entities);
+    void UpdateRange(IEnumerable<T> entities);
 
     #endregion
 
