@@ -274,9 +274,10 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region REMOVE
 
-    public EntityEntry<T> Remove(T entity)
+    public T Remove(T entity)
     {
-        return _dbSet.Remove(entity);
+        _dbSet.Remove(entity);
+        return entity;
     }
 
     public void RemoveRange(IEnumerable<T> entities)

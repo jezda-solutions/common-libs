@@ -213,7 +213,7 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <param name="entity"></param>
     /// <returns></returns>
-    EntityEntry<T> Remove(T entity);
+    T Remove(T entity);
 
     /// <summary>
     /// Removes a range of entities from the database context and marks them for deletion.
