@@ -1,4 +1,4 @@
-﻿namespace Jezda.Common.Domain;
+﻿namespace Jezda.Common.Abstractions.Responses;
 
 public class ApiResponse<T>
 {

@@ -18,6 +18,16 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <typeparam name="TId"></typeparam>
     /// <param name="id"></param>
+    /// <returns></returns>
+    T? GetById<TId>(TId id);
+
+    ValueTask<T?> GetByIdsAsync<TId>(TId[] ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets an entity by its identifier.
+    /// </summary>
+    /// <typeparam name="TId"></typeparam>
+    /// <param name="id"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     ValueTask<T?> GetByIdAsync<TId>(TId id, CancellationToken cancellationToken = default);
@@ -74,7 +84,7 @@ public interface IGenericRepository<T> where T : class
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public Task<TProjection?> FirstWithIncludesOrProjectionAsync<TProjection>(
+    public Task<TProjection?> GetFirstOrDefaultAsync<TProjection>(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, TProjection>>? projection = null,
@@ -87,8 +97,8 @@ public interface IGenericRepository<T> where T : class
     /// <param name="where">The filter expression.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of entities that match the filter.</returns>
-    Task<List<TProjection>> GetProjectionsAsync<TProjection>(
-        Expression<Func<T, TProjection>> projection,
+    Task<List<TProjection>> GetAsync<TProjection>(
+        Expression<Func<T, TProjection>>? projection = null,
         Expression<Func<T, bool>>? where = null,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, object>>? orderBy = null,
@@ -115,11 +125,12 @@ public interface IGenericRepository<T> where T : class
     /// <param name="defaultSortColumn"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    PagedList<T> GetPagedResponse(
+    Task<PagedList<T>> GetPagedItemsAsync(
         PagingInfo pagingInfo,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
-        Func<IQueryable<T>, IQueryable<T>>? include = null);
+        Func<IQueryable<T>, IQueryable<T>>? include = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a paged list of projected entities.
@@ -131,13 +142,14 @@ public interface IGenericRepository<T> where T : class
     /// <param name="cancellationToken">Stopping token,</param>
     /// <typeparam name="TProjection">Type of the projected entity.</typeparam>
     /// <returns><see cref="PagedList{TProjection}"/> of items of type TProjection.</returns>
-    PagedList<Tprojection> GetPagedProjection<Tprojection>(
+    Task<PagedList<Tprojection>> GetPagedProjection<Tprojection>(
         PagingInfo pagingInfo,
         Expression<Func<T, Tprojection>> projection,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
         Func<IQueryable<T>, IQueryable<T>>? include = null,
-        bool searchProjection = true);
+        bool searchProjection = true,
+        CancellationToken cancellationToken = default);
 
     #endregion
 
@@ -148,7 +160,7 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <param name="entity"></param>
     /// <returns></returns>
-    EntityEntry<T> Add(T entity);
+    T Add(T entity);
 
     /// <summary>
     /// Adds a range of new entities.
@@ -190,7 +202,7 @@ public interface IGenericRepository<T> where T : class
     /// Updates a range of entities in the database context and marks them as modified.
     /// </summary>
     /// <param name="entities"></param>
-    void UpdateRangeAsync(IEnumerable<T> entities);
+    void UpdateRange(IEnumerable<T> entities);
 
     #endregion
 
@@ -201,7 +213,7 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <param name="entity"></param>
     /// <returns></returns>
-    EntityEntry<T> Remove(T entity);
+    T Remove(T entity);
 
     /// <summary>
     /// Removes a range of entities from the database context and marks them for deletion.

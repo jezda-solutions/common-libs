@@ -1,19 +1,23 @@
 ﻿using Jezda.Common.Domain.Paged;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Jezda.Common.Extensions;
 
 public static class PagedListExtensions
 {
-    public static PagedList<T> ApplyPagingAndFiltering<T>(
+    public static async Task<PagedList<T>> ApplyPagingAndFilteringAsync<T>(
         this IQueryable<T> query,
         PagingInfo pagingInfo,
         string defaultSortColumn = "Id",
-        bool searchProjection = true)
+        bool searchProjection = true,
+        CancellationToken cancellationToken = default)
     {
         // Globalno pretrazivanje
         // Kada zelimo da pretrazimo kroz projekciju postavicemo searchProjection na true
@@ -31,7 +35,7 @@ public static class PagedListExtensions
             : defaultSortColumn, pagingInfo.SortDescending);
 
         // Pretvaranje query-a u paging list
-        return query.ToPagedList(pagingInfo, defaultSortColumn);
+        return await query.ToPagedListAsync(pagingInfo, defaultSortColumn, cancellationToken);
     }
 
     public static IQueryable<T> ApplyGlobalSearchFilter<T>(this IQueryable<T> query, string? search)
@@ -45,7 +49,7 @@ public static class PagedListExtensions
             .Where(p => p.CanRead && p.GetMethod != null && IsSearchableProperty(p))
             .ToList();
 
-        if (!properties.Any())
+        if (properties.Count == 0)
             return query;
 
         // Kreiramo jedan veliki OR uslov
@@ -322,19 +326,21 @@ public static class PagedListExtensions
     /// <param name="pagingInfo"></param>
     /// <param name="defaultSortColumn"></param>
     /// <returns></returns>
-    public static PagedList<T> ToPagedList<T>(
+    private static async Task<PagedList<T>> ToPagedListAsync<T>(
         this IQueryable<T> query,
         PagingInfo pagingInfo,
-        string defaultSortColumn)
+        string defaultSortColumn,
+        CancellationToken cancellationToken)
     {
         // Ukupan broj itema
-        var totalRecords = query.Count();
+        var totalRecords = await query.CountAsync(cancellationToken);
 
         // Primena paginacije i sortiranja
-        var items = query
+        var items = await query
+            .ApplySorting(pagingInfo.SortColumn ?? defaultSortColumn, pagingInfo.SortDescending)
             .Skip((pagingInfo.CurrentPage - 1) * pagingInfo.PageSize)
             .Take(pagingInfo.PageSize)
-            .ApplySorting(pagingInfo.SortColumn ?? defaultSortColumn, pagingInfo.SortDescending); // Podrazumevano sortiranje jer EF zahteva da posle skip i take postoji neko sortiranje
+            .ToListAsync(cancellationToken);
 
         // Kreiranje PagedList
         return new PagedList<T>
