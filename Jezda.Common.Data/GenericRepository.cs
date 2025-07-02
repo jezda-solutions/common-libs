@@ -19,6 +19,16 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region GET
 
+    public T? GetById<TId>(TId id)
+    {
+        return _dbSet.Find(id);
+    }
+
+    public ValueTask<T?> GetByIdsAsync<TId>(TId[] ids, CancellationToken cancellationToken = default)
+    {
+        return _dbSet.FindAsync([ids], cancellationToken);
+    }
+
     public ValueTask<T?> GetByIdAsync<TId>(TId id, CancellationToken cancellationToken = default)
     {
         return _dbSet.FindAsync([id], cancellationToken);
@@ -70,7 +80,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public Task<TProjection?> FirstWithIncludesOrProjectionAsync<TProjection>(
+    public Task<TProjection?> GetFirstOrDefaultAsync<TProjection>(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, TProjection>>? projection = null,
@@ -104,31 +114,43 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public Task<List<TProjection>> GetProjectionsAsync<TProjection>(
-        Expression<Func<T, TProjection>> projection,
+    public Task<List<TProjection>> GetAsync<TProjection>(
+        Expression<Func<T, TProjection>>? projection = null,
         Expression<Func<T, bool>>? where = null,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, object>>? orderBy = null,
         bool? descending = null,
         CancellationToken cancellationToken = default)
     {
-        var queryable = _dbSet.AsQueryable();
+        var query = _dbSet.AsQueryable();
 
         if (include is not null)
-            queryable = include(queryable);
+            query = include(query);
 
         if (where is not null)
-            queryable = queryable.Where(where);
+            query = query.Where(where);
 
         if (orderBy is not null)
         {
             if (descending == true)
-                queryable = queryable.OrderByDescending(orderBy);
+                query = query.OrderByDescending(orderBy);
             else
-                queryable = queryable.OrderBy(orderBy);
+                query = query.OrderBy(orderBy);
         }
 
-        return queryable
+        if (projection == null)
+        {
+            if (typeof(TProjection) != typeof(T))
+            {
+                throw new InvalidOperationException(
+                    $"When {nameof(projection)} is null, {typeof(TProjection)} must be {typeof(T)}");
+            }
+
+            var typedQuery = (IQueryable<TProjection>)(object)query;
+            return typedQuery.ToListAsync(cancellationToken);
+        }
+
+        return query
             .Select(projection)
             .ToListAsync(cancellationToken);
     }
@@ -137,10 +159,12 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         params Expression<Func<T, object>>[] includes)
     {
         IQueryable<T> query = _dbSet.AsQueryable();
+
         foreach (var include in includes)
         {
             query = query.Include(include);
         }
+
         return await query.ToListAsync();
     }
 
@@ -148,11 +172,12 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region PAGING
 
-    public PagedList<T> GetPagedResponse(
+    public async Task<PagedList<T>> GetPagedItemsAsync(
         PagingInfo pagingInfo,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
-        Func<IQueryable<T>, IQueryable<T>>? include = null)
+        Func<IQueryable<T>, IQueryable<T>>? include = null,
+        CancellationToken cancellationToken = default)
     {
         var query = _dbSet.AsQueryable();
 
@@ -162,16 +187,22 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         if (include != null)
             query = include(query);
 
-        return query.ApplyPagingAndFiltering(pagingInfo, defaultSortColumn);
+        return await query.ApplyPagingAndFilteringAsync(
+            pagingInfo,
+            defaultSortColumn, 
+            searchProjection: true,
+            cancellationToken: cancellationToken
+        );
     }
 
-    public PagedList<Tprojection> GetPagedProjection<Tprojection>(
+    public async Task<PagedList<Tprojection>> GetPagedProjection<Tprojection>(
         PagingInfo pagingInfo,
         Expression<Func<T, Tprojection>> projection,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
         Func<IQueryable<T>, IQueryable<T>>? include = null,
-        bool searchProjection = true)
+        bool searchProjection = true,
+        CancellationToken cancellationToken = default)
     {
         var query = _dbSet.AsQueryable();
 
@@ -191,19 +222,23 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
         var projectedQuery = query.Select(projection);
 
-        return projectedQuery.ApplyPagingAndFiltering(
+        return await projectedQuery.ApplyPagingAndFilteringAsync(
             pagingInfo,
             defaultSortColumn,
-            searchProjection);
+            searchProjection,
+            cancellationToken
+        );
     }
 
     #endregion
 
     #region ADD
 
-    public EntityEntry<T> Add(T entity)
+    public T Add(T entity)
     {
-        return _dbSet.Add(entity);
+        _dbSet.Add(entity);
+
+        return entity;
     }
 
     public void AddRange(IEnumerable<T> entities)
@@ -230,7 +265,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         return _dbSet.Update(entity);
     }
 
-    public void UpdateRangeAsync(IEnumerable<T> entities)
+    public void UpdateRange(IEnumerable<T> entities)
     {
         _dbSet.UpdateRange(entities);
     }
@@ -239,9 +274,10 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region REMOVE
 
-    public EntityEntry<T> Remove(T entity)
+    public T Remove(T entity)
     {
-        return _dbSet.Remove(entity);
+        _dbSet.Remove(entity);
+        return entity;
     }
 
     public void RemoveRange(IEnumerable<T> entities)

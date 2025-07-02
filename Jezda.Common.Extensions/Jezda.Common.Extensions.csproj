@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jezda.Common.Abstractions\Jezda.Common.Abstractions.csproj" />
     <ProjectReference Include="..\Jezda.Common.Domain\Jezda.Common.Domain.csproj" />
   </ItemGroup>
   
