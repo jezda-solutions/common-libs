@@ -18,31 +18,6 @@ public abstract class UnitOfWork<TContext>(TContext context) : IUnitOfWork
     private bool _disposed = false;
     private readonly Dictionary<Type, Type> _repositories = new();
 
-    // Abstract methods for microservices to implement
-    protected abstract void ConfigureRepositories();
-    protected abstract IGenericRepository<T> CreateGenericRepository<T>() where T : class;
-
-    // Helper method for microservices to register repositories
-    protected void RegisterRepository<TEntity, TRepository>()
-        where TEntity : class
-        where TRepository : class, IGenericRepository<TEntity>
-    {
-        _repositories[typeof(TEntity)] = typeof(TRepository);
-    }
-
-    // Generic repository access
-    public virtual IGenericRepository<T> Repository<T>() where T : class
-    {
-        var entityType = typeof(T);
-
-        if (_repositories.TryGetValue(entityType, out var repositoryType))
-        {
-            return (IGenericRepository<T>)Activator.CreateInstance(repositoryType, _context)!;
-        }
-
-        return CreateGenericRepository<T>();
-    }
-
     // Save methods
     public virtual int SaveChanges()
     {

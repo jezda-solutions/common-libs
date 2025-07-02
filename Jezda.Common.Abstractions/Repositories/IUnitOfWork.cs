@@ -19,8 +19,6 @@ public interface IUnitOfWork : IDisposable, IAsyncDisposable
     void RollbackTransaction();
     Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
 
-    IGenericRepository<T> Repository<T>() where T : class;
-
     void DetachAllEntities();
     bool HasChanges();
 }
