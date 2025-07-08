@@ -24,14 +24,14 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         return _dbSet.Find(id);
     }
 
-    public ValueTask<T?> GetByIdsAsync<TId>(TId[] ids, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetByIdsAsync<TId>(TId[] ids, CancellationToken cancellationToken = default)
     {
-        return _dbSet.FindAsync([ids], cancellationToken);
+        return await _dbSet.FindAsync([ids], cancellationToken);
     }
 
-    public ValueTask<T?> GetByIdAsync<TId>(TId id, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetByIdAsync<TId>(TId id, CancellationToken cancellationToken = default)
     {
-        return _dbSet.FindAsync([id], cancellationToken);
+        return await _dbSet.FindAsync([id], cancellationToken);
     }
 
     public T? GetFirstOrDefault()
@@ -44,24 +44,43 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         return _dbSet.FirstOrDefault(predicate);
     }
 
-    public Task<T?> GetFirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    public async Task<T?> GetFirstOrDefaultAsync(CancellationToken cancellationToken = default)
     {
-        return _dbSet.FirstOrDefaultAsync(cancellationToken);
+        return await _dbSet.FirstOrDefaultAsync(cancellationToken);
     }
 
-    public Task<T?> GetFirstOrDefaultAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default)
+    public async Task<T?> GetFirstOrDefaultAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default)
     {
-        return _dbSet.FirstOrDefaultAsync(where, cancellationToken);
+        return await _dbSet.FirstOrDefaultAsync(where, cancellationToken);
     }
 
-    public Task<List<T>> GetAsync(CancellationToken cancellationToken = default)
+    public async Task<List<T>> GetAsync(CancellationToken cancellationToken = default)
     {
-        return _dbSet.ToListAsync(cancellationToken);
+        return await _dbSet.ToListAsync(cancellationToken);
     }
 
-    public Task<List<T>> GetAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default)
+    public async Task<List<T>> GetAsync(
+        Expression<Func<T, bool>> where,
+        CancellationToken cancellationToken = default)
     {
-        return _dbSet.Where(where).ToListAsync(cancellationToken);
+        return await _dbSet.Where(where).ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<T>> GetAsync(
+        Expression<Func<T, bool>> where,
+        Func<IQueryable<T>, IQueryable<T>>? include = null,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<T> query = _dbSet.AsQueryable();
+
+        if (include != null)
+        {
+            query = include(query);
+        }
+
+        return await query
+            .Where(where)
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>
@@ -80,7 +99,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public Task<TProjection?> GetFirstOrDefaultAsync<TProjection>(
+    public async Task<TProjection?> GetFirstOrDefaultAsync<TProjection>(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, TProjection>>? projection = null,
@@ -106,15 +125,15 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
             }
 
             var typedQuery = (IQueryable<TProjection>)(object)query;
-            return typedQuery.FirstOrDefaultAsync(cancellationToken);
+            return await typedQuery.FirstOrDefaultAsync(cancellationToken);
         }
 
-        return query
+        return await query
             .Select(projection)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public Task<List<TProjection>> GetAsync<TProjection>(
+    public async Task<List<TProjection>> GetAsync<TProjection>(
         Expression<Func<T, TProjection>>? projection = null,
         Expression<Func<T, bool>>? where = null,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
@@ -147,25 +166,12 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
             }
 
             var typedQuery = (IQueryable<TProjection>)(object)query;
-            return typedQuery.ToListAsync(cancellationToken);
+            return await typedQuery.ToListAsync(cancellationToken);
         }
 
-        return query
+        return await query
             .Select(projection)
             .ToListAsync(cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<T>> GetIncludingAsync(
-        params Expression<Func<T, object>>[] includes)
-    {
-        IQueryable<T> query = _dbSet.AsQueryable();
-
-        foreach (var include in includes)
-        {
-            query = query.Include(include);
-        }
-
-        return await query.ToListAsync();
     }
 
     #endregion
@@ -246,14 +252,9 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         _dbSet.AddRange(entities);
     }
 
-    public ValueTask<EntityEntry<T>> AddAsync(T entity, CancellationToken cancellationToken)
+    public async ValueTask<EntityEntry<T>> AddAsync(T entity, CancellationToken cancellationToken)
     {
-        return _dbSet.AddAsync(entity, cancellationToken);
-    }
-
-    public Task AddRangeAsync(IEnumerable<T> entities, CancellationToken cancellationToken)
-    {
-        return _dbSet.AddRangeAsync(entities, cancellationToken);
+        return await _dbSet.AddAsync(entity, cancellationToken);
     }
 
     #endregion
@@ -287,22 +288,24 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #endregion
 
-    public Task<int> CountAsync(Expression<Func<T, bool>>? where = null, CancellationToken cancellationToken = default)
+    public async Task<int> CountAsync(Expression<Func<T, bool>>? where = null, CancellationToken cancellationToken = default)
     {
-        return where == null
-            ? _dbSet.CountAsync(cancellationToken)
-            : _dbSet.CountAsync(where, cancellationToken);
+        if (where != null)
+            return await _dbSet.CountAsync(where, cancellationToken);
+
+        return await _dbSet.CountAsync(cancellationToken);
     }
 
-    public Task<bool> AnyAsync(Expression<Func<T, bool>>? where = null, CancellationToken cancellationToken = default)
+    public async Task<bool> AnyAsync(Expression<Func<T, bool>>? where = null, CancellationToken cancellationToken = default)
     {
-        return where == null
-            ? _dbSet.AnyAsync(cancellationToken)
-            : _dbSet.AnyAsync(where, cancellationToken);
+        if (where != null)
+            return await _dbSet.AnyAsync(where, cancellationToken);
+
+        return await _dbSet.AnyAsync(cancellationToken);
     }
 
-    public Task<bool> AllAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default)
+    public async Task<bool> AllAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default)
     {
-        return _dbSet.AllAsync(where, cancellationToken);
+        return await _dbSet.AllAsync(where, cancellationToken);
     }
 }

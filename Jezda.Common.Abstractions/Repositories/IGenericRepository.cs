@@ -58,7 +58,8 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of entities.</returns>
-    Task<List<T>> GetAsync(CancellationToken cancellationToken = default);
+    Task<List<T>> GetAsync(
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets entities that match the specified filter.
@@ -66,7 +67,21 @@ public interface IGenericRepository<T> where T : class
     /// <param name="where">The filter expression.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of entities that match the filter.</returns>
-    Task<List<T>> GetAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default);
+    Task<List<T>> GetAsync(
+        Expression<Func<T, bool>> where,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets entities that match the specified filter and includes the specified related entities.
+    /// </summary>
+    /// <param name="where"></param>
+    /// <param name="include"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    Task<List<T>> GetAsync(
+        Expression<Func<T, bool>> where,
+        Func<IQueryable<T>, IQueryable<T>>? include = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// This unified method allows for flexible querying by supporting both entity
@@ -104,15 +119,7 @@ public interface IGenericRepository<T> where T : class
         Expression<Func<T, object>>? orderBy = null,
         bool? descending = null,
         CancellationToken cancellationToken = default);
-
-
-    /// <summary>
-    /// Gets entities including the specified related entities.
-    /// </summary>
-    /// <param name="includes">The related entities to include.</param>
-    /// <returns>A list of entities including the related entities.</returns>
-    Task<IReadOnlyList<T>> GetIncludingAsync(params Expression<Func<T, object>>[] includes);
-
+    
     #endregion
 
     #region PAGING
@@ -167,22 +174,6 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     /// <param name="entities"></param>
     void AddRange(IEnumerable<T> entities);
-
-    /// <summary>
-    /// Asynchronously adds a new entity to the repository.
-    /// </summary>
-    /// <param name="entity">The entity to add.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The added entity.</returns>
-    ValueTask<EntityEntry<T>> AddAsync(T entity, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Asynchronously adds a range of new entities to the repository.
-    /// </summary>
-    /// <param name="entities">The entities to add.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The added entities.</returns>
-    Task AddRangeAsync(IEnumerable<T> entities, CancellationToken cancellationToken);
 
     #endregion
 
