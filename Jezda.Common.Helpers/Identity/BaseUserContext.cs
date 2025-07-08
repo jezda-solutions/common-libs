@@ -31,9 +31,9 @@ public abstract class BaseUserContext(IHttpContextAccessor accessor) : IUserCont
 
     public bool IsAuthenticated => User.Identity?.IsAuthenticated ?? false;
 
-    public bool IsAdmin => Roles.Contains("Nexus.Admin") || Roles.Contains("Retail.Admin");
+    public bool IsAdmin => Roles.Contains("nexus_super_admin") || Roles.Contains("nexus_admin");
 
-    public bool IsSupport => Roles.Contains("Nexus.Support");
+    public bool IsSupport => Roles.Contains("nexus_support");
 
     public string? GetClaim(string type) => User.FindFirstValue(type);
 
