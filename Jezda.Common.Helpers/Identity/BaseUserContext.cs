@@ -27,8 +27,6 @@ public abstract class BaseUserContext(IHttpContextAccessor accessor) : IUserCont
 
     public IReadOnlyList<string> Roles => [.. User.FindAll(ClaimTypes.Role).Select(x => x.Value).Distinct()];
 
-    public IReadOnlyList<string> Permissions => [.. User.FindAll("permissions").Select(x => x.Value).Distinct()];
-
     public bool IsAuthenticated => User.Identity?.IsAuthenticated ?? false;
 
     public bool IsAdmin => Roles.Contains("nexus_super_admin") || Roles.Contains("nexus_admin");
