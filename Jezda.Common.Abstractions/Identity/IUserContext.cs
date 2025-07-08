@@ -30,11 +30,6 @@ public interface IUserContext
     /// </summary>
     IReadOnlyList<string> Roles { get; }
 
-    /// <summary>
-    /// Lista korisnikovih permisija
-    /// </summary>
-    IReadOnlyList<string> Permissions { get; }
-
     // Fast checks
     bool IsAuthenticated { get; }
     bool IsAdmin { get; }
