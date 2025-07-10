@@ -64,6 +64,14 @@ public interface IGenericRepository<T> where T : class
     /// <summary>
     /// Gets entities that match the specified filter.
     /// </summary>
+    /// <param name="where"></param>
+    /// <returns></returns>
+    Task<List<T>> GetAsync(
+        Expression<Func<T, bool>> where);
+
+    /// <summary>
+    /// Gets entities that match the specified filter.
+    /// </summary>
     /// <param name="where">The filter expression.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of entities that match the filter.</returns>
