@@ -26,7 +26,7 @@ public static class DateTimeOffsetHelper
         return DateTimeOffset.Parse($"{date} {time}", CultureInfo.CreateSpecificCulture(cultureName));
     }
 
-    public static DateTimeOffset TryParseExactOffset(this string dateTimeString, string time = null)
+    public static DateTimeOffset TryParseExactOffset(this string dateTimeString, string time)
     {
         if (!string.IsNullOrEmpty(time) && !dateTimeString.Contains('Z') && !dateTimeString.Contains('+'))
         {

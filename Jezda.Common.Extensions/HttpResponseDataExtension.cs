@@ -9,17 +9,23 @@ namespace Jezda.Common.Extensions;
 
 public static class HttpResponseMessageExtensions
 {
-    public static async Task<T?> ReadApiResponseDataAsync<T>(this HttpResponseMessage response, CancellationToken ct = default)
-        where T : class
+    public static async Task<T> ReadApiResponseDataAsync<T>(
+        this HttpResponseMessage response, 
+        CancellationToken ct = default)
     {
         if (!response.IsSuccessStatusCode)
-            return default;
+            return default!;
 
-        var wrapper = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        }, cancellationToken: ct);
+        var wrapper = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }, 
+            cancellationToken: ct
+        );
 
-        return wrapper?.Data;
+        return wrapper is null || wrapper.Data is null
+            ? default!
+            : wrapper.Data;
     }
 }
