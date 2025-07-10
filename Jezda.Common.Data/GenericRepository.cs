@@ -59,6 +59,11 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         return await _dbSet.ToListAsync(cancellationToken);
     }
 
+    public async Task<List<T>> GetAsync(Expression<Func<T, bool>> where)
+    {
+        return await _dbSet.Where(where).ToListAsync();
+    }
+
     public async Task<List<T>> GetAsync(
         Expression<Func<T, bool>> where,
         CancellationToken cancellationToken = default)
