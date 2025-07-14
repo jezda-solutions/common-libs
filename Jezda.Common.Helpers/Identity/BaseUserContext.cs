@@ -37,4 +37,18 @@ public abstract class BaseUserContext(IHttpContextAccessor accessor) : IUserCont
 
     public IEnumerable<string> GetClaims(string type) =>
         User.FindAll(type).Select(c => c.Value);
+
+    public string? BearerToken
+    {
+        get
+        {
+            var authHeader = _accessor.HttpContext?.Request.Headers["Authorization"].FirstOrDefault();
+            if (authHeader is null || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return authHeader["Bearer ".Length..].Trim();
+        }
+    }
 }
