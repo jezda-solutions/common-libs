@@ -39,4 +39,6 @@ public interface IUserContext
     string? GetClaim(string type);
 
     IEnumerable<string> GetClaims(string type);
+
+    string? BearerToken { get; }
 }
