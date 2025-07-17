@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,18 +17,7 @@ public interface IPermissionProvider
     /// <param name="organisationId"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    Task<List<string>> GetPermissionsAsync(
-        Guid userId,
-        Guid organisationId,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Get permission mask for user.
-    /// </summary>
-    /// <param name="userId"></param>
-    /// <param name="organisationId"></param>
-    /// <returns></returns>
-    Task<long?> GetPermissionMaskAsync(
+    Task<ImmutableHashSet<string>> GetPermissionsAsync(
         Guid userId,
         Guid organisationId,
         CancellationToken cancellationToken = default);
@@ -47,29 +36,29 @@ public interface IPermissionProvider
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Set permission mask for user in organisation.
+    /// Add permission for user in organisation.
     /// </summary>
     /// <param name="userId"></param>
     /// <param name="organisationId"></param>
-    /// <param name="permissionMask"></param>
-    /// <param name="expiration"></param>
+    /// <param name="permission"></param>
     /// <returns></returns>
-    Task SetPermissionMaskAsync(
+    Task AddPermissionAsync(
         Guid userId,
         Guid organisationId,
-        long permissionMask,
-        TimeSpan expiration,
+        string permission,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Remove permission mask for user.
+    /// Remove permission for user in organisation.
     /// </summary>
     /// <param name="userId"></param>
     /// <param name="organisationId"></param>
+    /// <param name="permission"></param>
     /// <returns></returns>
-    Task RemovePermissionMaskAsync(
+    Task RemovePermissionAsync(
         Guid userId,
         Guid organisationId,
+        string permission,
         CancellationToken cancellationToken = default);
 
     /// <summary>
