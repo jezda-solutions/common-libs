@@ -1,86 +1,47 @@
-﻿using Microsoft.AspNetCore.Http;
-using System;
+﻿using FastEndpoints;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Threading.Tasks;
-using System.Web;
+using System.Text.Json;
 
 namespace Jezda.Common.Domain.Paged;
 
 public class PagingInfo
 {
-    public const int DefaultCurrentPage = 1;
+    [QueryParam, BindFrom("currentPage")]
+    public int CurrentPage { get; set; } = 1;
 
-    public const int DefaultPageSize = 10;
+    [QueryParam, BindFrom("pageSize")]
+    public int PageSize { get; set; } = 10;
 
-    public const string DefaultSortColumn = default!;
+    [QueryParam, BindFrom("sortColumn")]
+    public string SortColumn { get; set; } = default!;
 
-    public const bool DefaultSortDescending = false;
+    [QueryParam, BindFrom("sortDescending")]
+    public bool SortDescending { get; set; } = false;
 
-    public static readonly Dictionary<string, string> DefaultSearchTerm = [];
+    [QueryParam, BindFrom("searchTerm")]
+    public string? SearchTermJson { get; set; }
 
-    public const string DefaultGlobalSearch = default!;
+    /// <summary>
+    /// Gets or sets the global search query used to filter results.
+    /// Responsible for filtering through all columns in the table
+    /// </summary>
+    [QueryParam, BindFrom("globalSearch")]
+    public string? GlobalSearch { get; set; } = default!;
 
-    public int CurrentPage { get; set; } = DefaultCurrentPage;
-
-    public int TotalPages { get; set; } = 0;
-
-    public int PageSize { get; set; } = DefaultPageSize;
+    /// <summary>
+    /// Responsible for searching through one column (key in dictionary)
+    /// by value of the dictionary row.
+    /// </summary>
+    public Dictionary<string, string>? SearchTerm =>
+        JsonSerializer.Deserialize<Dictionary<string, string>>(SearchTermJson ?? "{}");
 
     public int TotalCount { get; set; } = 0;
 
-    public string SortColumn { get; set; } = DefaultSortColumn;
+    public int TotalPages => GetTotalPages(TotalCount);
 
-    public Dictionary<string, string> SearchTerm { get; set; } = DefaultSearchTerm;
-
-    public bool SortDescending { get; set; } = DefaultSortDescending;
-
-    public string GlobalSearch { get; set; } = DefaultGlobalSearch;
-
-    /// <summary>
-    /// BindAsync is used to let API parse values from Query into Parameters of PagingInfo
-    /// NEVER DELETE THIS!!!
-    /// </summary>
-    /// <param name="context"></param>
-    /// <param name="parameter"></param>
-    /// <returns></returns>
-    public static ValueTask<PagingInfo?> BindAsync(HttpContext context, ParameterInfo parameter)
+    public int GetTotalPages(int totalCount)
     {
-        var result = new PagingInfo();
-
-        var queryString = context.Request.QueryString.Value;
-        if (string.IsNullOrEmpty(queryString))
-            return ValueTask.FromResult<PagingInfo?>(result);
-
-        var query = HttpUtility.ParseQueryString(queryString);
-
-        if (int.TryParse(query["currentPage"], out int currentPage))
-            result.CurrentPage = currentPage;
-
-        if (int.TryParse(query["pageSize"], out int pageSize))
-            result.PageSize = pageSize;
-
-        if (int.TryParse(query["totalPages"], out int totalPages))
-            result.TotalPages = totalPages;
-
-        if (int.TryParse(query["totalCount"], out int totalCount))
-            result.TotalCount = totalCount;
-
-        result.SortColumn = query["sortColumn"] ?? string.Empty;
-
-        if (bool.TryParse(query["sortDescending"], out bool sortDescending))
-            result.SortDescending = sortDescending;
-
-        foreach (var key in query.AllKeys)
-        {
-            if (key?.StartsWith("searchTerm.", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                string dictKey = key["searchTerm.".Length..];
-                string dictValue = query[key] ?? string.Empty;
-                result.SearchTerm[dictKey] = dictValue;
-            }
-        }
-
-        return ValueTask.FromResult<PagingInfo?>(result);
+        var pageSize = PageSize;
+        return (totalCount + pageSize - 1) / pageSize;
     }
 }
