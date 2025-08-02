@@ -160,10 +160,11 @@ public static class PagedListExtensions
     }
 
     // Filtriranje po search termu
-    public static IQueryable<T> ApplySearchFilters<T>(this IQueryable<T> query, Dictionary<string, string> searchTerms)
+    public static IQueryable<T> ApplySearchFilters<T>(this IQueryable<T> query, Dictionary<string, string>? searchTerms)
     {
         // Ako je prazan search term nema sta da pretrazujemo
-        if (searchTerms == null || searchTerms.Count == 0) return query;
+        if (searchTerms is null || searchTerms.Count == 0) 
+            return query;
 
         // Za svaki search term filtriramo
         foreach (var term in searchTerms)
@@ -319,7 +320,7 @@ public static class PagedListExtensions
     }
 
     /// <summary>
-    /// 
+    /// Ova metoda pretvara IQueryable u PagedList sa paginacijom i sortiranjem.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <param name="query"></param>
@@ -335,9 +336,13 @@ public static class PagedListExtensions
         // Ukupan broj itema
         var totalRecords = await query.CountAsync(cancellationToken);
 
+        var sortColumn = string.IsNullOrEmpty(pagingInfo.SortColumn)
+            ? defaultSortColumn
+            : pagingInfo.SortColumn;
+
         // Primena paginacije i sortiranja
         var items = await query
-            .ApplySorting(pagingInfo.SortColumn ?? defaultSortColumn, pagingInfo.SortDescending)
+            .ApplySorting(sortColumn, pagingInfo.SortDescending)
             .Skip((pagingInfo.CurrentPage - 1) * pagingInfo.PageSize)
             .Take(pagingInfo.PageSize)
             .ToListAsync(cancellationToken);
@@ -351,10 +356,8 @@ public static class PagedListExtensions
                 CurrentPage = pagingInfo.CurrentPage,
                 PageSize = pagingInfo.PageSize,
                 TotalCount = totalRecords,
-                TotalPages = (totalRecords + pagingInfo.PageSize - 1) / pagingInfo.PageSize,
                 SortColumn = pagingInfo.SortColumn ?? string.Empty,
-                SortDescending = pagingInfo.SortDescending,
-                SearchTerm = pagingInfo.SearchTerm
+                SortDescending = pagingInfo.SortDescending
             }
         };
     }
