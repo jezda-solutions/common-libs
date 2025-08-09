@@ -6,26 +6,26 @@ namespace Jezda.Common.Domain.Paged;
 
 public class PagingInfo
 {
-    [QueryParam, BindFrom("currentPage")]
+    [QueryParam, BindFrom("current_page")]
     public int CurrentPage { get; set; } = 1;
 
-    [QueryParam, BindFrom("pageSize")]
+    [QueryParam, BindFrom("page_size")]
     public int PageSize { get; set; } = 10;
 
-    [QueryParam, BindFrom("sortColumn")]
+    [QueryParam, BindFrom("sort_column")]
     public string SortColumn { get; set; } = default!;
 
-    [QueryParam, BindFrom("sortDescending")]
+    [QueryParam, BindFrom("sort_descending")]
     public bool SortDescending { get; set; } = false;
 
-    [QueryParam, BindFrom("searchTerm")]
+    [QueryParam, BindFrom("search_term")]
     public string? SearchTermJson { get; set; }
 
     /// <summary>
     /// Gets or sets the global search query used to filter results.
     /// Responsible for filtering through all columns in the table
     /// </summary>
-    [QueryParam, BindFrom("globalSearch")]
+    [QueryParam, BindFrom("global_search")]
     public string? GlobalSearch { get; set; } = default!;
 
     /// <summary>
