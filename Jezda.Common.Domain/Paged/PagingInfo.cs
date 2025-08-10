@@ -33,8 +33,6 @@ public class PagingInfo
     public Dictionary<string, string> SearchTerm =>
         JsonSerializer.Deserialize<Dictionary<string, string>>(SearchTermJson ?? "{}") ?? [];
 
-    [QueryParam, BindFrom("total_count")]
-    [Microsoft.AspNetCore.Mvc.FromQuery(Name = "total_count")]
     public int TotalCount { get; set; } = 0;
 
     public int TotalPages => GetTotalPages(TotalCount);
