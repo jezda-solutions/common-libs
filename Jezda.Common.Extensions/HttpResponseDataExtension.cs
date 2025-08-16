@@ -16,7 +16,7 @@ public static class HttpResponseMessageExtensions
         if (!response.IsSuccessStatusCode)
             return default!;
 
-        var wrapper = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(
+        var wrapper = await response.Content.ReadFromJsonAsync<T>(
             new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -24,8 +24,8 @@ public static class HttpResponseMessageExtensions
             cancellationToken: ct
         );
 
-        return wrapper is null || wrapper.Data is null
+        return wrapper is null
             ? default!
-            : wrapper.Data;
+            : wrapper;
     }
 }
