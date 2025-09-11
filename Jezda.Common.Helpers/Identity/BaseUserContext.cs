@@ -21,7 +21,7 @@ public abstract class BaseUserContext(IHttpContextAccessor accessor) : IUserCont
 
     public string UserName => User.FindFirstValue(ClaimTypes.Name) ?? string.Empty;
 
-    public Guid? CurrentOrganisationId => Guid.TryParse(User.FindFirstValue("current_org_id"), out var orgId)
+    public Guid? CurrentOrganisationId => Guid.TryParse(User.FindFirstValue("X-Current-Organisation-Id"), out var orgId)
         ? orgId
         : null;
 
