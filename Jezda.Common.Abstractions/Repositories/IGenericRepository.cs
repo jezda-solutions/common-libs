@@ -52,9 +52,13 @@ public interface IGenericRepository<T> where T : class
     /// Gets the first entity that matches the specified filter.
     /// </summary>
     /// <param name="where">The filter expression.</param>
+    /// <param name="orderBy">Optional ordering expression. If not specified, orders by Id to avoid EF Core warnings.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The first entity that matches the filter if found; otherwise, null.</returns>
-    Task<T?> GetFirstOrDefaultAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default);
+    Task<T?> GetFirstOrDefaultAsync(
+        Expression<Func<T, bool>> where,
+        Expression<Func<T, object>>? orderBy = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets all entities.
@@ -106,6 +110,7 @@ public interface IGenericRepository<T> where T : class
     /// <param name="where"></param>
     /// <param name="include"></param>
     /// <param name="projection"></param>
+    /// <param name="orderBy">Optional ordering expression. If not specified, orders by Id to avoid EF Core warnings.</param>
     /// <param name="ignoreQueryFilters"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
@@ -114,6 +119,7 @@ public interface IGenericRepository<T> where T : class
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, TProjection>>? projection = null,
+        Expression<Func<T, object>>? orderBy = null,
         bool ignoreQueryFilters = false,
         CancellationToken cancellationToken = default);
 
@@ -186,6 +192,7 @@ public interface IGenericRepository<T> where T : class
     Task<T?> GetFirstOrDefaultAsNoTrackingAsync(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
+        Expression<Func<T, object>>? orderBy = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -397,6 +404,7 @@ public interface IGenericRepository<T> where T : class
     Task<T> GetFirstOrThrowAsync(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
+        Expression<Func<T, object>>? orderBy = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

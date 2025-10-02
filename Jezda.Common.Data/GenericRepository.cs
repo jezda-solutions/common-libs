@@ -109,14 +109,26 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     /// Gets the first entity that matches the specified filter asynchronously.
     /// </summary>
     /// <param name="where">The filter expression</param>
+    /// <param name="orderBy">Optional ordering expression. If not specified, orders by Id to avoid EF Core warnings.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The first matching entity if found; otherwise, null</returns>
     /// <remarks>
     /// The returned entity is tracked by the context.
     /// </remarks>
-    public async Task<T?> GetFirstOrDefaultAsync(Expression<Func<T, bool>> where, CancellationToken cancellationToken = default)
+    public async Task<T?> GetFirstOrDefaultAsync(
+        Expression<Func<T, bool>> where,
+        Expression<Func<T, object>>? orderBy = null,
+        CancellationToken cancellationToken = default)
     {
-        return await _dbSet.FirstOrDefaultAsync(where, cancellationToken);
+        var query = _dbSet.Where(where);
+
+        // Apply ordering - default to Id if not specified to avoid EF Core warnings
+        if (orderBy != null)
+            query = query.OrderBy(orderBy);
+        else
+            query = query.OrderBy(x => EF.Property<object>(x, "Id"));
+
+        return await query.FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>
@@ -230,6 +242,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         Expression<Func<T, TProjection>>? projection = null,
+        Expression<Func<T, object>>? orderBy = null,
         bool ignoreQueryFilters = false,
         CancellationToken cancellationToken = default)
     {
@@ -242,6 +255,12 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
             query = include(query);
 
         query = query.Where(where);
+
+        // Apply ordering - default to Id if not specified to avoid EF Core warnings
+        if (orderBy != null)
+            query = query.OrderBy(orderBy);
+        else
+            query = query.OrderBy(x => EF.Property<object>(x, "Id"));
 
         if (projection == null)
         {
@@ -475,6 +494,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     public async Task<T?> GetFirstOrDefaultAsNoTrackingAsync(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
+        Expression<Func<T, object>>? orderBy = null,
         CancellationToken cancellationToken = default)
     {
         var query = _dbSet.AsNoTracking();
@@ -482,7 +502,15 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         if (include != null)
             query = include(query);
 
-        return await query.FirstOrDefaultAsync(where, cancellationToken);
+        query = query.Where(where);
+
+        // Apply ordering - default to Id if not specified to avoid EF Core warnings
+        if (orderBy != null)
+            query = query.OrderBy(orderBy);
+        else
+            query = query.OrderBy(x => EF.Property<object>(x, "Id"));
+
+        return await query.FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>
@@ -1176,6 +1204,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     /// </summary>
     /// <param name="where">The filter expression</param>
     /// <param name="include">Navigation properties to include (optional)</param>
+    /// <param name="orderBy">Optional ordering expression. If not specified, orders by Id to avoid EF Core warnings.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The first matching entity</returns>
     /// <exception cref="InvalidOperationException">Thrown when no entity matches the criteria</exception>
@@ -1191,6 +1220,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     public virtual async Task<T> GetFirstOrThrowAsync(
         Expression<Func<T, bool>> where,
         Func<IQueryable<T>, IQueryable<T>>? include = null,
+        Expression<Func<T, object>>? orderBy = null,
         CancellationToken cancellationToken = default)
     {
         var query = _dbSet.AsQueryable();
@@ -1198,7 +1228,15 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         if (include != null)
             query = include(query);
 
-        var entity = await query.FirstOrDefaultAsync(where, cancellationToken)
+        query = query.Where(where);
+
+        // Apply ordering - default to Id if not specified to avoid EF Core warnings
+        if (orderBy != null)
+            query = query.OrderBy(orderBy);
+        else
+            query = query.OrderBy(x => EF.Property<object>(x, "Id"));
+
+        var entity = await query.FirstOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException($"Entity of type '{typeof(T).Name}' matching the specified criteria was not found.");
         return entity;
     }
