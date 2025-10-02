@@ -834,11 +834,8 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         ICollection<TChild> currentCollection,
         IEnumerable<TChild> newItems) where TChild : class
     {
-        if (currentCollection == null)
-            throw new ArgumentNullException(nameof(currentCollection));
-
-        if (newItems == null)
-            throw new ArgumentNullException(nameof(newItems));
+        ArgumentNullException.ThrowIfNull(currentCollection);
+        ArgumentNullException.ThrowIfNull(newItems);
 
         currentCollection.Clear();
 
@@ -1201,12 +1198,8 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         if (include != null)
             query = include(query);
 
-        var entity = await query.FirstOrDefaultAsync(where, cancellationToken);
-
-        if (entity == null)
-            throw new InvalidOperationException(
-                $"Entity of type '{typeof(T).Name}' matching the specified criteria was not found.");
-
+        var entity = await query.FirstOrDefaultAsync(where, cancellationToken)
+            ?? throw new InvalidOperationException($"Entity of type '{typeof(T).Name}' matching the specified criteria was not found.");
         return entity;
     }
 
