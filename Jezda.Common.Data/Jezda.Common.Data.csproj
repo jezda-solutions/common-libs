@@ -6,13 +6,16 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Data</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions Team</Authors>
+    <Authors>Jezda Solutions</Authors>
     <Company>Jezda Solutions</Company>
-    <Description>Entity Framework Core data access implementations including generic repository and unit of work patterns.</Description>
-    <PackageTags>jezda data repository efcore uow unitofwork repository-pattern</PackageTags>
+    <Description>Production-ready GenericRepository and UnitOfWork implementations for EF Core. Features: 50+ methods, Specification Pattern, Soft Delete, Batch Operations, Pagination, AsNoTracking, and Aggregates.</Description>
+    <PackageTags>repository;unitofwork;efcore;entityframework;specification-pattern;generic-repository;batch-operations;soft-delete;pagination</PackageTags>
+    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
     <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
