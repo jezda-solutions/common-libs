@@ -6,13 +6,16 @@
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageId>Jezda.Common.Domain</PackageId>
 		<Version>1.0.0</Version>
-		<Authors>Jezda Solutions Team</Authors>
+		<Authors>Jezda Solutions</Authors>
 		<Company>Jezda Solutions</Company>
-		<Description>Common domain models and base entities for Jezda microservices.</Description>
-		<PackageTags>jezda domain common base-entities</PackageTags>
+		<Description>Common domain models, base entities, and value objects. Includes BaseEntity, IDeletedEntity interface, PagedList, PagingInfo, and domain enums.</Description>
+		<PackageTags>domain;entities;ddd;domain-driven-design;base-entity;pagination;value-objects</PackageTags>
+		<PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<Copyright>Copyright © Jezda Solutions 2025</Copyright>
 	</PropertyGroup>
 
 	<ItemGroup>

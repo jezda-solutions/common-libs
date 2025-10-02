@@ -6,13 +6,16 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Extensions</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions Team</Authors>
+    <Authors>Jezda Solutions</Authors>
     <Company>Jezda Solutions</Company>
-    <Description>Extension methods for primitive types and common .NET types used across Jezda projects.</Description>
-    <PackageTags>jezda extensions helpers utilities string enum collections</PackageTags>
+    <Description>Extension methods for common .NET types including DateTime, PagedList, HTTP responses, and Hangfire integration with PostgreSQL.</Description>
+    <PackageTags>extensions;hangfire;datetime;pagedlist;utilities;helpers;postgresql</PackageTags>
+    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
     <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

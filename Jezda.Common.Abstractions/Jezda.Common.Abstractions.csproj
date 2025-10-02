@@ -6,13 +6,16 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Abstractions</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions Team</Authors>
+    <Authors>Jezda Solutions</Authors>
     <Company>Jezda Solutions</Company>
-    <Description>Interfaces, contracts, and cross-cutting abstractions shared across Jezda microservices.</Description>
-    <PackageTags>jezda abstractions interfaces contracts shared</PackageTags>
+    <Description>Interfaces and abstractions for Repository Pattern, Unit of Work, and Specification Pattern. Includes IGenericRepository with 50+ methods, IUnitOfWork, ISpecification, and BaseSpecification.</Description>
+    <PackageTags>repository;unitofwork;specification;abstractions;interfaces;patterns;generic-repository;ddd</PackageTags>
+    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
     <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
