@@ -42,7 +42,7 @@ public abstract class BaseUserContext(IHttpContextAccessor accessor) : IUserCont
     {
         get
         {
-            var authHeader = _accessor.HttpContext?.Request.Headers["Authorization"].FirstOrDefault();
+            var authHeader = _accessor.HttpContext?.Request.Headers.Authorization.FirstOrDefault();
             if (authHeader is null || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
