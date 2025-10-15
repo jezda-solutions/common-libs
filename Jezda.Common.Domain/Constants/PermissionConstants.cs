@@ -1,8 +1,9 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace Jezda.Common.Domain.Constants;
 
@@ -44,8 +45,106 @@ public static class PermissionConstants
 
     public static class Retail
     {
+        [DisplayName("Addresses")]
+        public static class Addresses
+        {
+            public const string View = "retail:addresses:view";
+            public const string Search = "retail:addresses:search";
+            public const string Create = "retail:addresses:create";
+            public const string Update = "retail:addresses:update";
+            public const string Delete = "retail:addresses:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Addresses));
+        }
+
+        [DisplayName("AppLogs")]
+        public static class AppLogs
+        {
+            public const string View = "retail:app-logs:view";
+            public const string Search = "retail:app-logs:search";
+            public const string Create = "retail:app-logs:create";
+            public const string Update = "retail:app-logs:update";
+            public const string Delete = "retail:app-logs:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(AppLogs));
+        }
+
+        [DisplayName("BaseProducts")]
+        public static class BaseProducts
+        {
+            public const string View = "retail:base-products:view";
+            public const string Search = "retail:base-products:search";
+            public const string Create = "retail:base-products:create";
+            public const string Update = "retail:base-products:update";
+            public const string Delete = "retail:base-products:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProducts));
+        }
+
+        [DisplayName("BaseProductBarcodes")]
+        public static class BaseProductBarcodes
+        {
+            public const string View = "retail:base-product-barcodes:view";
+            public const string Search = "retail:base-product-barcodes:search";
+            public const string Create = "retail:base-product-barcodes:create";
+            public const string Update = "retail:base-product-barcodes:update";
+            public const string Delete = "retail:base-product-barcodes:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProductBarcodes));
+        }
+
+        [DisplayName("BaseProductCategories")]
+        public static class BaseProductCategories
+        {
+            public const string View = "retail:base-product-categories:view";
+            public const string Search = "retail:base-product-categories:search";
+            public const string Create = "retail:base-product-categories:create";
+            public const string Update = "retail:base-product-categories:update";
+            public const string Delete = "retail:base-product-categories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProductCategories));
+        }
+
+        [DisplayName("BaseProductCategoryRelations")]
+        public static class BaseProductCategoryRelations
+        {
+            public const string View = "retail:base-product-category-relations:view";
+            public const string Search = "retail:base-product-category-relations:search";
+            public const string Create = "retail:base-product-category-relations:create";
+            public const string Update = "retail:base-product-category-relations:update";
+            public const string Delete = "retail:base-product-category-relations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProductCategoryRelations));
+        }
+
+        [DisplayName("BaseProductDimensions")]
+        public static class BaseProductDimensions
+        {
+            public const string View = "retail:base-product-dimensions:view";
+            public const string Search = "retail:base-product-dimensions:search";
+            public const string Create = "retail:base-product-dimensions:create";
+            public const string Update = "retail:base-product-dimensions:update";
+            public const string Delete = "retail:base-product-dimensions:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProductDimensions));
+        }
+
+        [DisplayName("BaseProductImages")]
+        public static class BaseProductImages
+        {
+            public const string View = "retail:base-product-images:view";
+            public const string Search = "retail:base-product-images:search";
+            public const string Create = "retail:base-product-images:create";
+            public const string Update = "retail:base-product-images:update";
+            public const string Delete = "retail:base-product-images:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProductImages));
+        }
+
+        [DisplayName("BillingInfos")]
+        public static class BillingInfos
+        {
+            public const string View = "retail:billing-infos:view";
+            public const string Search = "retail:billing-infos:search";
+            public const string Create = "retail:billing-infos:create";
+            public const string Update = "retail:billing-infos:update";
+            public const string Delete = "retail:billing-infos:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BillingInfos));
+        }
+
         [DisplayName("Brands")]
-        [Description("Brands Permissions")]
         public static class Brands
         {
             public const string View = "retail:brands:view";
@@ -53,87 +152,945 @@ public static class PermissionConstants
             public const string Create = "retail:brands:create";
             public const string Update = "retail:brands:update";
             public const string Delete = "retail:brands:delete";
-
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Brands));
         }
 
-        [DisplayName("Leaflets")]
-        public static class Leaflets
+        [DisplayName("Categories")]
+        public static class Categories
         {
-            public const string View = "retail:leaflets:view";
-            public const string Search = "retail:leaflets:search";
-            public const string Create = "retail:leaflets:create";
-            public const string Update = "retail:leaflets:update";
-            public const string Delete = "retail:leaflets:delete";
+            public const string View = "retail:categories:view";
+            public const string Search = "retail:categories:search";
+            public const string Create = "retail:categories:create";
+            public const string Update = "retail:categories:update";
+            public const string Delete = "retail:categories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Categories));
         }
 
-        [DisplayName("LeafletDiscount")]
-        [Description("LeafletDiscount Permissions")]
-        public static class LeafletDiscountClaims
+        [DisplayName("CrawlArticles")]
+        public static class CrawlArticles
         {
-            public const string View = "retail:leaflet-discount:view";
-            public const string Search = "retail:leaflet-discount:search";
-            public const string Create = "retail:leaflet-discount:create";
-            public const string Update = "retail:leaflet-discount:update";
-            public const string Delete = "retail:leaflet-discount:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(LeafletDiscountClaims));
+            public const string View = "retail:crawl-articles:view";
+            public const string Search = "retail:crawl-articles:search";
+            public const string Create = "retail:crawl-articles:create";
+            public const string Update = "retail:crawl-articles:update";
+            public const string Delete = "retail:crawl-articles:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticles));
         }
 
-        [DisplayName("CrawlArticleBarcode")]
-        [Description("CrawlArticleBarcode Permissions")]
-        public static class CrawlArticleBarcode
+        [DisplayName("CrawlArticleBarcodes")]
+        public static class CrawlArticleBarcodes
         {
-            public const string View = "retail:crawl-article-barcode:view";
-            public const string Search = "retail:crawl-article-barcode:search";
-            public const string Create = "retail:crawl-article-barcode:create";
-            public const string Update = "retail:crawl-article-barcode:update";
-            public const string Delete = "retail:crawl-article-barcode:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticleBarcode));
+            public const string View = "retail:crawl-article-barcodes:view";
+            public const string Search = "retail:crawl-article-barcodes:search";
+            public const string Create = "retail:crawl-article-barcodes:create";
+            public const string Update = "retail:crawl-article-barcodes:update";
+            public const string Delete = "retail:crawl-article-barcodes:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticleBarcodes));
         }
 
-        [DisplayName("CrawlArticlePrice")]
-        [Description("CrawlArticlePrice Permissions")]
-        public static class CrawlArticlePrice
+        [DisplayName("CrawlArticleCategoryRelations")]
+        public static class CrawlArticleCategoryRelations
         {
-            public const string View = "retail:crawl-article-price:view";
-            public const string Search = "retail:crawl-article-price:search";
-            public const string Create = "retail:crawl-article-price:create";
-            public const string Update = "retail:crawl-article-price:update";
-            public const string Delete = "retail:crawl-article-price:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticlePrice));
+            public const string View = "retail:crawl-article-category-relations:view";
+            public const string Search = "retail:crawl-article-category-relations:search";
+            public const string Create = "retail:crawl-article-category-relations:create";
+            public const string Update = "retail:crawl-article-category-relations:update";
+            public const string Delete = "retail:crawl-article-category-relations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticleCategoryRelations));
         }
 
-        [DisplayName("Crawls")]
-        [Description("Crawls Permissions")]
-        public static class Crawls
+        [DisplayName("CrawlArticlePrices")]
+        public static class CrawlArticlePrices
         {
-            public const string View = "retail:crawls:view";
-            public const string Search = "retail:crawls:search";
-            public const string Create = "retail:crawls:create";
-            public const string Update = "retail:crawls:update";
-            public const string Delete = "retail:crawls:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Crawls));
+            public const string View = "retail:crawl-article-prices:view";
+            public const string Search = "retail:crawl-article-prices:search";
+            public const string Create = "retail:crawl-article-prices:create";
+            public const string Update = "retail:crawl-article-prices:update";
+            public const string Delete = "retail:crawl-article-prices:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticlePrices));
         }
 
-        [DisplayName("Exceptions")]
-        [Description("Exceptions Permissions")]
-        public static class Exceptions
+        [DisplayName("CrawlCategories")]
+        public static class CrawlCategories
         {
-            public const string View = "retail:exceptions:view";
-            public const string Search = "retail:exceptions:search";
-            public const string Create = "retail:exceptions:create";
-            public const string Update = "retail:exceptions:update";
-            public const string Delete = "retail:exceptions:delete";
+            public const string View = "retail:crawl-categories:view";
+            public const string Search = "retail:crawl-categories:search";
+            public const string Create = "retail:crawl-categories:create";
+            public const string Update = "retail:crawl-categories:update";
+            public const string Delete = "retail:crawl-categories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlCategories));
+        }
 
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Exceptions));
+        [DisplayName("CurrencyExchangeRates")]
+        public static class CurrencyExchangeRates
+        {
+            public const string View = "retail:currency-exchange-rates:view";
+            public const string Search = "retail:currency-exchange-rates:search";
+            public const string Create = "retail:currency-exchange-rates:create";
+            public const string Update = "retail:currency-exchange-rates:update";
+            public const string Delete = "retail:currency-exchange-rates:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CurrencyExchangeRates));
+        }
+
+        [DisplayName("Customers")]
+        public static class Customers
+        {
+            public const string View = "retail:customers:view";
+            public const string Search = "retail:customers:search";
+            public const string Create = "retail:customers:create";
+            public const string Update = "retail:customers:update";
+            public const string Delete = "retail:customers:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Customers));
+        }
+
+        [DisplayName("CustomerBalances")]
+        public static class CustomerBalances
+        {
+            public const string View = "retail:customer-balances:view";
+            public const string Search = "retail:customer-balances:search";
+            public const string Create = "retail:customer-balances:create";
+            public const string Update = "retail:customer-balances:update";
+            public const string Delete = "retail:customer-balances:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CustomerBalances));
+        }
+
+        [DisplayName("CustomerBalanceMovements")]
+        public static class CustomerBalanceMovements
+        {
+            public const string View = "retail:customer-balance-movements:view";
+            public const string Search = "retail:customer-balance-movements:search";
+            public const string Create = "retail:customer-balance-movements:create";
+            public const string Update = "retail:customer-balance-movements:update";
+            public const string Delete = "retail:customer-balance-movements:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CustomerBalanceMovements));
+        }
+
+        [DisplayName("CustomerLoyaltyCards")]
+        public static class CustomerLoyaltyCards
+        {
+            public const string View = "retail:customer-loyalty-cards:view";
+            public const string Search = "retail:customer-loyalty-cards:search";
+            public const string Create = "retail:customer-loyalty-cards:create";
+            public const string Update = "retail:customer-loyalty-cards:update";
+            public const string Delete = "retail:customer-loyalty-cards:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CustomerLoyaltyCards));
+        }
+
+        [DisplayName("CustomerLoyaltyTiers")]
+        public static class CustomerLoyaltyTiers
+        {
+            public const string View = "retail:customer-loyalty-tiers:view";
+            public const string Search = "retail:customer-loyalty-tiers:search";
+            public const string Create = "retail:customer-loyalty-tiers:create";
+            public const string Update = "retail:customer-loyalty-tiers:update";
+            public const string Delete = "retail:customer-loyalty-tiers:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CustomerLoyaltyTiers));
+        }
+
+        [DisplayName("CustomerRequests")]
+        public static class CustomerRequests
+        {
+            public const string View = "retail:customer-requests:view";
+            public const string Search = "retail:customer-requests:search";
+            public const string Create = "retail:customer-requests:create";
+            public const string Update = "retail:customer-requests:update";
+            public const string Delete = "retail:customer-requests:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CustomerRequests));
+        }
+
+        [DisplayName("CustomerResults")]
+        public static class CustomerResults
+        {
+            public const string View = "retail:customer-results:view";
+            public const string Search = "retail:customer-results:search";
+            public const string Create = "retail:customer-results:create";
+            public const string Update = "retail:customer-results:update";
+            public const string Delete = "retail:customer-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CustomerResults));
+        }
+
+        [DisplayName("DashboardCardConfigs")]
+        public static class DashboardCardConfigs
+        {
+            public const string View = "retail:dashboard-card-configs:view";
+            public const string Search = "retail:dashboard-card-configs:search";
+            public const string Create = "retail:dashboard-card-configs:create";
+            public const string Update = "retail:dashboard-card-configs:update";
+            public const string Delete = "retail:dashboard-card-configs:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(DashboardCardConfigs));
+        }
+
+        [DisplayName("EmailAddresses")]
+        public static class EmailAddresses
+        {
+            public const string View = "retail:email-addresses:view";
+            public const string Search = "retail:email-addresses:search";
+            public const string Create = "retail:email-addresses:create";
+            public const string Update = "retail:email-addresses:update";
+            public const string Delete = "retail:email-addresses:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(EmailAddresses));
+        }
+
+        [DisplayName("Facilities")]
+        public static class Facilities
+        {
+            public const string View = "retail:facilities:view";
+            public const string Search = "retail:facilities:search";
+            public const string Create = "retail:facilities:create";
+            public const string Update = "retail:facilities:update";
+            public const string Delete = "retail:facilities:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Facilities));
+        }
+
+        [DisplayName("FacilityAddresses")]
+        public static class FacilityAddresses
+        {
+            public const string View = "retail:facility-addresses:view";
+            public const string Search = "retail:facility-addresses:search";
+            public const string Create = "retail:facility-addresses:create";
+            public const string Update = "retail:facility-addresses:update";
+            public const string Delete = "retail:facility-addresses:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(FacilityAddresses));
+        }
+
+        [DisplayName("FacilityPhones")]
+        public static class FacilityPhones
+        {
+            public const string View = "retail:facility-phones:view";
+            public const string Search = "retail:facility-phones:search";
+            public const string Create = "retail:facility-phones:create";
+            public const string Update = "retail:facility-phones:update";
+            public const string Delete = "retail:facility-phones:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(FacilityPhones));
+        }
+
+        [DisplayName("InventoryBatches")]
+        public static class InventoryBatches
+        {
+            public const string View = "retail:inventory-batches:view";
+            public const string Search = "retail:inventory-batches:search";
+            public const string Create = "retail:inventory-batches:create";
+            public const string Update = "retail:inventory-batches:update";
+            public const string Delete = "retail:inventory-batches:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(InventoryBatches));
+        }
+
+        [DisplayName("InventoryBatchMovements")]
+        public static class InventoryBatchMovements
+        {
+            public const string View = "retail:inventory-batch-movements:view";
+            public const string Search = "retail:inventory-batch-movements:search";
+            public const string Create = "retail:inventory-batch-movements:create";
+            public const string Update = "retail:inventory-batch-movements:update";
+            public const string Delete = "retail:inventory-batch-movements:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(InventoryBatchMovements));
+        }
+
+        [DisplayName("InventoryReservations")]
+        public static class InventoryReservations
+        {
+            public const string View = "retail:inventory-reservations:view";
+            public const string Search = "retail:inventory-reservations:search";
+            public const string Create = "retail:inventory-reservations:create";
+            public const string Update = "retail:inventory-reservations:update";
+            public const string Delete = "retail:inventory-reservations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(InventoryReservations));
+        }
+
+        [DisplayName("LoyaltyTierConfigurations")]
+        public static class LoyaltyTierConfigurations
+        {
+            public const string View = "retail:loyalty-tier-configurations:view";
+            public const string Search = "retail:loyalty-tier-configurations:search";
+            public const string Create = "retail:loyalty-tier-configurations:create";
+            public const string Update = "retail:loyalty-tier-configurations:update";
+            public const string Delete = "retail:loyalty-tier-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(LoyaltyTierConfigurations));
+        }
+
+        [DisplayName("NotificationTemplates")]
+        public static class NotificationTemplates
+        {
+            public const string View = "retail:notification-templates:view";
+            public const string Search = "retail:notification-templates:search";
+            public const string Create = "retail:notification-templates:create";
+            public const string Update = "retail:notification-templates:update";
+            public const string Delete = "retail:notification-templates:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(NotificationTemplates));
+        }
+
+        [DisplayName("Orders")]
+        public static class Orders
+        {
+            public const string View = "retail:orders:view";
+            public const string Search = "retail:orders:search";
+            public const string Create = "retail:orders:create";
+            public const string Update = "retail:orders:update";
+            public const string Delete = "retail:orders:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Orders));
+        }
+
+        [DisplayName("OrderFulfillments")]
+        public static class OrderFulfillments
+        {
+            public const string View = "retail:order-fulfillments:view";
+            public const string Search = "retail:order-fulfillments:search";
+            public const string Create = "retail:order-fulfillments:create";
+            public const string Update = "retail:order-fulfillments:update";
+            public const string Delete = "retail:order-fulfillments:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrderFulfillments));
+        }
+
+        [DisplayName("OrderItems")]
+        public static class OrderItems
+        {
+            public const string View = "retail:order-items:view";
+            public const string Search = "retail:order-items:search";
+            public const string Create = "retail:order-items:create";
+            public const string Update = "retail:order-items:update";
+            public const string Delete = "retail:order-items:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrderItems));
+        }
+
+        [DisplayName("OrderItemFulfillments")]
+        public static class OrderItemFulfillments
+        {
+            public const string View = "retail:order-item-fulfillments:view";
+            public const string Search = "retail:order-item-fulfillments:search";
+            public const string Create = "retail:order-item-fulfillments:create";
+            public const string Update = "retail:order-item-fulfillments:update";
+            public const string Delete = "retail:order-item-fulfillments:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrderItemFulfillments));
+        }
+
+        [DisplayName("OrderStatusHistories")]
+        public static class OrderStatusHistories
+        {
+            public const string View = "retail:order-status-histories:view";
+            public const string Search = "retail:order-status-histories:search";
+            public const string Create = "retail:order-status-histories:create";
+            public const string Update = "retail:order-status-histories:update";
+            public const string Delete = "retail:order-status-histories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrderStatusHistories));
+        }
+
+        [DisplayName("OrganisationBrands")]
+        public static class OrganisationBrands
+        {
+            public const string View = "retail:organisation-brands:view";
+            public const string Search = "retail:organisation-brands:search";
+            public const string Create = "retail:organisation-brands:create";
+            public const string Update = "retail:organisation-brands:update";
+            public const string Delete = "retail:organisation-brands:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationBrands));
+        }
+
+        [DisplayName("OrganisationConfigurations")]
+        public static class OrganisationConfigurations
+        {
+            public const string View = "retail:organisation-configurations:view";
+            public const string Search = "retail:organisation-configurations:search";
+            public const string Create = "retail:organisation-configurations:create";
+            public const string Update = "retail:organisation-configurations:update";
+            public const string Delete = "retail:organisation-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationConfigurations));
+        }
+
+        [DisplayName("OrganisationEmailAddresses")]
+        public static class OrganisationEmailAddresses
+        {
+            public const string View = "retail:organisation-email-addresses:view";
+            public const string Search = "retail:organisation-email-addresses:search";
+            public const string Create = "retail:organisation-email-addresses:create";
+            public const string Update = "retail:organisation-email-addresses:update";
+            public const string Delete = "retail:organisation-email-addresses:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationEmailAddresses));
+        }
+
+        [DisplayName("OrganisationFacilities")]
+        public static class OrganisationFacilities
+        {
+            public const string View = "retail:organisation-facilities:view";
+            public const string Search = "retail:organisation-facilities:search";
+            public const string Create = "retail:organisation-facilities:create";
+            public const string Update = "retail:organisation-facilities:update";
+            public const string Delete = "retail:organisation-facilities:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationFacilities));
+        }
+
+        [DisplayName("OrganisationOnboardingProgress")]
+        public static class OrganisationOnboardingProgress
+        {
+            public const string View = "retail:organisation-onboarding-progress:view";
+            public const string Search = "retail:organisation-onboarding-progress:search";
+            public const string Create = "retail:organisation-onboarding-progress:create";
+            public const string Update = "retail:organisation-onboarding-progress:update";
+            public const string Delete = "retail:organisation-onboarding-progress:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationOnboardingProgress));
+        }
+
+        [DisplayName("OrganisationPartnershipConfigurations")]
+        public static class OrganisationPartnershipConfigurations
+        {
+            public const string View = "retail:organisation-partnership-configurations:view";
+            public const string Search = "retail:organisation-partnership-configurations:search";
+            public const string Create = "retail:organisation-partnership-configurations:create";
+            public const string Update = "retail:organisation-partnership-configurations:update";
+            public const string Delete = "retail:organisation-partnership-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationPartnershipConfigurations));
+        }
+
+        [DisplayName("OrganisationRelationships")]
+        public static class OrganisationRelationships
+        {
+            public const string View = "retail:organisation-relationships:view";
+            public const string Search = "retail:organisation-relationships:search";
+            public const string Create = "retail:organisation-relationships:create";
+            public const string Update = "retail:organisation-relationships:update";
+            public const string Delete = "retail:organisation-relationships:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationRelationships));
+        }
+
+        [DisplayName("PartnershipResponsibleUsers")]
+        public static class PartnershipResponsibleUsers
+        {
+            public const string View = "retail:partnership-responsible-users:view";
+            public const string Search = "retail:partnership-responsible-users:search";
+            public const string Create = "retail:partnership-responsible-users:create";
+            public const string Update = "retail:partnership-responsible-users:update";
+            public const string Delete = "retail:partnership-responsible-users:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PartnershipResponsibleUsers));
+        }
+
+        [DisplayName("Payments")]
+        public static class Payments
+        {
+            public const string View = "retail:payments:view";
+            public const string Search = "retail:payments:search";
+            public const string Create = "retail:payments:create";
+            public const string Update = "retail:payments:update";
+            public const string Delete = "retail:payments:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Payments));
+        }
+
+        [DisplayName("PaymentIntentRequests")]
+        public static class PaymentIntentRequests
+        {
+            public const string View = "retail:payment-intent-requests:view";
+            public const string Search = "retail:payment-intent-requests:search";
+            public const string Create = "retail:payment-intent-requests:create";
+            public const string Update = "retail:payment-intent-requests:update";
+            public const string Delete = "retail:payment-intent-requests:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentIntentRequests));
+        }
+
+        [DisplayName("PaymentIntentResults")]
+        public static class PaymentIntentResults
+        {
+            public const string View = "retail:payment-intent-results:view";
+            public const string Search = "retail:payment-intent-results:search";
+            public const string Create = "retail:payment-intent-results:create";
+            public const string Update = "retail:payment-intent-results:update";
+            public const string Delete = "retail:payment-intent-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentIntentResults));
+        }
+
+        [DisplayName("PaymentMethodRequests")]
+        public static class PaymentMethodRequests
+        {
+            public const string View = "retail:payment-method-requests:view";
+            public const string Search = "retail:payment-method-requests:search";
+            public const string Create = "retail:payment-method-requests:create";
+            public const string Update = "retail:payment-method-requests:update";
+            public const string Delete = "retail:payment-method-requests:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentMethodRequests));
+        }
+
+        [DisplayName("PaymentMethodResults")]
+        public static class PaymentMethodResults
+        {
+            public const string View = "retail:payment-method-results:view";
+            public const string Search = "retail:payment-method-results:search";
+            public const string Create = "retail:payment-method-results:create";
+            public const string Update = "retail:payment-method-results:update";
+            public const string Delete = "retail:payment-method-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentMethodResults));
+        }
+
+        [DisplayName("PaymentProviders")]
+        public static class PaymentProviders
+        {
+            public const string View = "retail:payment-providers:view";
+            public const string Search = "retail:payment-providers:search";
+            public const string Create = "retail:payment-providers:create";
+            public const string Update = "retail:payment-providers:update";
+            public const string Delete = "retail:payment-providers:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentProviders));
+        }
+
+        [DisplayName("PaymentProviderConfigurations")]
+        public static class PaymentProviderConfigurations
+        {
+            public const string View = "retail:payment-provider-configurations:view";
+            public const string Search = "retail:payment-provider-configurations:search";
+            public const string Create = "retail:payment-provider-configurations:create";
+            public const string Update = "retail:payment-provider-configurations:update";
+            public const string Delete = "retail:payment-provider-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentProviderConfigurations));
+        }
+
+        [DisplayName("PaymentRequests")]
+        public static class PaymentRequests
+        {
+            public const string View = "retail:payment-requests:view";
+            public const string Search = "retail:payment-requests:search";
+            public const string Create = "retail:payment-requests:create";
+            public const string Update = "retail:payment-requests:update";
+            public const string Delete = "retail:payment-requests:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentRequests));
+        }
+
+        [DisplayName("PaymentResults")]
+        public static class PaymentResults
+        {
+            public const string View = "retail:payment-results:view";
+            public const string Search = "retail:payment-results:search";
+            public const string Create = "retail:payment-results:create";
+            public const string Update = "retail:payment-results:update";
+            public const string Delete = "retail:payment-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentResults));
+        }
+
+        [DisplayName("PaymentStatusResults")]
+        public static class PaymentStatusResults
+        {
+            public const string View = "retail:payment-status-results:view";
+            public const string Search = "retail:payment-status-results:search";
+            public const string Create = "retail:payment-status-results:create";
+            public const string Update = "retail:payment-status-results:update";
+            public const string Delete = "retail:payment-status-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentStatusResults));
+        }
+
+        [DisplayName("PaymentTransactions")]
+        public static class PaymentTransactions
+        {
+            public const string View = "retail:payment-transactions:view";
+            public const string Search = "retail:payment-transactions:search";
+            public const string Create = "retail:payment-transactions:create";
+            public const string Update = "retail:payment-transactions:update";
+            public const string Delete = "retail:payment-transactions:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentTransactions));
+        }
+
+        [DisplayName("Phones")]
+        public static class Phones
+        {
+            public const string View = "retail:phones:view";
+            public const string Search = "retail:phones:search";
+            public const string Create = "retail:phones:create";
+            public const string Update = "retail:phones:update";
+            public const string Delete = "retail:phones:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Phones));
+        }
+
+        [DisplayName("PriceHistory")]
+        public static class PriceHistory
+        {
+            public const string View = "retail:price-history:view";
+            public const string Search = "retail:price-history:search";
+            public const string Create = "retail:price-history:create";
+            public const string Update = "retail:price-history:update";
+            public const string Delete = "retail:price-history:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PriceHistory));
+        }
+
+        [DisplayName("PricingAuditLogs")]
+        public static class PricingAuditLogs
+        {
+            public const string View = "retail:pricing-audit-logs:view";
+            public const string Search = "retail:pricing-audit-logs:search";
+            public const string Create = "retail:pricing-audit-logs:create";
+            public const string Update = "retail:pricing-audit-logs:update";
+            public const string Delete = "retail:pricing-audit-logs:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PricingAuditLogs));
+        }
+
+        [DisplayName("Products")]
+        public static class Products
+        {
+            public const string View = "retail:products:view";
+            public const string Search = "retail:products:search";
+            public const string Create = "retail:products:create";
+            public const string Update = "retail:products:update";
+            public const string Delete = "retail:products:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Products));
+        }
+
+        [DisplayName("ProductAttributes")]
+        public static class ProductAttributes
+        {
+            public const string View = "retail:product-attributes:view";
+            public const string Search = "retail:product-attributes:search";
+            public const string Create = "retail:product-attributes:create";
+            public const string Update = "retail:product-attributes:update";
+            public const string Delete = "retail:product-attributes:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductAttributes));
+        }
+
+        [DisplayName("ProductAttributeValues")]
+        public static class ProductAttributeValues
+        {
+            public const string View = "retail:product-attribute-values:view";
+            public const string Search = "retail:product-attribute-values:search";
+            public const string Create = "retail:product-attribute-values:create";
+            public const string Update = "retail:product-attribute-values:update";
+            public const string Delete = "retail:product-attribute-values:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductAttributeValues));
+        }
+
+        [DisplayName("ProductCategoryRelations")]
+        public static class ProductCategoryRelations
+        {
+            public const string View = "retail:product-category-relations:view";
+            public const string Search = "retail:product-category-relations:search";
+            public const string Create = "retail:product-category-relations:create";
+            public const string Update = "retail:product-category-relations:update";
+            public const string Delete = "retail:product-category-relations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductCategoryRelations));
+        }
+
+        [DisplayName("ProductVariantDiscounts")]
+        public static class ProductVariantDiscounts
+        {
+            public const string View = "retail:product-variant-discounts:view";
+            public const string Search = "retail:product-variant-discounts:search";
+            public const string Create = "retail:product-variant-discounts:create";
+            public const string Update = "retail:product-variant-discounts:update";
+            public const string Delete = "retail:product-variant-discounts:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductVariantDiscounts));
+        }
+
+        [DisplayName("ProductExcelConfigurations")]
+        public static class ProductExcelConfigurations
+        {
+            public const string View = "retail:product-excel-configurations:view";
+            public const string Search = "retail:product-excel-configurations:search";
+            public const string Create = "retail:product-excel-configurations:create";
+            public const string Update = "retail:product-excel-configurations:update";
+            public const string Delete = "retail:product-excel-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductExcelConfigurations));
+        }
+
+        [DisplayName("ProductExportConfigurations")]
+        public static class ProductExportConfigurations
+        {
+            public const string View = "retail:product-export-configurations:view";
+            public const string Search = "retail:product-export-configurations:search";
+            public const string Create = "retail:product-export-configurations:create";
+            public const string Update = "retail:product-export-configurations:update";
+            public const string Delete = "retail:product-export-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductExportConfigurations));
+        }
+
+        [DisplayName("ProductImages")]
+        public static class ProductImages
+        {
+            public const string View = "retail:product-images:view";
+            public const string Search = "retail:product-images:search";
+            public const string Create = "retail:product-images:create";
+            public const string Update = "retail:product-images:update";
+            public const string Delete = "retail:product-images:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductImages));
+        }
+
+        [DisplayName("ProductInventories")]
+        public static class ProductInventories
+        {
+            public const string View = "retail:product-inventories:view";
+            public const string Search = "retail:product-inventories:search";
+            public const string Create = "retail:product-inventories:create";
+            public const string Update = "retail:product-inventories:update";
+            public const string Delete = "retail:product-inventories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductInventories));
+        }
+
+        [DisplayName("ProductProfitMargins")]
+        public static class ProductProfitMargins
+        {
+            public const string View = "retail:product-profit-margins:view";
+            public const string Search = "retail:product-profit-margins:search";
+            public const string Create = "retail:product-profit-margins:create";
+            public const string Update = "retail:product-profit-margins:update";
+            public const string Delete = "retail:product-profit-margins:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductProfitMargins));
+        }
+
+        [DisplayName("ProductProposals")]
+        public static class ProductProposals
+        {
+            public const string View = "retail:product-proposals:view";
+            public const string Search = "retail:product-proposals:search";
+            public const string Create = "retail:product-proposals:create";
+            public const string Update = "retail:product-proposals:update";
+            public const string Delete = "retail:product-proposals:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductProposals));
+        }
+
+        [DisplayName("ProductSuppliers")]
+        public static class ProductSuppliers
+        {
+            public const string View = "retail:product-suppliers:view";
+            public const string Search = "retail:product-suppliers:search";
+            public const string Create = "retail:product-suppliers:create";
+            public const string Update = "retail:product-suppliers:update";
+            public const string Delete = "retail:product-suppliers:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductSuppliers));
+        }
+
+        [DisplayName("ProductSupplierDiscounts")]
+        public static class ProductSupplierDiscounts
+        {
+            public const string View = "retail:product-supplier-discounts:view";
+            public const string Search = "retail:product-supplier-discounts:search";
+            public const string Create = "retail:product-supplier-discounts:create";
+            public const string Update = "retail:product-supplier-discounts:update";
+            public const string Delete = "retail:product-supplier-discounts:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductSupplierDiscounts));
+        }
+
+        [DisplayName("ProductVariants")]
+        public static class ProductVariants
+        {
+            public const string View = "retail:product-variants:view";
+            public const string Search = "retail:product-variants:search";
+            public const string Create = "retail:product-variants:create";
+            public const string Update = "retail:product-variants:update";
+            public const string Delete = "retail:product-variants:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductVariants));
+        }
+
+        [DisplayName("ProductVariantAttributes")]
+        public static class ProductVariantAttributes
+        {
+            public const string View = "retail:product-variant-attributes:view";
+            public const string Search = "retail:product-variant-attributes:search";
+            public const string Create = "retail:product-variant-attributes:create";
+            public const string Update = "retail:product-variant-attributes:update";
+            public const string Delete = "retail:product-variant-attributes:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductVariantAttributes));
+        }
+
+        [DisplayName("ProductVariantImages")]
+        public static class ProductVariantImages
+        {
+            public const string View = "retail:product-variant-images:view";
+            public const string Search = "retail:product-variant-images:search";
+            public const string Create = "retail:product-variant-images:create";
+            public const string Update = "retail:product-variant-images:update";
+            public const string Delete = "retail:product-variant-images:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductVariantImages));
+        }
+
+        [DisplayName("InventoryMovements")]
+        public static class InventoryMovements
+        {
+            public const string View = "retail:inventory-movements:view";
+            public const string Search = "retail:inventory-movements:search";
+            public const string Create = "retail:inventory-movements:create";
+            public const string Update = "retail:inventory-movements:update";
+            public const string Delete = "retail:inventory-movements:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(InventoryMovements));
+        }
+
+        [DisplayName("Inventories")]
+        public static class Inventories
+        {
+            public const string View = "retail:inventories:view";
+            public const string Search = "retail:inventories:search";
+            public const string Create = "retail:inventories:create";
+            public const string Update = "retail:inventories:update";
+            public const string Delete = "retail:inventories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Inventories));
+        }
+
+        [DisplayName("ProductVariantPriceHistories")]
+        public static class ProductVariantPriceHistories
+        {
+            public const string View = "retail:product-variant-price-histories:view";
+            public const string Search = "retail:product-variant-price-histories:search";
+            public const string Create = "retail:product-variant-price-histories:create";
+            public const string Update = "retail:product-variant-price-histories:update";
+            public const string Delete = "retail:product-variant-price-histories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductVariantPriceHistories));
+        }
+
+        [DisplayName("PromotionCampaigns")]
+        public static class PromotionCampaigns
+        {
+            public const string View = "retail:promotion-campaigns:view";
+            public const string Search = "retail:promotion-campaigns:search";
+            public const string Create = "retail:promotion-campaigns:create";
+            public const string Update = "retail:promotion-campaigns:update";
+            public const string Delete = "retail:promotion-campaigns:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PromotionCampaigns));
+        }
+
+        [DisplayName("PromotionCampaignRegistrations")]
+        public static class PromotionCampaignRegistrations
+        {
+            public const string View = "retail:promotion-campaign-registrations:view";
+            public const string Search = "retail:promotion-campaign-registrations:search";
+            public const string Create = "retail:promotion-campaign-registrations:create";
+            public const string Update = "retail:promotion-campaign-registrations:update";
+            public const string Delete = "retail:promotion-campaign-registrations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PromotionCampaignRegistrations));
+        }
+
+        [DisplayName("PromotionCampaignOffers")]
+        public static class PromotionCampaignOffers
+        {
+            public const string View = "retail:promotion-campaign-offers:view";
+            public const string Search = "retail:promotion-campaign-offers:search";
+            public const string Create = "retail:promotion-campaign-offers:create";
+            public const string Update = "retail:promotion-campaign-offers:update";
+            public const string Delete = "retail:promotion-campaign-offers:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PromotionCampaignOffers));
+        }
+
+        [DisplayName("RefundRequests")]
+        public static class RefundRequests
+        {
+            public const string View = "retail:refund-requests:view";
+            public const string Search = "retail:refund-requests:search";
+            public const string Create = "retail:refund-requests:create";
+            public const string Update = "retail:refund-requests:update";
+            public const string Delete = "retail:refund-requests:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(RefundRequests));
+        }
+
+        [DisplayName("RefundResults")]
+        public static class RefundResults
+        {
+            public const string View = "retail:refund-results:view";
+            public const string Search = "retail:refund-results:search";
+            public const string Create = "retail:refund-results:create";
+            public const string Update = "retail:refund-results:update";
+            public const string Delete = "retail:refund-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(RefundResults));
+        }
+
+        [DisplayName("Regions")]
+        public static class Regions
+        {
+            public const string View = "retail:regions:view";
+            public const string Search = "retail:regions:search";
+            public const string Create = "retail:regions:create";
+            public const string Update = "retail:regions:update";
+            public const string Delete = "retail:regions:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Regions));
+        }
+
+        [DisplayName("SalesFacilities")]
+        public static class SalesFacilities
+        {
+            public const string View = "retail:sales-facilities:view";
+            public const string Search = "retail:sales-facilities:search";
+            public const string Create = "retail:sales-facilities:create";
+            public const string Update = "retail:sales-facilities:update";
+            public const string Delete = "retail:sales-facilities:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(SalesFacilities));
+        }
+
+        [DisplayName("ShippingInfos")]
+        public static class ShippingInfos
+        {
+            public const string View = "retail:shipping-infos:view";
+            public const string Search = "retail:shipping-infos:search";
+            public const string Create = "retail:shipping-infos:create";
+            public const string Update = "retail:shipping-infos:update";
+            public const string Delete = "retail:shipping-infos:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ShippingInfos));
+        }
+
+        [DisplayName("StickerDiscounts")]
+        public static class StickerDiscounts
+        {
+            public const string View = "retail:sticker-discounts:view";
+            public const string Search = "retail:sticker-discounts:search";
+            public const string Create = "retail:sticker-discounts:create";
+            public const string Update = "retail:sticker-discounts:update";
+            public const string Delete = "retail:sticker-discounts:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(StickerDiscounts));
+        }
+
+        [DisplayName("SubscriptionRequests")]
+        public static class SubscriptionRequests
+        {
+            public const string View = "retail:subscription-requests:view";
+            public const string Search = "retail:subscription-requests:search";
+            public const string Create = "retail:subscription-requests:create";
+            public const string Update = "retail:subscription-requests:update";
+            public const string Delete = "retail:subscription-requests:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(SubscriptionRequests));
+        }
+
+        [DisplayName("SubscriptionResults")]
+        public static class SubscriptionResults
+        {
+            public const string View = "retail:subscription-results:view";
+            public const string Search = "retail:subscription-results:search";
+            public const string Create = "retail:subscription-results:create";
+            public const string Update = "retail:subscription-results:update";
+            public const string Delete = "retail:subscription-results:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(SubscriptionResults));
+        }
+
+        [DisplayName("TaxCategories")]
+        public static class TaxCategories
+        {
+            public const string View = "retail:tax-categories:view";
+            public const string Search = "retail:tax-categories:search";
+            public const string Create = "retail:tax-categories:create";
+            public const string Update = "retail:tax-categories:update";
+            public const string Delete = "retail:tax-categories:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(TaxCategories));
+        }
+
+        [DisplayName("Terminals")]
+        public static class Terminals
+        {
+            public const string View = "retail:terminals:view";
+            public const string Search = "retail:terminals:search";
+            public const string Create = "retail:terminals:create";
+            public const string Update = "retail:terminals:update";
+            public const string Delete = "retail:terminals:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Terminals));
+        }
+
+        [DisplayName("UnitOfMeasures")]
+        public static class UnitOfMeasures
+        {
+            public const string View = "retail:unit-of-measures:view";
+            public const string Search = "retail:unit-of-measures:search";
+            public const string Create = "retail:unit-of-measures:create";
+            public const string Update = "retail:unit-of-measures:update";
+            public const string Delete = "retail:unit-of-measures:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(UnitOfMeasures));
+        }
+
+        [DisplayName("Warehouses")]
+        public static class Warehouses
+        {
+            public const string View = "retail:warehouses:view";
+            public const string Search = "retail:warehouses:search";
+            public const string Create = "retail:warehouses:create";
+            public const string Update = "retail:warehouses:update";
+            public const string Delete = "retail:warehouses:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Warehouses));
         }
 
         [DisplayName("Hangfire")]
-        [Description("Hangfire Permissions")]
         public static class Hangfire
         {
             public const string View = "retail:hangfire:view";
@@ -145,293 +1102,7 @@ public static class PermissionConstants
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Hangfire));
         }
 
-        [DisplayName("Images")]
-        [Description("Images Permissions")]
-        public static class Images
-        {
-            public const string View = "retail:images:view";
-            public const string Search = "retail:images:search";
-            public const string Create = "retail:images:create";
-            public const string Update = "retail:images:update";
-            public const string Delete = "retail:images:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Images));
-        }
-
-        [DisplayName("Manufacturers")]
-        [Description("Manufacturers Permissions")]
-        public static class Manufacturers
-        {
-            public const string View = "retail:manufacturers:view";
-            public const string Search = "retail:manufacturers:search";
-            public const string Create = "retail:manufacturers:create";
-            public const string Update = "retail:manufacturers:update";
-            public const string Delete = "retail:manufacturers:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Manufacturers));
-        }
-
-        [DisplayName("ProductSuppliers")]
-        [Description("ProductSuppliers Permissions")]
-        public static class ProductSuppliers
-        {
-            public const string View = "retail:product-suppliers:view";
-            public const string Search = "retail:product-suppliers:search";
-            public const string Create = "retail:product-suppliers:create";
-            public const string Update = "retail:product-suppliers:update";
-            public const string Delete = "retail:product-suppliers:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductSuppliers));
-        }
-
-        [DisplayName("Providers")]
-        [Description("Providers Permissions")]
-        public static class Providers
-        {
-            public const string View = "retail:providers:view";
-            public const string Search = "retail:providers:search";
-            public const string Create = "retail:providers:create";
-            public const string Update = "retail:providers:update";
-            public const string Delete = "retail:providers:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Providers));
-        }
-
-        [DisplayName("Stores")]
-        [Description("Stores Permissions")]
-        public static class Stores
-        {
-            public const string View = "retail:stores:view";
-            public const string Search = "retail:stores:search";
-            public const string Create = "retail:stores:create";
-            public const string Update = "retail:stores:update";
-            public const string Delete = "retail:stores:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Stores));
-        }
-
-        [DisplayName("ShoppingCart")]
-        [Description("ShoppingCart Permissions")]
-        public static class ShoppingCart
-        {
-            public const string View = "retail:shopping-cart:view";
-            public const string Create = "retail:shopping-cart:create";
-            public const string Update = "retail:shopping-cart:update";
-            public const string Delete = "retail:shopping-cart:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ShoppingCart));
-        }
-
-        [DisplayName("TaxCategory")]
-        [Description("TaxCategory Permissions")]
-        public static class TaxCategory
-        {
-            public const string View = "retail:tax-category:view";
-            public const string Search = "retail:tax-category:search";
-            public const string Create = "retail:tax-category:create";
-            public const string Update = "retail:tax-category:update";
-            public const string Delete = "retail:tax-category:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(TaxCategory));
-        }
-
-        [DisplayName("UnitOfMeasure")]
-        [Description("UnitOfMeasure Permissions")]
-        public static class UnitOfMeasure
-        {
-            public const string View = "retail:unit-of-measure:view";
-            public const string Search = "retail:unit-of-measure:search";
-            public const string Create = "retail:unit-of-measure:create";
-            public const string Update = "retail:unit-of-measure:update";
-            public const string Delete = "retail:unit-of-measure:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(UnitOfMeasure));
-        }
-
-        [DisplayName("Warehouses")]
-        [Description("Warehouses Permissions")]
-        public static class Warehouses
-        {
-            public const string View = "retail:warehouses:view";
-            public const string Search = "retail:warehouses:search";
-            public const string Create = "retail:warehouses:create";
-            public const string Update = "retail:warehouses:update";
-            public const string Delete = "retail:warehouses:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Warehouses));
-        }
-
-        [DisplayName("AppLog")]
-        [Description("AppLog Permissions")]
-        public static class AppLog
-        {
-            public const string View = "retail:app-log:view";
-            public const string Search = "retail:app-log:search";
-            public const string Create = "retail:app-log:create";
-            public const string Update = "retail:app-log:update";
-            public const string Delete = "retail:app-log:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(AppLog));
-        }
-
-        [DisplayName("BaseProduct")]
-        [Description("BaseProduct Permissions")]
-        public static class BaseProduct
-        {
-            public const string View = "retail:base-product:view";
-            public const string Search = "retail:base-product:search";
-            public const string Create = "retail:base-product:create";
-            public const string Update = "retail:base-product:update";
-            public const string Delete = "retail:base-product:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(BaseProduct));
-        }
-
-        [DisplayName("CrawlArticle")]
-        [Description("CrawlArticle Permissions")]
-        public static class CrawlArticle
-        {
-            public const string View = "retail:crawl-article:view";
-            public const string Search = "retail:crawl-article:search";
-            public const string Create = "retail:crawl-article:create";
-            public const string Update = "retail:crawl-article:update";
-            public const string Delete = "retail:crawl-article:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(CrawlArticle));
-        }
-
-        [DisplayName("Customers")]
-        [Description("Customers Permissions")]
-        public static class Customers
-        {
-            public const string View = "retail:customers:view";
-            public const string Search = "retail:customers:search";
-            public const string Create = "retail:customers:create";
-            public const string Update = "retail:customers:update";
-            public const string Delete = "retail:customers:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Customers));
-        }
-
-        [DisplayName("Facilities")]
-        [Description("Facilities Permissions")]
-        public static class Facilities
-        {
-            public const string View = "retail:facilities:view";
-            public const string Search = "retail:facilities:search";
-            public const string Create = "retail:facilities:create";
-            public const string Update = "retail:facilities:update";
-            public const string Delete = "retail:facilities:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Facilities));
-        }
-
-        [DisplayName("Orders")]
-        [Description("Orders Permissions")]
-        public static class Orders
-        {
-            public const string View = "retail:orders:view";
-            public const string Search = "retail:orders:search";
-            public const string Create = "retail:orders:create";
-            public const string Update = "retail:orders:update";
-            public const string Delete = "retail:orders:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Orders));
-        }
-
-        [DisplayName("OrganisationConfiguration")]
-        [Description("OrganisationConfiguration Permissions")]
-        public static class OrganisationConfiguration
-        {
-            public const string View = "retail:organisation-configuration:view";
-            public const string Search = "retail:organisation-configuration:search";
-            public const string Create = "retail:organisation-configuration:create";
-            public const string Update = "retail:organisation-configuration:update";
-            public const string Delete = "retail:organisation-configuration:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationConfiguration));
-        }
-
-        [DisplayName("OrganisationOnboardingProgress")]
-        [Description("OrganisationOnboardingProgress Permissions")]
-        public static class OrganisationOnboardingProgress
-        {
-            public const string View = "retail:organisation-onboarding-progress:view";
-            public const string Search = "retail:organisation-onboarding-progress:search";
-            public const string Create = "retail:organisation-onboarding-progress:create";
-            public const string Update = "retail:organisation-onboarding-progress:update";
-            public const string Delete = "retail:organisation-onboarding-progress:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(OrganisationOnboardingProgress));
-        }
-
-        [DisplayName("Pos")]
-        [Description("Pos Permissions")]
-        public static class Pos
-        {
-            public const string View = "retail:pos:view";
-            public const string Search = "retail:pos:search";
-            public const string Create = "retail:pos:create";
-            public const string Update = "retail:pos:update";
-            public const string Delete = "retail:pos:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Pos));
-        }
-
-        [DisplayName("ProductDiscount")]
-        [Description("ProductDiscount Permissions")]
-        public static class ProductDiscount
-        {
-            public const string View = "retail:product-discount:view";
-            public const string Search = "retail:product-discount:search";
-            public const string Create = "retail:product-discount:create";
-            public const string Update = "retail:product-discount:update";
-            public const string Delete = "retail:product-discount:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductDiscount));
-        }
-
-        [DisplayName("ProductImage")]
-        [Description("ProductImage Permissions")]
-        public static class ProductImage
-        {
-            public const string View = "retail:product-image:view";
-            public const string Search = "retail:product-image:search";
-            public const string Create = "retail:product-image:create";
-            public const string Update = "retail:product-image:update";
-            public const string Delete = "retail:product-image:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductImage));
-        }
-
-        [DisplayName("Reports")]
-        [Description("Reports Permissions")]
-        public static class Reports
-        {
-            public const string View = "retail:reports:view";
-            public const string Search = "retail:reports:search";
-            public const string Create = "retail:reports:create";
-            public const string Update = "retail:reports:update";
-            public const string Delete = "retail:reports:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Reports));
-        }
-
-        [DisplayName("StickerDiscounts")]
-        [Description("StickerDiscounts Permissions")]
-        public static class StickerDiscounts
-        {
-            public const string View = "retail:sticker-discounts:view";
-            public const string Search = "retail:sticker-discounts:search";
-            public const string Create = "retail:sticker-discounts:create";
-            public const string Update = "retail:sticker-discounts:update";
-            public const string Delete = "retail:sticker-discounts:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(StickerDiscounts));
-        }
-
         [DisplayName("Suppliers")]
-        [Description("Suppliers Permissions")]
         public static class Suppliers
         {
             public const string View = "retail:suppliers:view";
@@ -439,25 +1110,10 @@ public static class PermissionConstants
             public const string Create = "retail:suppliers:create";
             public const string Update = "retail:suppliers:update";
             public const string Delete = "retail:suppliers:delete";
-
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Suppliers));
         }
 
-        [DisplayName("Transactions")]
-        [Description("Transactions Permissions")]
-        public static class Transactions
-        {
-            public const string View = "retail:transactions:view";
-            public const string Search = "retail:transactions:search";
-            public const string Create = "retail:transactions:create";
-            public const string Update = "retail:transactions:update";
-            public const string Delete = "retail:transactions:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Transactions));
-        }
-
         [DisplayName("Vendors")]
-        [Description("Vendors Permissions")]
         public static class Vendors
         {
             public const string View = "retail:vendors:view";
@@ -465,149 +1121,25 @@ public static class PermissionConstants
             public const string Create = "retail:vendors:create";
             public const string Update = "retail:vendors:update";
             public const string Delete = "retail:vendors:delete";
-
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Vendors));
-        }
-
-        [DisplayName("WeekendCampaignProductDiscount")]
-        [Description("WeekendCampaignProductDiscount Permissions")]
-        public static class WeekendCampaignProductDiscount
-        {
-            public const string View = "retail:weekend-campaign-product-discount:view";
-            public const string Search = "retail:weekend-campaign-product-discount:search";
-            public const string Create = "retail:weekend-campaign-product-discount:create";
-            public const string Update = "retail:weekend-campaign-product-discount:update";
-            public const string Delete = "retail:weekend-campaign-product-discount:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(WeekendCampaignProductDiscount));
-        }
-
-        [DisplayName("Dashboards")]
-        [Description("Dashboards Permissions")]
-        public static class Dashboards
-        {
-            public const string View = "retail:dashboards:view";
-            public const string Search = "retail:dashboards:search";
-            public const string Create = "retail:dashboards:create";
-            public const string Update = "retail:dashboards:update";
-            public const string Delete = "retail:dashboards:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Dashboards));
-        }
-
-        [DisplayName("Categories")]
-        [Description("Categories Permissions")]
-        public static class Categories
-        {
-            public const string View = "retail:categories:view";
-            public const string Search = "retail:categories:search";
-            public const string Create = "retail:categories:create";
-            public const string Update = "retail:categories:update";
-            public const string Delete = "retail:categories:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Categories));
-        }
-
-        [DisplayName("ProductExportConfiguration")]
-        [Description("ProductExportConfiguration Permissions")]
-        public static class ProductExportConfiguration
-        {
-            public const string View = "retail:product-export-configuration:view";
-            public const string Search = "retail:product-export-configuration:search";
-            public const string Create = "retail:product-export-configuration:create";
-            public const string Update = "retail:product-export-configuration:update";
-            public const string Delete = "retail:product-export-configuration:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductExportConfiguration));
-        }
-
-        [DisplayName("VendorSupplierConfiguration")]
-        [Description("VendorSupplierConfiguration Permissions")]
-        public static class VendorSupplierConfiguration
-        {
-            public const string View = "retail:vendor-supplier-configuration:view";
-            public const string Search = "retail:vendor-supplier-configuration:search";
-            public const string Create = "retail:vendor-supplier-configuration:create";
-            public const string Update = "retail:vendor-supplier-configuration:update";
-            public const string Delete = "retail:vendor-supplier-configuration:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(VendorSupplierConfiguration));
-        }
-
-        [DisplayName("Product")]
-        [Description("Product Permissions")]
-        public static class Product
-        {
-            public const string View = "retail:product:view";
-            public const string Search = "retail:product:search";
-            public const string Create = "retail:product:create";
-            public const string Update = "retail:product:update";
-            public const string Delete = "retail:product:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Product));
-        }
-
-        [DisplayName("ProductProposal")]
-        [Description("ProductProposal Permissions")]
-        public static class ProductProposal
-        {
-            public const string View = "retail:product-proposal:view";
-            public const string Search = "retail:product-proposal:search";
-            public const string Create = "retail:product-proposal:create";
-            public const string Update = "retail:product-proposal:update";
-            public const string Delete = "retail:product-proposal:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductProposal));
-        }
-
-        [DisplayName("WeekendCampaign")]
-        [Description("WeekendCampaign Permissions")]
-        public static class WeekendCampaign
-        {
-            public const string View = "retail:weekend-campaign:view";
-            public const string Search = "retail:weekend-campaign:search";
-            public const string Create = "retail:weekend-campaign:create";
-            public const string Update = "retail:weekend-campaign:update";
-            public const string Delete = "retail:weekend-campaign:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(WeekendCampaign));
-        }
-
-        [DisplayName("LeafletRegistration")]
-        [Description("LeafletRegistration Permissions")]
-        public static class LeafletRegistration
-        {
-            public const string View = "retail:leaflet-registration:view";
-            public const string Search = "retail:leaflet-registration:search";
-            public const string Create = "retail:leaflet-registration:create";
-            public const string Update = "retail:leaflet-registration:update";
-            public const string Delete = "retail:leaflet-registration:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(LeafletRegistration));
-        }
-
-        [DisplayName("Discounts")]
-        [Description("Discounts Permissions")]
-        public static class Discounts
-        {
-            public const string View = "retail:discounts:view";
-            public const string Search = "retail:discounts:search";
-            public const string Create = "retail:discounts:create";
-            public const string Update = "retail:discounts:update";
-            public const string Delete = "retail:discounts:delete";
-
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Discounts));
         }
 
         private static readonly ConcurrentDictionary<string, HashSet<string>> _modulePermissionsCache = new();
 
+        private static string ToKebabCase(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+            return Regex.Replace(value, "(?<!^)([A-Z])", "-$1").ToLowerInvariant();
+        }
+
         public static HashSet<string> GeneratePermissionsForModule(string module) =>
-            _modulePermissionsCache.GetOrAdd(module.ToLowerInvariant(), key =>
+            _modulePermissionsCache.GetOrAdd(ToKebabCase(module), key =>
             [
                 $"retail:{key}:create",
                 $"retail:{key}:view",
                 $"retail:{key}:update",
                 $"retail:{key}:delete",
+                $"retail:{key}:search"
             ]);
     }
 
