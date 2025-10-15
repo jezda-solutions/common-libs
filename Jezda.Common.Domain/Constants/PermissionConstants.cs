@@ -628,15 +628,15 @@ public static class PermissionConstants
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentProviders));
         }
 
-        [DisplayName("PaymentProviderConfigs")]
-        public static class PaymentProviderConfigs
+        [DisplayName("PaymentProviderConfigurations")]
+        public static class PaymentProviderConfigurations
         {
-            public const string View = "retail:payment-provider-configs:view";
-            public const string Search = "retail:payment-provider-configs:search";
-            public const string Create = "retail:payment-provider-configs:create";
-            public const string Update = "retail:payment-provider-configs:update";
-            public const string Delete = "retail:payment-provider-configs:delete";
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentProviderConfigs));
+            public const string View = "retail:payment-provider-configurations:view";
+            public const string Search = "retail:payment-provider-configurations:search";
+            public const string Create = "retail:payment-provider-configurations:create";
+            public const string Update = "retail:payment-provider-configurations:update";
+            public const string Delete = "retail:payment-provider-configurations:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PaymentProviderConfigurations));
         }
 
         [DisplayName("PaymentRequests")]
@@ -694,15 +694,15 @@ public static class PermissionConstants
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(Phones));
         }
 
-        [DisplayName("PriceHistories")]
-        public static class PriceHistories
+        [DisplayName("PriceHistory")]
+        public static class PriceHistory
         {
-            public const string View = "retail:price-histories:view";
-            public const string Search = "retail:price-histories:search";
-            public const string Create = "retail:price-histories:create";
-            public const string Update = "retail:price-histories:update";
-            public const string Delete = "retail:price-histories:delete";
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PriceHistories));
+            public const string View = "retail:price-history:view";
+            public const string Search = "retail:price-history:search";
+            public const string Create = "retail:price-history:create";
+            public const string Update = "retail:price-history:update";
+            public const string Delete = "retail:price-history:delete";
+            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(PriceHistory));
         }
 
         [DisplayName("PricingAuditLogs")]
@@ -1139,6 +1139,7 @@ public static class PermissionConstants
                 $"retail:{key}:view",
                 $"retail:{key}:update",
                 $"retail:{key}:delete",
+                $"retail:{key}:search"
             ]);
     }
 
