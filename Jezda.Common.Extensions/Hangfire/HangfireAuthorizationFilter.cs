@@ -26,7 +26,7 @@ public class HangfireAuthorizationFilter(
                 var username = parts[0];
                 var password = parts[1];
 
-                return username == options.Username && password == options.Password;
+                return username == options.Authorization.Username && password == options.Authorization.Password;
             }
         }
 
