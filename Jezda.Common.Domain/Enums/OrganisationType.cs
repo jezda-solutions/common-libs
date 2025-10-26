@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace Jezda.Common.Domain.Enums;
 
@@ -76,8 +76,25 @@ public enum OrganisationType : int
     Vendor = 512,
 
     /// <summary>
+    /// Provides software solutions for retail/supply chain ecosystem.
+    /// Examples: POS/ERP vendors, SaaS inventory management, e-commerce platforms.
+    /// </summary>
+    SoftwareProvider = 1024,
+
+    /// <summary>
+    /// Provides product data feeds, catalogs, and master data services (e.g., GS1).
+    /// </summary>
+    DataProvider = 2048,
+
+    /// <summary>
+    /// Provides marketing and advertising services.
+    /// </summary>
+    MarketingAgency = 4096,
+
+    /// <summary>
     /// Combination of all organization types - used for filtering/querying purposes
     /// </summary>
-    All = Manufacturer | Distributor | Wholesaler | Retailer | OnlineRetailer | 
-          Marketplace | Broker | LogisticsProvider | Supplier | Vendor
+    All = Manufacturer | Distributor | Wholesaler | Retailer | OnlineRetailer |
+          Marketplace | Broker | LogisticsProvider | Supplier | Vendor | SoftwareProvider |
+          DataProvider | MarketingAgency
 }
