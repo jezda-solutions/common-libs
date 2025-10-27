@@ -900,6 +900,8 @@ public static class PermissionConstants
             public const string Create = "retail:product-documents:create";
             public const string Update = "retail:product-documents:update";
             public const string Delete = "retail:product-documents:delete";
+            public const string Download = "retail:product-documents:download";
+            public const string Upload = "retail:product-documents:upload";
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductDocuments));
         }
 
