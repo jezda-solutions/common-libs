@@ -892,17 +892,6 @@ public static class PermissionConstants
             public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductVariantImages));
         }
 
-        [DisplayName("ProductDocuments")]
-        public static class ProductDocuments
-        {
-            public const string View = "retail:product-documents:view";
-            public const string Search = "retail:product-documents:search";
-            public const string Create = "retail:product-documents:create";
-            public const string Update = "retail:product-documents:update";
-            public const string Delete = "retail:product-documents:delete";
-            public static HashSet<string> PermissionList => GeneratePermissionsForModule(nameof(ProductDocuments));
-        }
-
         [DisplayName("InventoryMovements")]
         public static class InventoryMovements
         {
