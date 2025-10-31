@@ -1264,12 +1264,51 @@ public static class PermissionConstants
             public const string Delete = "hrms:employee-salary-history:delete";
         }
 
-        public static class Shift
+        public static class ShiftTemplate
         {
-            public const string Create = "hrms:shift:create";
-            public const string Read = "hrms:shift:read";
-            public const string Update = "hrms:shift:update";
-            public const string Delete = "hrms:shift:delete";
+            public const string Create = "hrms:shift-template:create";
+            public const string Read = "hrms:shift-template:read";
+            public const string Update = "hrms:shift-template:update";
+            public const string Delete = "hrms:shift-template:delete";
+        }
+
+        public static class RotationPattern
+        {
+            public const string Create = "hrms:rotation-pattern:create";
+            public const string Read = "hrms:rotation-pattern:read";
+            public const string Update = "hrms:rotation-pattern:update";
+            public const string Delete = "hrms:rotation-pattern:delete";
+        }
+
+        public static class EmployeeShiftAssignment
+        {
+            public const string Create = "hrms:employee-shift-assignment:create";
+            public const string Read = "hrms:employee-shift-assignment:read";
+            public const string Update = "hrms:employee-shift-assignment:update";
+            public const string Delete = "hrms:employee-shift-assignment:delete";
+            public const string BulkCreate = "hrms:employee-shift-assignment:bulk-create";
+        }
+
+        public static class ShiftTrade
+        {
+            public const string Create = "hrms:shift-trade:create";   // request a trade
+            public const string Read = "hrms:shift-trade:read";
+            public const string Update = "hrms:shift-trade:update";
+            public const string Delete = "hrms:shift-trade:delete";
+            public const string Approve = "hrms:shift-trade:approve";
+            public const string Reject = "hrms:shift-trade:reject";
+            public const string Cancel = "hrms:shift-trade:cancel";
+            public const string Complete = "hrms:shift-trade:complete";
+        }
+
+        public static class ShiftOverride
+        {
+            public const string Create = "hrms:shift-override:create";  // manager or system override
+            public const string Read = "hrms:shift-override:read";
+            public const string Update = "hrms:shift-override:update";
+            public const string Delete = "hrms:shift-override:delete";
+            public const string Approve = "hrms:shift-override:approve";
+            public const string Reject = "hrms:shift-override:reject";
         }
 
         public static class Dashboard
