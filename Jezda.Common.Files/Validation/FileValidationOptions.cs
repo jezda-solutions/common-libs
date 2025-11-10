@@ -12,7 +12,7 @@ public sealed class FileValidationOptions
     public bool EnableZipSafetyChecks { get; set; }
     public int ZipMaxDepth { get; set; } = 5;
     public int ZipMaxEntries { get; set; } = 1000;
-    public double ZipMaxCompressionRatio { get; set; } = 200.0; // kompresija 200x
+    public double ZipMaxCompressionRatio { get; set; } = 200.0; // compression ratio 200x
     public bool EnableImageDimensionChecks { get; set; }
     public int? MinWidth { get; set; }
     public int? MaxWidth { get; set; }
