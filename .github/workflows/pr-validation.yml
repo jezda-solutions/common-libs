@@ -10,6 +10,11 @@ on:
       - master
       - dev
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -32,7 +37,7 @@ jobs:
       - name: Run tests
         run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
-      - name: Publish test results
+      - name: Test Report
         uses: dorny/test-reporter@v1
         if: always()
         with:
