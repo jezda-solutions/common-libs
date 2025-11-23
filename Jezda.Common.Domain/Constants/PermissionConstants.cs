@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -7,9 +8,137 @@ using System.Text.RegularExpressions;
 
 namespace Jezda.Common.Domain.Constants;
 
+/// <summary>
+/// Central repository for all permission constants across the application.
+/// All permissions follow the pattern: {module}:{resource}:{action}
+/// </summary>
 public static class PermissionConstants
 {
+    /// <summary>
+    /// The claim type used for permission-based authorization.
+    /// </summary>
     public static string PermissionType => "permission";
+
+    /// <summary>
+    /// Standard CRUD permission set generator.
+    /// Ensures consistency across all permission modules and validates naming conventions.
+    /// Used by PermissionValidator to verify permission constants follow the standard pattern.
+    /// </summary>
+    public sealed class StandardPermissions
+    {
+        /// <summary>Gets the view/read permission string.</summary>
+        public string View { get; }
+
+        /// <summary>Gets the search/list permission string.</summary>
+        public string Search { get; }
+
+        /// <summary>Gets the create permission string.</summary>
+        public string Create { get; }
+
+        /// <summary>Gets the update permission string.</summary>
+        public string Update { get; }
+
+        /// <summary>Gets the delete permission string.</summary>
+        public string Delete { get; }
+
+        /// <summary>
+        /// Creates a standard permission set with automatic validation.
+        /// </summary>
+        /// <param name="module">Module name (e.g., "retail", "tms", "hrms")</param>
+        /// <param name="resource">Resource name in kebab-case (e.g., "users", "work-items")</param>
+        public StandardPermissions(string module, string resource)
+        {
+            if (string.IsNullOrWhiteSpace(module))
+                throw new ArgumentException("Module cannot be null or empty", nameof(module));
+            if (string.IsNullOrWhiteSpace(resource))
+                throw new ArgumentException("Resource cannot be null or empty", nameof(resource));
+
+            View = $"{module}:{resource}:view";
+            Search = $"{module}:{resource}:search";
+            Create = $"{module}:{resource}:create";
+            Update = $"{module}:{resource}:update";
+            Delete = $"{module}:{resource}:delete";
+        }
+
+        /// <summary>
+        /// Returns all standard CRUD permissions as a set.
+        /// </summary>
+        /// <returns>HashSet containing View, Search, Create, Update, and Delete permissions.</returns>
+        public HashSet<string> GetAllPermissions()
+        {
+            return [View, Search, Create, Update, Delete];
+        }
+    }
+
+    /// <summary>
+    /// Validator for permission constants.
+    /// Use in unit tests to ensure all permission classes follow the standard pattern.
+    /// </summary>
+    public static class PermissionValidator
+    {
+        /// <summary>
+        /// Validates that a permission class has all required standard CRUD permissions with correct values.
+        /// Checks for: View, Search, Create, Update, Delete fields.
+        /// Validates that field values match the expected pattern: module:resource:action
+        /// </summary>
+        /// <param name="permissionClass">The permission class type to validate</param>
+        /// <param name="module">Expected module name (e.g., "nexus", "tms", "retail")</param>
+        /// <param name="resource">Expected resource name in kebab-case (e.g., "users", "work-items")</param>
+        public static void ValidateStandardPermissions(Type permissionClass, string module, string resource)
+        {
+            var expected = new StandardPermissions(module, resource);
+
+            // Get all const string fields
+            var fields = permissionClass.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+                .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+                .ToDictionary(f => f.Name, f => f.GetValue(null) as string);
+
+            // Check required fields exist
+            if (!fields.ContainsKey("View"))
+                throw new InvalidOperationException($"{permissionClass.FullName} missing View field");
+            if (!fields.ContainsKey("Search"))
+                throw new InvalidOperationException($"{permissionClass.FullName} missing Search field");
+            if (!fields.ContainsKey("Create"))
+                throw new InvalidOperationException($"{permissionClass.FullName} missing Create field");
+            if (!fields.ContainsKey("Update"))
+                throw new InvalidOperationException($"{permissionClass.FullName} missing Update field");
+            if (!fields.ContainsKey("Delete"))
+                throw new InvalidOperationException($"{permissionClass.FullName} missing Delete field");
+
+            // Validate field values
+            if (fields["View"] != expected.View)
+                throw new InvalidOperationException($"{permissionClass.FullName}.View mismatch. Expected: '{expected.View}', Got: '{fields["View"]}'");
+            if (fields["Search"] != expected.Search)
+                throw new InvalidOperationException($"{permissionClass.FullName}.Search mismatch. Expected: '{expected.Search}', Got: '{fields["Search"]}'");
+            if (fields["Create"] != expected.Create)
+                throw new InvalidOperationException($"{permissionClass.FullName}.Create mismatch. Expected: '{expected.Create}', Got: '{fields["Create"]}'");
+            if (fields["Update"] != expected.Update)
+                throw new InvalidOperationException($"{permissionClass.FullName}.Update mismatch. Expected: '{expected.Update}', Got: '{fields["Update"]}'");
+            if (fields["Delete"] != expected.Delete)
+                throw new InvalidOperationException($"{permissionClass.FullName}.Delete mismatch. Expected: '{expected.Delete}', Got: '{fields["Delete"]}'");
+        }
+
+        /// <summary>
+        /// Gets all permission classes that should be validated (nested classes in TMS, HRMS, Nexus, Retail).
+        /// </summary>
+        public static IEnumerable<Type> GetAllPermissionClasses()
+        {
+            var permissionConstantsType = typeof(PermissionConstants);
+            var moduleTypes = new[] { "TMS", "HRMS", "Nexus", "Retail" };
+
+            foreach (var moduleName in moduleTypes)
+            {
+                var moduleType = permissionConstantsType.GetNestedType(moduleName, BindingFlags.Public | BindingFlags.Static);
+                if (moduleType != null)
+                {
+                    foreach (var nestedType in moduleType.GetNestedTypes(BindingFlags.Public))
+                    {
+                        yield return nestedType;
+                    }
+                }
+            }
+        }
+    }
 
     public static List<string> GetRegisteredPermissions()
     {
@@ -43,8 +172,12 @@ public static class PermissionConstants
         return permissions;
     }
 
+    /// <summary>
+    /// Retail system permissions for e-commerce and inventory management operations.
+    /// </summary>
     public static class Retail
     {
+        /// <summary>Address management permissions.</summary>
         [DisplayName("Addresses")]
         public static class Addresses
         {
@@ -1157,17 +1290,16 @@ public static class PermissionConstants
     }
 
     /// <summary>
-    /// Task Management System (TMS) permissions
+    /// Task Management System (TMS) permissions for project and work item management.
     /// </summary>
     public static class TMS
     {
-        /// <summary>
-        /// Work item permissions for creating, reading, updating, deleting, and managing work items
-        /// </summary>
+        /// <summary>Work item management permissions.</summary>
         public static class WorkItem
         {
             public const string Create = "tms:work-item:create";
-            public const string Read = "tms:work-item:read";
+            public const string View = "tms:work-item:view";
+            public const string Search = "tms:work-item:search";
             public const string Update = "tms:work-item:update";
             public const string Delete = "tms:work-item:delete";
             public const string Assign = "tms:work-item:assign";
@@ -1181,7 +1313,8 @@ public static class PermissionConstants
         public static class WorkItemAssignment
         {
             public const string Create = "tms:work-item-assignment:create";
-            public const string Read = "tms:work-item-assignment:read";
+            public const string View = "tms:work-item-assignment:view";
+            public const string Search = "tms:work-item-assignment:search";
             public const string Update = "tms:work-item-assignment:update";
             public const string Delete = "tms:work-item-assignment:delete";
         }
@@ -1193,7 +1326,8 @@ public static class PermissionConstants
         {
             public const string Start = "tms:work-item:bulk:start";
             public const string Cancel = "tms:work-item:bulk:cancel";
-            public const string Read = "tms:work-item:bulk:read";
+            public const string View = "tms:work-item:bulk:view";
+            public const string Search = "tms:work-item:bulk:search";
             public const string Update = "tms:work-item:bulk:update";
             public const string Delete = "tms:work-item:bulk:delete";
         }
@@ -1204,7 +1338,8 @@ public static class PermissionConstants
         public static class WorkItemComment
         {
             public const string Create = "tms:work-item-comment:create";
-            public const string Read = "tms:work-item-comment:read";
+            public const string View = "tms:work-item-comment:view";
+            public const string Search = "tms:work-item-comment:search";
             public const string Update = "tms:work-item-comment:update";
             public const string Delete = "tms:work-item-comment:delete";
         }
@@ -1214,7 +1349,7 @@ public static class PermissionConstants
         /// </summary>
         public static class Mentions
         {
-            public const string Read = "tms:mentions:read";
+            public const string View = "tms:mentions:view";
         }
 
         /// <summary>
@@ -1223,7 +1358,9 @@ public static class PermissionConstants
         public static class WorkItemAttachment
         {
             public const string Create = "tms:work-item-attachment:create";
-            public const string Read = "tms:work-item-attachment:read";
+            public const string View = "tms:work-item-attachment:view";
+            public const string Search = "tms:work-item-attachment:search";
+            public const string Update = "tms:work-item-attachment:update";
             public const string Delete = "tms:work-item-attachment:delete";
         }
 
@@ -1233,7 +1370,9 @@ public static class PermissionConstants
         public static class WorkItemCommentAttachment
         {
             public const string Create = "tms:work-item-comment-attachment:create";
-            public const string Read = "tms:work-item-comment-attachment:read";
+            public const string View = "tms:work-item-comment-attachment:view";
+            public const string Search = "tms:work-item-comment-attachment:search";
+            public const string Update = "tms:work-item-comment-attachment:update";
             public const string Delete = "tms:work-item-comment-attachment:delete";
         }
 
@@ -1243,7 +1382,9 @@ public static class PermissionConstants
         public static class WorkItemCommentReaction
         {
             public const string Create = "tms:work-item-comment-reaction:create";
-            public const string Read = "tms:work-item-comment-reaction:read";
+            public const string View = "tms:work-item-comment-reaction:view";
+            public const string Search = "tms:work-item-comment-reaction:search";
+            public const string Update = "tms:work-item-comment-reaction:update";
             public const string Delete = "tms:work-item-comment-reaction:delete";
         }
 
@@ -1253,7 +1394,9 @@ public static class PermissionConstants
         public static class WorkItemDependency
         {
             public const string Create = "tms:work-item-dependency:create";
-            public const string Read = "tms:work-item-dependency:read";
+            public const string View = "tms:work-item-dependency:view";
+            public const string Search = "tms:work-item-dependency:search";
+            public const string Update = "tms:work-item-dependency:update";
             public const string Delete = "tms:work-item-dependency:delete";
         }
 
@@ -1262,8 +1405,8 @@ public static class PermissionConstants
         /// </summary>
         public static class WorkItemDependencyAnalysis
         {
-            public const string ReadGraph = "tms:work-item-dependency-graph:read";
-            public const string ReadImpact = "tms:work-item-dependency-impact:read";
+            public const string ViewGraph = "tms:work-item-dependency-graph:view";
+            public const string ViewImpact = "tms:work-item-dependency-impact:view";
         }
 
         /// <summary>
@@ -1272,7 +1415,8 @@ public static class PermissionConstants
         public static class WorkItemRecurrence
         {
             public const string Create = "tms:work-item-recurrence:create";
-            public const string Read = "tms:work-item-recurrence:read";
+            public const string View = "tms:work-item-recurrence:view";
+            public const string Search = "tms:work-item-recurrence:search";
             public const string Update = "tms:work-item-recurrence:update";
             public const string Delete = "tms:work-item-recurrence:delete";
             public const string Generate = "tms:work-item-recurrence:generate";
@@ -1286,7 +1430,8 @@ public static class PermissionConstants
         public static class WorkItemStatus
         {
             public const string Create = "tms:work-item-status:create";
-            public const string Read = "tms:work-item-status:read";
+            public const string View = "tms:work-item-status:view";
+            public const string Search = "tms:work-item-status:search";
             public const string Update = "tms:work-item-status:update";
             public const string Delete = "tms:work-item-status:delete";
         }
@@ -1296,7 +1441,7 @@ public static class PermissionConstants
         /// </summary>
         public static class WorkItemStatusTemplate
         {
-            public const string Read = "tms:work-item-status-template:read";
+            public const string View = "tms:work-item-status-template:view";
             public const string Apply = "tms:work-item-status-template:apply";
         }
 
@@ -1307,6 +1452,7 @@ public static class PermissionConstants
         {
             public const string Create = "tms:work-item-type:create";
             public const string View = "tms:work-item-type:view";
+            public const string Search = "tms:work-item-type:search";
             public const string Update = "tms:work-item-type:update";
             public const string Delete = "tms:work-item-type:delete";
         }
@@ -1316,7 +1462,7 @@ public static class PermissionConstants
         /// </summary>
         public static class WorkItemTypeTemplate
         {
-            public const string Read = "tms:work-item-type-template:read";
+            public const string View = "tms:work-item-type-template:view";
             public const string Apply = "tms:work-item-type-template:apply";
         }
 
@@ -1326,7 +1472,8 @@ public static class PermissionConstants
         public static class WorkItemTag
         {
             public const string Create = "tms:work-item-tag:create";
-            public const string Read = "tms:work-item-tag:read";
+            public const string View = "tms:work-item-tag:view";
+            public const string Search = "tms:work-item-tag:search";
             public const string Update = "tms:work-item-tag:update";
             public const string Delete = "tms:work-item-tag:delete";
         }
@@ -1337,7 +1484,8 @@ public static class PermissionConstants
         public static class Project
         {
             public const string Create = "tms:project:create";
-            public const string Read = "tms:project:read";
+            public const string View = "tms:project:view";
+            public const string Search = "tms:project:search";
             public const string Update = "tms:project:update";
             public const string Delete = "tms:project:delete";
         }
@@ -1349,7 +1497,7 @@ public static class PermissionConstants
         {
             public const string Add = "tms:project-member:add";
             public const string Remove = "tms:project-member:remove";
-            public const string Read = "tms:project-member:read";
+            public const string View = "tms:project-member:view";
         }
 
         /// <summary>
@@ -1358,7 +1506,8 @@ public static class PermissionConstants
         public static class TimeLog
         {
             public const string Create = "tms:time-log:create";
-            public const string Read = "tms:time-log:read";
+            public const string View = "tms:time-log:view";
+            public const string Search = "tms:time-log:search";
             public const string Update = "tms:time-log:update";
             public const string Delete = "tms:time-log:delete";
         }
@@ -1368,7 +1517,7 @@ public static class PermissionConstants
         /// </summary>
         public static class OrganisationSettings
         {
-            public const string Read = "tms:organisation-settings:read";
+            public const string View = "tms:organisation-settings:view";
             public const string Update = "tms:organisation-settings:update";
         }
 
@@ -1377,7 +1526,7 @@ public static class PermissionConstants
         /// </summary>
         public static class OnboardingStatus
         {
-            public const string Read = "tms:onboarding-status:read";
+            public const string View = "tms:onboarding-status:view";
         }
 
         /// <summary>
@@ -1386,7 +1535,8 @@ public static class PermissionConstants
         public static class OrganisationGlossary
         {
             public const string Create = "tms:organisation-glossary:create";
-            public const string Read = "tms:organisation-glossary:read";
+            public const string View = "tms:organisation-glossary:view";
+            public const string Search = "tms:organisation-glossary:search";
             public const string Update = "tms:organisation-glossary:update";
             public const string Delete = "tms:organisation-glossary:delete";
         }
@@ -1396,22 +1546,27 @@ public static class PermissionConstants
         /// </summary>
         public static class TaskSetTemplate
         {
-            public const string Read = "tms:task-set-template:read";
+            public const string View = "tms:task-set-template:view";
             public const string Apply = "tms:task-set-template:apply";
         }
     }
 
+    /// <summary>
+    /// Human Resource Management System (HRMS) permissions for employee and organizational management.
+    /// </summary>
     public static class HRMS
     {
+        /// <summary>Employee profile permissions.</summary>
         public static class Profile
         {
-            public const string Read = "hrms:profile:read";
+            public const string View = "hrms:profile:view";
         }
 
         public static class Employee
         {
             public const string Create = "hrms:employee:create";
-            public const string Read = "hrms:employee:read";
+            public const string View = "hrms:employee:view";
+            public const string Search = "hrms:employee:search";
             public const string Update = "hrms:employee:update";
             public const string Delete = "hrms:employee:delete";
             public const string AddAddress = "hrms:employee:add-address";
@@ -1420,7 +1575,8 @@ public static class PermissionConstants
         public static class Department
         {
             public const string Create = "hrms:department:create";
-            public const string Read = "hrms:department:read";
+            public const string View = "hrms:department:view";
+            public const string Search = "hrms:department:search";
             public const string Update = "hrms:department:update";
             public const string Delete = "hrms:department:delete";
         }
@@ -1428,7 +1584,8 @@ public static class PermissionConstants
         public static class Position
         {
             public const string Create = "hrms:position:create";
-            public const string Read = "hrms:position:read";
+            public const string View = "hrms:position:view";
+            public const string Search = "hrms:position:search";
             public const string Update = "hrms:position:update";
             public const string Delete = "hrms:position:delete";
         }
@@ -1436,7 +1593,8 @@ public static class PermissionConstants
         public static class Location
         {
             public const string Create = "hrms:location:create";
-            public const string Read = "hrms:location:read";
+            public const string View = "hrms:location:view";
+            public const string Search = "hrms:location:search";
             public const string Update = "hrms:location:update";
             public const string Delete = "hrms:location:delete";
         }
@@ -1444,7 +1602,8 @@ public static class PermissionConstants
         public static class EmployeeAddress
         {
             public const string Create = "hrms:employee-address:create";
-            public const string Read = "hrms:employee-address:read";
+            public const string View = "hrms:employee-address:view";
+            public const string Search = "hrms:employee-address:search";
             public const string Update = "hrms:employee-address:update";
             public const string Delete = "hrms:employee-address:delete";
         }
@@ -1452,7 +1611,8 @@ public static class PermissionConstants
         public static class EmployeeBankInformation
         {
             public const string Create = "hrms:employee-bank-information:create";
-            public const string Read = "hrms:employee-bank-information:read";
+            public const string View = "hrms:employee-bank-information:view";
+            public const string Search = "hrms:employee-bank-information:search";
             public const string Update = "hrms:employee-bank-information:update";
             public const string Delete = "hrms:employee-bank-information:delete";
         }
@@ -1460,7 +1620,8 @@ public static class PermissionConstants
         public static class EmployeeEducation
         {
             public const string Create = "hrms:employee-education:create";
-            public const string Read = "hrms:employee-education:read";
+            public const string View = "hrms:employee-education:view";
+            public const string Search = "hrms:employee-education:search";
             public const string Update = "hrms:employee-education:update";
             public const string Delete = "hrms:employee-education:delete";
         }
@@ -1468,7 +1629,8 @@ public static class PermissionConstants
         public static class EmployeeEmail
         {
             public const string Create = "hrms:employee-email:create";
-            public const string Read = "hrms:employee-email:read";
+            public const string View = "hrms:employee-email:view";
+            public const string Search = "hrms:employee-email:search";
             public const string Update = "hrms:employee-email:update";
             public const string Delete = "hrms:employee-email:delete";
         }
@@ -1476,7 +1638,8 @@ public static class PermissionConstants
         public static class EmergencyContact
         {
             public const string Create = "hrms:employee-emergency-contact:create";
-            public const string Read = "hrms:employee-emergency-contact:read";
+            public const string View = "hrms:employee-emergency-contact:view";
+            public const string Search = "hrms:employee-emergency-contact:search";
             public const string Update = "hrms:employee-emergency-contact:update";
             public const string Delete = "hrms:employee-emergency-contact:delete";
         }
@@ -1484,7 +1647,8 @@ public static class PermissionConstants
         public static class EmployeeLeave
         {
             public const string Create = "hrms:employee-leave:create";
-            public const string Read = "hrms:employee-leave:read";
+            public const string View = "hrms:employee-leave:view";
+            public const string Search = "hrms:employee-leave:search";
             public const string Update = "hrms:employee-leave:update";
             public const string Delete = "hrms:employee-leave:delete";
             public const string Reset = "hrms:employee-leave:reset";
@@ -1493,7 +1657,8 @@ public static class PermissionConstants
         public static class EmployeeSalaryHistory
         {
             public const string Create = "hrms:employee-salary-history:create";
-            public const string Read = "hrms:employee-salary-history:read";
+            public const string View = "hrms:employee-salary-history:view";
+            public const string Search = "hrms:employee-salary-history:search";
             public const string Update = "hrms:employee-salary-history:update";
             public const string Delete = "hrms:employee-salary-history:delete";
         }
@@ -1501,7 +1666,8 @@ public static class PermissionConstants
         public static class ShiftTemplate
         {
             public const string Create = "hrms:shift-template:create";
-            public const string Read = "hrms:shift-template:read";
+            public const string View = "hrms:shift-template:view";
+            public const string Search = "hrms:shift-template:search";
             public const string Update = "hrms:shift-template:update";
             public const string Delete = "hrms:shift-template:delete";
         }
@@ -1509,7 +1675,8 @@ public static class PermissionConstants
         public static class RotationPattern
         {
             public const string Create = "hrms:rotation-pattern:create";
-            public const string Read = "hrms:rotation-pattern:read";
+            public const string View = "hrms:rotation-pattern:view";
+            public const string Search = "hrms:rotation-pattern:search";
             public const string Update = "hrms:rotation-pattern:update";
             public const string Delete = "hrms:rotation-pattern:delete";
         }
@@ -1517,7 +1684,8 @@ public static class PermissionConstants
         public static class EmployeeShiftAssignment
         {
             public const string Create = "hrms:employee-shift-assignment:create";
-            public const string Read = "hrms:employee-shift-assignment:read";
+            public const string View = "hrms:employee-shift-assignment:view";
+            public const string Search = "hrms:employee-shift-assignment:search";
             public const string Update = "hrms:employee-shift-assignment:update";
             public const string Delete = "hrms:employee-shift-assignment:delete";
             public const string BulkCreate = "hrms:employee-shift-assignment:bulk-create";
@@ -1526,7 +1694,8 @@ public static class PermissionConstants
         public static class ShiftTrade
         {
             public const string Create = "hrms:shift-trade:create";   // request a trade
-            public const string Read = "hrms:shift-trade:read";
+            public const string View = "hrms:shift-trade:view";
+            public const string Search = "hrms:shift-trade:search";
             public const string Update = "hrms:shift-trade:update";
             public const string Delete = "hrms:shift-trade:delete";
             public const string Approve = "hrms:shift-trade:approve";
@@ -1538,7 +1707,8 @@ public static class PermissionConstants
         public static class ShiftOverride
         {
             public const string Create = "hrms:shift-override:create";  // manager or system override
-            public const string Read = "hrms:shift-override:read";
+            public const string View = "hrms:shift-override:view";
+            public const string Search = "hrms:shift-override:search";
             public const string Update = "hrms:shift-override:update";
             public const string Delete = "hrms:shift-override:delete";
             public const string Approve = "hrms:shift-override:approve";
@@ -1547,19 +1717,20 @@ public static class PermissionConstants
 
         public static class Dashboard
         {
-            public const string Read = "hrms:dashboard:read";
+            public const string View = "hrms:dashboard:view";
         }
     }
 
     /// <summary>
-    /// Nexus Identity system permissions
-    /// These permissions control access to the identity platform itself
+    /// Nexus Identity system permissions for authentication, authorization, and user management.
     /// </summary>
     public static class Nexus
     {
+        /// <summary>User management permissions.</summary>
         public static class Users
         {
             public const string View = "nexus:users:view";
+            public const string Search = "nexus:users:search";
             public const string Create = "nexus:users:create";
             public const string Update = "nexus:users:update";
             public const string Delete = "nexus:users:delete";
@@ -1568,6 +1739,7 @@ public static class PermissionConstants
         public static class Organisations
         {
             public const string View = "nexus:organisations:view";
+            public const string Search = "nexus:organisations:search";
             public const string Create = "nexus:organisations:create";
             public const string Update = "nexus:organisations:update";
             public const string Delete = "nexus:organisations:delete";
@@ -1576,6 +1748,7 @@ public static class PermissionConstants
         public static class Roles
         {
             public const string View = "nexus:roles:view";
+            public const string Search = "nexus:roles:search";
             public const string Create = "nexus:roles:create";
             public const string Update = "nexus:roles:update";
             public const string Delete = "nexus:roles:delete";
@@ -1584,6 +1757,7 @@ public static class PermissionConstants
         public static class Permissions
         {
             public const string View = "nexus:permissions:view";
+            public const string Search = "nexus:permissions:search";
             public const string Create = "nexus:permissions:create";
             public const string Update = "nexus:permissions:update";
             public const string Delete = "nexus:permissions:delete";
@@ -1592,6 +1766,7 @@ public static class PermissionConstants
         public static class UserClaims
         {
             public const string View = "nexus:user-claims:view";
+            public const string Search = "nexus:user-claims:search";
             public const string Create = "nexus:user-claims:create";
             public const string Update = "nexus:user-claims:update";
             public const string Delete = "nexus:user-claims:delete";
@@ -1607,6 +1782,7 @@ public static class PermissionConstants
         public static class Currencies
         {
             public const string View = "nexus:currencies:view";
+            public const string Search = "nexus:currencies:search";
             public const string Create = "nexus:currencies:create";
             public const string Update = "nexus:currencies:update";
             public const string Delete = "nexus:currencies:delete";
