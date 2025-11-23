@@ -8,6 +8,12 @@ using System.Threading.Tasks;
 
 namespace Jezda.Common.Files.Detection;
 
+/// <summary>
+/// Detects MIME types by analyzing file magic numbers (byte signatures).
+/// Supports common formats including images (PNG, JPEG, GIF, WebP), documents (PDF),
+/// archives (ZIP), and Office Open XML formats (DOCX, XLSX, PPTX).
+/// Falls back to text/plain detection for ASCII-heavy content.
+/// </summary>
 public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
 {
     private static readonly FileSignature[] Signatures =
@@ -23,6 +29,7 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
         new() { MimeType = "image/webp", Signature = Encoding.ASCII.GetBytes("RIFF") }, // requires "WEBP" at offset 8, handled below
     ];
 
+    /// <inheritdoc />
     public async Task<string?> DetectAsync(Stream stream, CancellationToken ct = default)
     {
         if (!stream.CanRead) return null;

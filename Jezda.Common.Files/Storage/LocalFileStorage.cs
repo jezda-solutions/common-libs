@@ -6,6 +6,10 @@ using Microsoft.Extensions.Options;
 
 namespace Jezda.Common.Files.Storage;
 
+/// <summary>
+/// Implements file storage on the local file system with configurable directory structure
+/// and optional public URL support. Files are organized by sub-path and optional date folders (yyyy/MM/dd).
+/// </summary>
 public class LocalFileStorage : IFileStorage
 {
     private readonly FileStorageOptions _options;
@@ -20,6 +24,7 @@ public class LocalFileStorage : IFileStorage
         Directory.CreateDirectory(_options.RootPath);
     }
 
+    /// <inheritdoc />
     public async Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
         // Create hierarchy: Root/subPath/(yyyy/MM/dd)/
@@ -66,6 +71,7 @@ public class LocalFileStorage : IFileStorage
         return descriptor;
     }
 
+    /// <inheritdoc />
     public Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         var fullPath = Path.Combine(_options.RootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -73,6 +79,7 @@ public class LocalFileStorage : IFileStorage
         return Task.FromResult(stream);
     }
 
+    /// <inheritdoc />
     public Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         var fullPath = Path.Combine(_options.RootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -84,6 +91,7 @@ public class LocalFileStorage : IFileStorage
         return Task.FromResult(false);
     }
 
+    /// <inheritdoc />
     public string? GetPublicUrl(string relativePath)
     {
         if (string.IsNullOrWhiteSpace(_options.PublicBaseUrl)) return null;

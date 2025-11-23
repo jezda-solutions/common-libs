@@ -3,8 +3,18 @@ using System.IO;
 
 namespace Jezda.Common.Files.Security;
 
+/// <summary>
+/// Provides utilities for detecting executable files by analyzing file headers and extensions.
+/// Supports Windows PE (exe, dll), Linux ELF, and macOS Mach-O binaries.
+/// </summary>
 public static class ExecutableDetector
 {
+    /// <summary>
+    /// Determines whether the provided stream contains an executable file.
+    /// </summary>
+    /// <param name="stream">The file stream to analyze. Position will be restored after analysis if the stream is seekable.</param>
+    /// <param name="fileName">Optional file name to check for executable extensions (.exe, .dll, .bat, .cmd, .com).</param>
+    /// <returns>True if the file is detected as executable; otherwise, false.</returns>
     public static bool IsExecutable(Stream stream, string? fileName = null)
     {
         var ext = SafeExtension(fileName);

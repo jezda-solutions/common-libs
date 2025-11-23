@@ -2,14 +2,25 @@ using System;
 
 namespace Jezda.Common.Files.Storage;
 
+/// <summary>
+/// Configuration options for file storage behavior.
+/// </summary>
 public class FileStorageOptions
 {
-    // Absolute root path on the server (configure differently for dev/prod)
+    /// <summary>
+    /// Gets or sets the absolute root path on the server where files are stored.
+    /// Configure differently for development and production environments.
+    /// </summary>
     public string RootPath { get; set; } = string.Empty;
 
-    // Optional public URL prefix (served via web server/CDN)
+    /// <summary>
+    /// Gets or sets the optional public URL prefix for accessing files via web server or CDN.
+    /// </summary>
     public string? PublicBaseUrl { get; set; }
 
-    // Organize files by date (yyyy/MM/dd) inside the subPath
+    /// <summary>
+    /// Gets or sets whether to organize files in date-based folders (yyyy/MM/dd) inside the sub-path.
+    /// Default is true.
+    /// </summary>
     public bool UseDateFolders { get; set; } = true;
 }

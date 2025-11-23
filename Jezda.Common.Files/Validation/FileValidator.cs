@@ -6,35 +6,29 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
-using Jezda.Common.Files.Naming;
 using Jezda.Common.Files.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
 namespace Jezda.Common.Files.Validation;
 
-public sealed class FileValidator : IFileValidator
+/// <summary>
+/// Provides comprehensive file validation with configurable rules for MIME types, extensions,
+/// file size, executables, ZIP bombs, image dimensions, hashing, and malware scanning.
+/// </summary>
+public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner scanner, IOptions<FileValidationOptions> options) : IFileValidator
 {
-    private readonly IMimeTypeDetector _mimeDetector;
-    private readonly IFileScanner _scanner;
-    private readonly IOptions<FileValidationOptions> _options;
-
-    public FileValidator(IMimeTypeDetector mimeDetector, IFileScanner scanner, IOptions<FileValidationOptions> options)
-    {
-        _mimeDetector = mimeDetector;
-        _scanner = scanner;
-        _options = options;
-    }
-
+    /// <inheritdoc />
     public Task<FileValidationResult> ValidateAsync(IFormFile file, FileValidationOverrides? overrides = null, CancellationToken ct = default)
     {
         using var stream = file.OpenReadStream();
         return ValidateAsync(stream, file.FileName, overrides, ct);
     }
 
+    /// <inheritdoc />
     public async Task<FileValidationResult> ValidateAsync(Stream fileStream, string? fileName = null, FileValidationOverrides? overrides = null, CancellationToken ct = default)
     {
-        var merged = MergeOptions(_options.Value, overrides);
+        var merged = MergeOptions(options.Value, overrides);
         var errors = new List<FileValidationError>();
         var result = new FileValidationResult();
 
@@ -75,7 +69,7 @@ public sealed class FileValidator : IFileValidator
         }
 
         // MIME detection
-        var mime = await _mimeDetector.DetectAsync(fileStream, ct);
+        var mime = await mimeDetector.DetectAsync(fileStream, ct);
         result.MimeType = mime;
         if (merged.AllowedMimeTypes is { Length: > 0 })
         {
@@ -129,7 +123,7 @@ public sealed class FileValidator : IFileValidator
         // Malware heuristics via scanner
         if (merged.EnableMalwareHeuristics)
         {
-            var scan = await _scanner.ScanAsync(fileStream, ct);
+            var scan = await scanner.ScanAsync(fileStream, ct);
             if (!scan.IsClean)
                 errors.Add(new FileValidationError { Code = FileValidationErrorCode.MalwareSuspected, Message = scan.Report ?? "Malware suspected." });
         }

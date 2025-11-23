@@ -8,6 +8,10 @@ using Jezda.Common.Files.Validation;
 
 namespace Jezda.Common.Files.Services;
 
+/// <summary>
+/// Implements file operations with integrated validation, normalization, and storage.
+/// Coordinates file validation, name policy enforcement, and storage operations.
+/// </summary>
 public class FileService : IFileService
 {
     private readonly IFileValidator _validator;
@@ -21,6 +25,7 @@ public class FileService : IFileService
         _namePolicy = namePolicy ?? new FileNamePolicy();
     }
 
+    /// <inheritdoc />
     public async Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         // Validate file, including ZIP safety, executable detection, etc.
@@ -50,9 +55,11 @@ public class FileService : IFileService
         return descriptor;
     }
 
+    /// <inheritdoc />
     public Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
         => _storage.OpenReadAsync(relativePath, cancellationToken);
 
+    /// <inheritdoc />
     public Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default)
         => _storage.DeleteAsync(relativePath, cancellationToken);
 }

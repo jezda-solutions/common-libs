@@ -3,10 +3,28 @@ using System.IO;
 
 namespace Jezda.Common.Files.Security;
 
+/// <summary>
+/// Provides utilities for validating image file dimensions to prevent decompression bombs
+/// and enforce size constraints. Supports PNG and JPEG formats.
+/// </summary>
 public static class ImageSafetyChecker
 {
+    /// <summary>
+    /// Represents dimension boundaries for image validation.
+    /// </summary>
+    /// <param name="MinWidth">Minimum allowed image width in pixels.</param>
+    /// <param name="MaxWidth">Maximum allowed image width in pixels.</param>
+    /// <param name="MinHeight">Minimum allowed image height in pixels.</param>
+    /// <param name="MaxHeight">Maximum allowed image height in pixels.</param>
     public sealed record ImageBounds(int? MinWidth, int? MaxWidth, int? MinHeight, int? MaxHeight);
 
+    /// <summary>
+    /// Validates that image dimensions fall within the specified bounds.
+    /// </summary>
+    /// <param name="stream">The image stream to analyze. Position will be restored after analysis if the stream is seekable.</param>
+    /// <param name="mimeType">The MIME type of the image (e.g., "image/png", "image/jpeg").</param>
+    /// <param name="bounds">The dimension constraints to enforce.</param>
+    /// <returns>True if the image dimensions are within bounds or the format is not supported; otherwise, false.</returns>
     public static bool ValidateDimensions(Stream stream, string mimeType, ImageBounds bounds)
     {
         var pos = stream.CanSeek ? stream.Position : 0;

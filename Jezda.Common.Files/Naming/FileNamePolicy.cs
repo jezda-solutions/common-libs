@@ -6,14 +6,44 @@ using System.Text.RegularExpressions;
 
 namespace Jezda.Common.Files.Naming;
 
+/// <summary>
+/// Defines a policy for validating and normalizing file names with Unicode support.
+/// Handles invalid characters, reserved names, Unicode normalization, and length constraints.
+/// </summary>
 public sealed class FileNamePolicy
 {
+    /// <summary>
+    /// Gets or sets the maximum allowed file name length. Default is 255 characters.
+    /// </summary>
     public int MaxFileNameLength { get; set; } = 255;
+
+    /// <summary>
+    /// Gets or sets the regex pattern for allowed characters.
+    /// Default allows Unicode letters, digits, dots, underscores, hyphens, and spaces.
+    /// </summary>
     public string AllowedPattern { get; set; } = "^[\\p{L}\\p{N}._\\- ]+$";
+
+    /// <summary>
+    /// Gets or sets whether to normalize Unicode characters to Form C. Default is true.
+    /// </summary>
     public bool NormalizeUnicode { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to replace invalid characters with the replacement character.
+    /// If false, validation fails on invalid characters. Default is true.
+    /// </summary>
     public bool ReplaceInvalidChars { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the character used to replace invalid characters. Default is underscore '_'.
+    /// </summary>
     public char ReplacementChar { get; set; } = '_';
 
+    /// <summary>
+    /// Validates and normalizes a file name according to the policy rules.
+    /// </summary>
+    /// <param name="fileName">The file name to validate and normalize.</param>
+    /// <returns>A tuple indicating whether the name is valid and the normalized file name.</returns>
     public (bool isValid, string normalized) ValidateAndNormalize(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
