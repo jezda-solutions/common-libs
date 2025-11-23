@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -70,10 +70,10 @@ public static class StringHelper
         if (string.IsNullOrWhiteSpace(input))
             return string.Empty;
 
-        // Konverzija ćirilice u latinicu
+    // Convert Cyrillic to Latin
         input = ConvertCyrillicToLatin(input);
 
-        // Normalizacija latiničnih karaktera
+    // Normalize Latin characters
         input = RemoveDiacritics(input);
 
         // Uklanjanje specijalnih karaktera i razmaka
