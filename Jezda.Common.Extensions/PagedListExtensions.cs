@@ -1,4 +1,4 @@
-﻿using Jezda.Common.Domain.Paged;
+using Jezda.Common.Domain.Paged;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -115,7 +115,7 @@ public static class PagedListExtensions
             {
                 if (property.PropertyType == typeof(DateOnly))
                 {
-                    // Direktno upoređivanje za DateOnly
+        // Direct comparison for DateOnly
                     var constant = Expression.Constant(parsedDate, typeof(DateOnly));
                     return Expression.Equal(propertyAccess, constant);
                 }
@@ -131,7 +131,7 @@ public static class PagedListExtensions
             }
             else
             {
-                // Ako parsiranje ne uspe, vrati null (preskoči filtriranje za ovu kolonu)
+        // If parsing fails, return null (skip filtering for this column)
                 return null;
             }
         }
@@ -180,7 +180,7 @@ public static class PagedListExtensions
 
                 Expression propertyExpression = parameter;
 
-                // Prolazimo kroz sva svojstva (uključujući ugnježđena)
+        // Iterate through all properties (including nested ones)
                 for (int i = 0; i < properties.Length; i++)
                 {
                     var propertyName = properties[i];
@@ -251,7 +251,7 @@ public static class PagedListExtensions
         // Proveravamo da li je GUID
         if (underlyingType == typeof(Guid))
         {
-            // Pokušavamo da parsiramo vrednost kao GUID
+        // Try to parse the value as GUID
             if (Guid.TryParse(value, out var guidValue))
             {
                 // Direktna poredba GUID vrednosti
@@ -272,7 +272,7 @@ public static class PagedListExtensions
             }
             else
             {
-                // Ako ne možemo da parsiramo kao GUID, vraćamo uvek false
+        // If we cannot parse as GUID, always return false
                 return Expression.Constant(false);
             }
         }

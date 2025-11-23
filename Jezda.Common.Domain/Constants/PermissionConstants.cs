@@ -1156,14 +1156,248 @@ public static class PermissionConstants
             ]);
     }
 
+    /// <summary>
+    /// Task Management System (TMS) permissions
+    /// </summary>
     public static class TMS
     {
-        public static class Task
+        /// <summary>
+        /// Work item permissions for creating, reading, updating, deleting, and managing work items
+        /// </summary>
+        public static class WorkItem
         {
-            public const string Create = "tms:task:create";
-            public const string Read = "tms:task:read";
-            public const string Update = "tms:task:update";
-            public const string Delete = "tms:task:delete";
+            public const string Create = "tms:work-item:create";
+            public const string Read = "tms:work-item:read";
+            public const string Update = "tms:work-item:update";
+            public const string Delete = "tms:work-item:delete";
+            public const string Assign = "tms:work-item:assign";
+            public const string Unassign = "tms:work-item:unassign";
+            public const string ReorderChildren = "tms:work-item:reorder-children";
+        }
+
+        /// <summary>
+        /// Work item assignment permissions
+        /// </summary>
+        public static class WorkItemAssignment
+        {
+            public const string Create = "tms:work-item-assignment:create";
+            public const string Read = "tms:work-item-assignment:read";
+            public const string Update = "tms:work-item-assignment:update";
+            public const string Delete = "tms:work-item-assignment:delete";
+        }
+
+        /// <summary>
+        /// Work item bulk operation permissions
+        /// </summary>
+        public static class WorkItemBulk
+        {
+            public const string Start = "tms:work-item:bulk:start";
+            public const string Cancel = "tms:work-item:bulk:cancel";
+            public const string Read = "tms:work-item:bulk:read";
+            public const string Update = "tms:work-item:bulk:update";
+            public const string Delete = "tms:work-item:bulk:delete";
+        }
+
+        /// <summary>
+        /// Work item comment permissions
+        /// </summary>
+        public static class WorkItemComment
+        {
+            public const string Create = "tms:work-item-comment:create";
+            public const string Read = "tms:work-item-comment:read";
+            public const string Update = "tms:work-item-comment:update";
+            public const string Delete = "tms:work-item-comment:delete";
+        }
+
+        /// <summary>
+        /// Mention permissions for work items and comments
+        /// </summary>
+        public static class Mentions
+        {
+            public const string Read = "tms:mentions:read";
+        }
+
+        /// <summary>
+        /// Work item attachment permissions
+        /// </summary>
+        public static class WorkItemAttachment
+        {
+            public const string Create = "tms:work-item-attachment:create";
+            public const string Read = "tms:work-item-attachment:read";
+            public const string Delete = "tms:work-item-attachment:delete";
+        }
+
+        /// <summary>
+        /// Work item comment attachment permissions
+        /// </summary>
+        public static class WorkItemCommentAttachment
+        {
+            public const string Create = "tms:work-item-comment-attachment:create";
+            public const string Read = "tms:work-item-comment-attachment:read";
+            public const string Delete = "tms:work-item-comment-attachment:delete";
+        }
+
+        /// <summary>
+        /// Work item comment reaction permissions (emoji reactions)
+        /// </summary>
+        public static class WorkItemCommentReaction
+        {
+            public const string Create = "tms:work-item-comment-reaction:create";
+            public const string Read = "tms:work-item-comment-reaction:read";
+            public const string Delete = "tms:work-item-comment-reaction:delete";
+        }
+
+        /// <summary>
+        /// Work item dependency permissions
+        /// </summary>
+        public static class WorkItemDependency
+        {
+            public const string Create = "tms:work-item-dependency:create";
+            public const string Read = "tms:work-item-dependency:read";
+            public const string Delete = "tms:work-item-dependency:delete";
+        }
+
+        /// <summary>
+        /// Work item dependency analysis permissions
+        /// </summary>
+        public static class WorkItemDependencyAnalysis
+        {
+            public const string ReadGraph = "tms:work-item-dependency-graph:read";
+            public const string ReadImpact = "tms:work-item-dependency-impact:read";
+        }
+
+        /// <summary>
+        /// Work item recurrence permissions for recurring tasks
+        /// </summary>
+        public static class WorkItemRecurrence
+        {
+            public const string Create = "tms:work-item-recurrence:create";
+            public const string Read = "tms:work-item-recurrence:read";
+            public const string Update = "tms:work-item-recurrence:update";
+            public const string Delete = "tms:work-item-recurrence:delete";
+            public const string Generate = "tms:work-item-recurrence:generate";
+            public const string TriggerJob = "tms:work-item-recurrence:trigger-job";
+            public const string JobStatus = "tms:work-item-recurrence:job-status";
+        }
+
+        /// <summary>
+        /// Work item status permissions
+        /// </summary>
+        public static class WorkItemStatus
+        {
+            public const string Create = "tms:work-item-status:create";
+            public const string Read = "tms:work-item-status:read";
+            public const string Update = "tms:work-item-status:update";
+            public const string Delete = "tms:work-item-status:delete";
+        }
+
+        /// <summary>
+        /// Work item status template permissions
+        /// </summary>
+        public static class WorkItemStatusTemplate
+        {
+            public const string Read = "tms:work-item-status-template:read";
+            public const string Apply = "tms:work-item-status-template:apply";
+        }
+
+        /// <summary>
+        /// Work item type permissions
+        /// </summary>
+        public static class WorkItemType
+        {
+            public const string Create = "tms:work-item-type:create";
+            public const string View = "tms:work-item-type:view";
+            public const string Update = "tms:work-item-type:update";
+            public const string Delete = "tms:work-item-type:delete";
+        }
+
+        /// <summary>
+        /// Work item type template permissions
+        /// </summary>
+        public static class WorkItemTypeTemplate
+        {
+            public const string Read = "tms:work-item-type-template:read";
+            public const string Apply = "tms:work-item-type-template:apply";
+        }
+
+        /// <summary>
+        /// Work item tag permissions
+        /// </summary>
+        public static class WorkItemTag
+        {
+            public const string Create = "tms:work-item-tag:create";
+            public const string Read = "tms:work-item-tag:read";
+            public const string Update = "tms:work-item-tag:update";
+            public const string Delete = "tms:work-item-tag:delete";
+        }
+
+        /// <summary>
+        /// Project permissions
+        /// </summary>
+        public static class Project
+        {
+            public const string Create = "tms:project:create";
+            public const string Read = "tms:project:read";
+            public const string Update = "tms:project:update";
+            public const string Delete = "tms:project:delete";
+        }
+
+        /// <summary>
+        /// Project member permissions
+        /// </summary>
+        public static class ProjectMember
+        {
+            public const string Add = "tms:project-member:add";
+            public const string Remove = "tms:project-member:remove";
+            public const string Read = "tms:project-member:read";
+        }
+
+        /// <summary>
+        /// Time log permissions for tracking time spent on work items
+        /// </summary>
+        public static class TimeLog
+        {
+            public const string Create = "tms:time-log:create";
+            public const string Read = "tms:time-log:read";
+            public const string Update = "tms:time-log:update";
+            public const string Delete = "tms:time-log:delete";
+        }
+
+        /// <summary>
+        /// Organisation settings permissions for TMS configuration
+        /// </summary>
+        public static class OrganisationSettings
+        {
+            public const string Read = "tms:organisation-settings:read";
+            public const string Update = "tms:organisation-settings:update";
+        }
+
+        /// <summary>
+        /// Onboarding status permissions
+        /// </summary>
+        public static class OnboardingStatus
+        {
+            public const string Read = "tms:onboarding-status:read";
+        }
+
+        /// <summary>
+        /// Organisation glossary permissions for managing terminology
+        /// </summary>
+        public static class OrganisationGlossary
+        {
+            public const string Create = "tms:organisation-glossary:create";
+            public const string Read = "tms:organisation-glossary:read";
+            public const string Update = "tms:organisation-glossary:update";
+            public const string Delete = "tms:organisation-glossary:delete";
+        }
+
+        /// <summary>
+        /// Task set template permissions for pre-defined task collections
+        /// </summary>
+        public static class TaskSetTemplate
+        {
+            public const string Read = "tms:task-set-template:read";
+            public const string Apply = "tms:task-set-template:apply";
         }
     }
 

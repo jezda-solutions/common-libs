@@ -3,7 +3,7 @@ name: Publish NuGet Packages
 on:
   push:
     tags:
-      - 'v*'       # pokreće se samo kad pushuješ tag v1.0.0, v2.0.0 itd.
+      - 'v*'       # runs only when pushing tags like v1.0.0, v2.0.0
   workflow_dispatch:
     inputs:
       version:
