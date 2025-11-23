@@ -48,6 +48,10 @@ jobs:
       - name: Build solution
         run: dotnet build --configuration Release
 
+      - name: Run tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
       - name: Pack all projects
         run: |
           for proj in $(find . -name 'Jezda.Common*.csproj'); do
