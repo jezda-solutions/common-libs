@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Files.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Domain.Tests", "Jezda.Common.Domain.Tests\Jezda.Common.Domain.Tests.csproj", "{A7EE22D4-AAEE-4F4D-890D-48626FA8E000}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Contracts", "Jezda.Common.Contracts\Jezda.Common.Contracts.csproj", "{87D6E894-915E-4FFC-92D0-EE9002209168}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +131,18 @@ Global
 		{A7EE22D4-AAEE-4F4D-890D-48626FA8E000}.Release|x64.Build.0 = Release|Any CPU
 		{A7EE22D4-AAEE-4F4D-890D-48626FA8E000}.Release|x86.ActiveCfg = Release|Any CPU
 		{A7EE22D4-AAEE-4F4D-890D-48626FA8E000}.Release|x86.Build.0 = Release|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Debug|x64.Build.0 = Debug|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Debug|x86.Build.0 = Debug|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Release|x64.ActiveCfg = Release|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Release|x64.Build.0 = Release|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Release|x86.ActiveCfg = Release|Any CPU
+		{87D6E894-915E-4FFC-92D0-EE9002209168}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
