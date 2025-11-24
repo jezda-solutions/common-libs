@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 nuget.config
 push-nuget-packages.ps1
+**/test-results.trx

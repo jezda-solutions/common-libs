@@ -2,6 +2,7 @@
 
 A comprehensive collection of reusable .NET libraries providing common functionality for enterprise applications, including repository patterns, data access abstractions, domain models, extensions, and helpers.
 
+[![Build & Test](https://github.com/jezda-solutions/jezda-common-libs/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/jezda-solutions/jezda-common-libs/actions/workflows/pr-validation.yml)
 [![.NET](https://img.shields.io/badge/.NET-9.0-blue.svg)](https://dotnet.microsoft.com/download)
 [![Entity Framework Core](https://img.shields.io/badge/EF%20Core-9.0.8-blue.svg)](https://www.nuget.org/packages/Microsoft.EntityFrameworkCore/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
