@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Jezda.Common.Files.Detection;
 using Microsoft.Extensions.Options;
 
 namespace Jezda.Common.Files.Storage;
@@ -13,10 +14,13 @@ namespace Jezda.Common.Files.Storage;
 public class LocalFileStorage : IFileStorage
 {
     private readonly FileStorageOptions _options;
+    private readonly IMimeTypeDetector? _mimeTypeDetector;
 
-    public LocalFileStorage(IOptions<FileStorageOptions> options)
+    public LocalFileStorage(IOptions<FileStorageOptions> options, IMimeTypeDetector? mimeTypeDetector = null)
     {
         _options = options.Value ?? throw new ArgumentNullException(nameof(options));
+        _mimeTypeDetector = mimeTypeDetector;
+
         if (string.IsNullOrWhiteSpace(_options.RootPath))
         {
             throw new ArgumentException("FileStorageOptions.RootPath must be configured.");
@@ -47,6 +51,26 @@ public class LocalFileStorage : IFileStorage
         var uniqueName = $"{Guid.NewGuid():N}-{safeFileName}";
         var fullPath = Path.Combine(basePath, uniqueName);
 
+        // Detect MIME type before saving
+        string? mimeType = null;
+        if (_mimeTypeDetector != null && content.CanSeek)
+        {
+            try
+            {
+                mimeType = await _mimeTypeDetector.DetectAsync(content, cancellationToken);
+            }
+            catch
+            {
+                // Ignore detection errors and fall back to extension-based detection
+            }
+        }
+
+        // Fall back to extension-based detection if magic number detection failed or is unavailable
+        if (string.IsNullOrEmpty(mimeType))
+        {
+            mimeType = ExtensionBasedMimeTypeDetector.Detect(safeFileName);
+        }
+
         long size = 0;
         using (var fs = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
         {
@@ -63,6 +87,7 @@ public class LocalFileStorage : IFileStorage
         var descriptor = new FileDescriptor
         {
             Name = safeFileName,
+            MimeType = mimeType,
             Size = size,
             RelativePath = relativePath,
             PublicUrl = GetPublicUrl(relativePath)

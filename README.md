@@ -502,6 +502,49 @@ dotnet nuget push ./Jezda.Common.Data/bin/Release/Jezda.Common.Data.1.0.0.nupkg 
 - See [CLAUDE.md](CLAUDE.md) for detailed developer notes
 - See [.claude/analysis/generic-repository-analysis.md](.claude/analysis/generic-repository-analysis.md) for implementation details
 
+## 🔢 Version Management
+
+### Automated Version Updates
+
+Use the provided scripts to update versions across all packages:
+
+**PowerShell (Windows):**
+```powershell
+# Auto-increment patch version (e.g., 1.0.34 -> 1.0.35)
+./update-version.ps1
+
+# Set specific version
+./update-version.ps1 -Version "2.0.0"
+
+# Increment minor version (e.g., 1.0.34 -> 1.1.0)
+./update-version.ps1 -Increment Minor
+```
+
+**Bash (Linux/macOS/WSL):**
+```bash
+# Auto-increment patch version
+./update-version.sh
+
+# Set specific version
+./update-version.sh -v "2.0.0"
+
+# Increment minor version
+./update-version.sh -i minor
+```
+
+### Manual Version Update Strategy
+
+**When to update versions:**
+- **Patch (1.0.X)**: Bug fixes, small improvements, no breaking changes
+- **Minor (1.X.0)**: New features, backward-compatible changes
+- **Major (X.0.0)**: Breaking changes, major refactoring
+
+**Best practices:**
+- Update only the changed package for small fixes
+- Update all packages together for major releases or when dependencies change
+- Use semantic versioning strictly
+- Tag releases in git: `git tag v1.0.35 && git push --tags`
+
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details
