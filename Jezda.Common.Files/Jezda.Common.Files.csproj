@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Files</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.0.34</Version>
     <Authors>Jezda Solutions</Authors>
     <Company>Jezda Solutions</Company>
     <Description>Centralized file validation library: MIME detection via magic numbers, filename policy, size/ext/MIME checks, optional security heuristics (zip safety, executables, image dimensions), SHA-256 hashing, and DI integration.</Description>

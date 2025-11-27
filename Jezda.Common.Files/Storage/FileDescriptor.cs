@@ -8,9 +8,9 @@ namespace Jezda.Common.Files.Storage;
 public class FileDescriptor
 {
     /// <summary>
-    /// Gets or sets the unique identifier for the file. Defaults to a new GUID.
+    /// Gets or sets the unique identifier for the file. Defaults to a new GUID with standard formatting (with dashes).
     /// </summary>
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>
     /// Gets or sets the file name.

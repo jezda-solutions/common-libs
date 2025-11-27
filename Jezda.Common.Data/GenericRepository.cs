@@ -594,7 +594,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     #region PAGING
 
-    public async Task<PagedList<T>> GetPagedItemsAsync(
+    public async Task<PagedResult<T>> GetPagedItemsAsync(
         PagingInfo pagingInfo,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
@@ -617,7 +617,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         );
     }
 
-    public async Task<PagedList<Tprojection>> GetPagedProjection<Tprojection>(
+    public async Task<PagedResult<Tprojection>> GetPagedProjection<Tprojection>(
         PagingInfo pagingInfo,
         Expression<Func<T, Tprojection>> projection,
         Expression<Func<T, bool>>? where = null,
