@@ -225,7 +225,7 @@ public interface IGenericRepository<T> where T : class
     /// <param name="defaultSortColumn"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    Task<PagedList<T>> GetPagedItemsAsync(
+    Task<PagedResult<T>> GetPagedItemsAsync(
         PagingInfo pagingInfo,
         Expression<Func<T, bool>>? where = null,
         string defaultSortColumn = "Id",
@@ -242,7 +242,7 @@ public interface IGenericRepository<T> where T : class
     /// <param name="cancellationToken">Stopping token,</param>
     /// <typeparam name="TProjection">Type of the projected entity.</typeparam>
     /// <returns><see cref="PagedList{TProjection}"/> of items of type TProjection.</returns>
-    Task<PagedList<Tprojection>> GetPagedProjection<Tprojection>(
+    Task<PagedResult<Tprojection>> GetPagedProjection<Tprojection>(
         PagingInfo pagingInfo,
         Expression<Func<T, Tprojection>> projection,
         Expression<Func<T, bool>>? where = null,

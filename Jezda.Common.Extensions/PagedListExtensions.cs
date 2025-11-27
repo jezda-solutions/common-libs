@@ -12,7 +12,7 @@ namespace Jezda.Common.Extensions;
 
 public static class PagedListExtensions
 {
-    public static async Task<PagedList<T>> ApplyPagingAndFilteringAsync<T>(
+    public static async Task<PagedResult<T>> ApplyPagingAndFilteringAsync<T>(
         this IQueryable<T> query,
         PagingInfo pagingInfo,
         string defaultSortColumn = "Id",
@@ -327,7 +327,7 @@ public static class PagedListExtensions
     /// <param name="pagingInfo"></param>
     /// <param name="defaultSortColumn"></param>
     /// <returns></returns>
-    private static async Task<PagedList<T>> ToPagedListAsync<T>(
+    private static async Task<PagedResult<T>> ToPagedListAsync<T>(
         this IQueryable<T> query,
         PagingInfo pagingInfo,
         string defaultSortColumn,
@@ -348,17 +348,6 @@ public static class PagedListExtensions
             .ToListAsync(cancellationToken);
 
         // Kreiranje PagedList
-        return new PagedList<T>
-        {
-            Items = items,
-            PagingInfo = new PagingInfo
-            {
-                CurrentPage = pagingInfo.CurrentPage,
-                PageSize = pagingInfo.PageSize,
-                TotalCount = totalRecords,
-                SortColumn = pagingInfo.SortColumn ?? string.Empty,
-                SortDescending = pagingInfo.SortDescending
-            }
-        };
+        return new PagedResult<T>(items, totalRecords, pagingInfo.CurrentPage, pagingInfo.PageSize);
     }
 }
