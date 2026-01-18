@@ -16,6 +16,8 @@ A comprehensive collection of reusable .NET libraries providing common functiona
 | **Jezda.Common.Data** | Repository and Unit of Work implementations | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Data.svg)](https://www.nuget.org/packages/Jezda.Common.Data/) |
 | **Jezda.Common.Extensions** | Extension methods | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Extensions.svg)](https://www.nuget.org/packages/Jezda.Common.Extensions/) |
 | **Jezda.Common.Helpers** | Helper utilities | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Helpers.svg)](https://www.nuget.org/packages/Jezda.Common.Helpers/) |
+| **Jezda.Common.Integrations** | Core integration abstractions | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Integrations.svg)](https://www.nuget.org/packages/Jezda.Common.Integrations/) |
+| **Jezda.Common.Integrations.AzureDevOps** | Azure DevOps REST client | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Integrations.AzureDevOps.svg)](https://www.nuget.org/packages/Jezda.Common.Integrations.AzureDevOps/) |
 
 ## 🚀 Quick Start
 
