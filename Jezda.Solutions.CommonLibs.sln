@@ -27,6 +27,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Integrations",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Integrations.AzureDevOps", "Jezda.Common.Integrations.AzureDevOps\Jezda.Common.Integrations.AzureDevOps.csproj", "{A9DF8419-EA9F-47E3-92C1-E061938D7C91}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Integrations.GitHub", "Jezda.Common.Integrations.GitHub\Jezda.Common.Integrations.GitHub.csproj", "{18343CBC-0CD9-426B-AD0C-4F360D937CC6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jezda.Common.Integrations.Jira", "Jezda.Common.Integrations.Jira\Jezda.Common.Integrations.Jira.csproj", "{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -157,6 +161,30 @@ Global
 		{A9DF8419-EA9F-47E3-92C1-E061938D7C91}.Release|x64.Build.0 = Release|Any CPU
 		{A9DF8419-EA9F-47E3-92C1-E061938D7C91}.Release|x86.ActiveCfg = Release|Any CPU
 		{A9DF8419-EA9F-47E3-92C1-E061938D7C91}.Release|x86.Build.0 = Release|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Debug|x64.Build.0 = Debug|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Debug|x86.Build.0 = Debug|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Release|x64.ActiveCfg = Release|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Release|x64.Build.0 = Release|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Release|x86.ActiveCfg = Release|Any CPU
+		{18343CBC-0CD9-426B-AD0C-4F360D937CC6}.Release|x86.Build.0 = Release|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Debug|x64.Build.0 = Debug|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Debug|x86.Build.0 = Debug|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Release|x64.ActiveCfg = Release|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Release|x64.Build.0 = Release|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Release|x86.ActiveCfg = Release|Any CPU
+		{5F9E7A33-3E8A-418D-AEAB-3C3A57B4E50C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

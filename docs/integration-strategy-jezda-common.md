@@ -18,15 +18,30 @@ Umesto kreiranja zasebnih mikroservisa za svaku integraciju, koristimo **Shared 
 
 ---
 
-## 2. Predložena Struktura Projekta (`Jezda.Common`)
+## 2. Implementirane Integracije
 
-Unutar `Jezda.Common` projekta, organizacija treba da izgleda ovako:
+Trenutno su dostupne sledeće integracije:
+
+1.  **Azure DevOps** (`Jezda.Common.Integrations.AzureDevOps`)
+    *   **Features**: Work Items, Worklogs (Time Tracking), Projects, WIQL queries.
+    *   **Auth**: PAT (Personal Access Token).
+2.  **GitHub** (`Jezda.Common.Integrations.GitHub`)
+    *   **Features**: Repositories, Issues.
+    *   **Auth**: Bearer Token (PAT).
+3.  **Jira** (`Jezda.Common.Integrations.Jira`)
+    *   **Features**: Projects, Issues (Search via JQL).
+    *   **Auth**: Basic Auth (Email + API Token).
+
+## 3. Predložena Struktura Projekta (`Jezda.Common`)
+
+Unutar `Jezda.Common` projekta, organizacija izgleda ovako:
 
 ```text
 Jezda.Common/
 ├── Integrations/
 │   ├── Abstractions/                  <-- Interfejsi koje moduli koriste
 │   │   ├── IAzureDevOpsClient.cs
+│   │   ├── IGitHubClient.cs
 │   │   ├── IJiraClient.cs
 │   │   └── IIntegrationService.cs
 │   │
@@ -35,12 +50,22 @@ Jezda.Common/
 │   │   ├── AzureDevOpsOptions.cs      <-- Konfiguracija (BaseUrl, PAT)
 │   │   └── Models/                    <-- DTO klase (Data Transfer Objects)
 │   │       ├── AdoWorkItem.cs
-│   │       ├── AdoWorkItemUpdate.cs
+│   │       ├── AdoWorkLog.cs
 │   │       └── AdoProject.cs
+│   │
+│   ├── GitHub/                        <-- Konkretna implementacija za GitHub
+│   │   ├── GitHubClient.cs
+│   │   ├── GitHubOptions.cs
+│   │   └── Models/
+│   │       ├── GitHubRepository.cs
+│   │       └── GitHubIssue.cs
 │   │
 │   ├── Jira/                          <-- Konkretna implementacija za Jiru
 │   │   ├── JiraClient.cs
-│   │   └── ...
+│   │   ├── JiraOptions.cs
+│   │   └── Models/
+│   │       ├── JiraProject.cs
+│   │       └── JiraIssue.cs
 │   │
 │   └── Extensions/
 │       └── IntegrationServiceCollectionExtensions.cs <-- Extension metode za DI
@@ -48,141 +73,79 @@ Jezda.Common/
 
 ---
 
-## 3. Implementacioni Detalji (Primer: Azure DevOps)
+## 4. Implementacioni Detalji (Primeri)
 
-### 3.1. Konfiguracija (`AzureDevOpsOptions.cs`)
-Definišemo klasu koja mapira sekciju iz `appsettings.json`.
-
+### 4.1. Azure DevOps
+Koristi se za upravljanje taskovima i praćenje vremena.
 ```csharp
-public class AzureDevOpsOptions
-{
-    public const string SectionName = "Integrations:AzureDevOps";
-    
-    public string BaseUrl { get; set; } = string.Empty; // npr. https://dev.azure.com/{organization}
-    public string PersonalAccessToken { get; set; } = string.Empty;
-    public string ApiVersion { get; set; } = "7.1";
-}
+// Program.cs
+builder.Services.AddAzureDevOpsIntegration(builder.Configuration);
+
+// Service
+var workItems = await _adoClient.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'");
 ```
 
-### 3.2. Interfejs (`IAzureDevOpsClient.cs`)
-Definišemo šta naši moduli mogu da traže od ADO-a.
-
+### 4.2. GitHub
+Koristi se za pristup repozitorijumima i issue-ima.
 ```csharp
-public interface IAzureDevOpsClient
-{
-    // Vraća work iteme na osnovu WIQL upita
-    Task<List<AdoWorkItem>> GetWorkItemsByQueryAsync(string query, CancellationToken cancellationToken = default);
-    
-    // Vraća detalje jednog work itema
-    Task<AdoWorkItem?> GetWorkItemByIdAsync(int id, CancellationToken cancellationToken = default);
-    
-    // Kreira novi work item (npr. automatski bug report)
-    Task<AdoWorkItem> CreateWorkItemAsync(string project, string type, Dictionary<string, object> fields, CancellationToken cancellationToken = default);
-}
+// Program.cs
+builder.Services.AddGitHubIntegration(builder.Configuration);
+
+// Service
+var repos = await _gitHubClient.GetRepositoriesAsync();
 ```
 
-### 3.3. Implementacija (`AzureDevOpsClient.cs`)
-Ova klasa koristi `HttpClient` i bavi se "prljavim" detaljima.
-
+### 4.3. Jira
+Koristi se kao alternativa za ADO, sa podrškom za JQL pretragu.
 ```csharp
-public class AzureDevOpsClient : IAzureDevOpsClient
-{
-    private readonly HttpClient _httpClient;
-    private readonly AzureDevOpsOptions _options;
-    private readonly ILogger<AzureDevOpsClient> _logger;
+// Program.cs
+builder.Services.AddJiraIntegration(builder.Configuration);
 
-    public AzureDevOpsClient(HttpClient httpClient, IOptions<AzureDevOpsOptions> options, ILogger<AzureDevOpsClient> logger)
-    {
-        _httpClient = httpClient;
-        _options = options.Value;
-        _logger = logger;
-    }
-
-    public async Task<List<AdoWorkItem>> GetWorkItemsByQueryAsync(string query, CancellationToken cancellationToken)
-    {
-        // 1. Priprema requesta (Authentication header se može podesiti i u DI registraciji)
-        // 2. Slanje POST requesta sa WIQL upitom
-        // 3. Deserijalizacija JSON odgovora u List<AdoWorkItem>
-        // 4. Hendlovanje grešaka (try-catch, logging)
-    }
-}
-```
-
-### 3.4. Registracija (`IntegrationServiceCollectionExtensions.cs`)
-Olakšavamo potrošačima da uključe integraciju.
-
-```csharp
-public static class IntegrationServiceCollectionExtensions
-{
-    public static IServiceCollection AddAzureDevOpsIntegration(this IServiceCollection services, IConfiguration configuration)
-    {
-        services.Configure<AzureDevOpsOptions>(configuration.GetSection(AzureDevOpsOptions.SectionName));
-
-        services.AddHttpClient<IAzureDevOpsClient, AzureDevOpsClient>((serviceProvider, client) =>
-        {
-            var options = serviceProvider.GetRequiredService<IOptions<AzureDevOpsOptions>>().Value;
-            client.BaseAddress = new Uri(options.BaseUrl);
-            
-            var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{options.PersonalAccessToken}"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
-        })
-        // Opciono: Dodati Polly polisu za retry ovde
-        .AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(600)));
-
-        return services;
-    }
-}
+// Service
+var issues = await _jiraClient.SearchIssuesAsync("project = 'MYPROJ' AND priority = High");
 ```
 
 ---
 
-## 4. Kako koristiti u Modulima (npr. TMS Modul)
+## 5. Kako koristiti u Modulima (npr. TMS Modul)
 
-### Korak 1: Podešavanje (`appsettings.json` u TMS API-ju)
+### Korak 1: Podešavanje (`appsettings.json`)
 ```json
 {
   "Integrations": {
     "AzureDevOps": {
       "BaseUrl": "https://dev.azure.com/mojabirma/",
       "PersonalAccessToken": "moj-tajni-token-xxx"
+    },
+    "GitHub": {
+      "BaseUrl": "https://api.github.com/",
+      "AccessToken": "moj-github-pat"
+    },
+    "Jira": {
+      "BaseUrl": "https://mojabirma.atlassian.net/",
+      "Email": "email@example.com",
+      "ApiToken": "moj-jira-token"
     }
   }
 }
 ```
 
-### Korak 2: Registracija servisa (`Program.cs` u TMS API-ju)
+### Korak 2: Registracija servisa
+U `Program.cs` ili `Startup.cs`:
+
 ```csharp
-// Učitavamo integraciju iz Jezda.Common
+// Učitavamo integracije po potrebi
 builder.Services.AddAzureDevOpsIntegration(builder.Configuration);
+builder.Services.AddGitHubIntegration(builder.Configuration);
+builder.Services.AddJiraIntegration(builder.Configuration);
 ```
 
-### Korak 3: Korišćenje u servisu (`TimesheetSyncService.cs`)
-```csharp
-public class TimesheetSyncService
-{
-    private readonly IAzureDevOpsClient _adoClient;
-
-    public TimesheetSyncService(IAzureDevOpsClient adoClient)
-    {
-        _adoClient = adoClient;
-    }
-
-    public async Task SyncDailyHoursAsync()
-    {
-        // apstrahovano - ne bavimo se HTTP-om, JSON-om, Tokenima
-        var workItems = await _adoClient.GetWorkItemsByQueryAsync("Select [System.Id] From WorkItems Where ...");
-        
-        foreach(var item in workItems)
-        {
-             // Mapiranje u TMS entitet i čuvanje u bazu
-        }
-    }
-}
-```
+### Korak 3: Korišćenje u servisu
+Injektujte odgovarajući interfejs (`IAzureDevOpsClient`, `IGitHubClient`, `IJiraClient`) i koristite metode koje vraćaju tipizirane objekte.
 
 ---
 
-## 5. Plan za Buduće Integracije
+## 6. Plan za Buduće Integracije
 
 Kada se pojavi potreba za novom integracijom (npr. Jira):
 
