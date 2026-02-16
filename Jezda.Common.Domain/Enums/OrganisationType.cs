@@ -64,8 +64,8 @@ public enum OrganisationType : int
     LogisticsProvider = 128,
 
     /// <summary>
-    /// Umbrella for supply-side organizations providing goods to merchants.
-    /// Subtypes: Manufacturer, Distributor, Wholesaler.
+    /// A general category for supply-side organizations providing goods to merchants.
+    /// Prefer using more specific types like Manufacturer, Distributor, or Wholesaler.
     /// Maintained for backward compatibility with legacy systems.
     /// </summary>
     Supplier = 256,
