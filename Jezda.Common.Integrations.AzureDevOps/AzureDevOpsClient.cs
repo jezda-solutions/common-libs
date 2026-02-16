@@ -16,19 +16,7 @@ public class AzureDevOpsClient(
 
     public async Task<List<AdoWorkItem>> GetWorkItemsByQueryAsync(string query, CancellationToken cancellationToken = default)
     {
-        // 1. Execute WIQL
         var wiqlRequest = new AdoWiqlRequest { Query = query };
-        // Assuming BaseUrl is set in HttpClient, we just append relative path
-        // Note: Project might be needed in URL depending on setup, but typically WIQL can run across project or scoped to project
-        // If BaseUrl includes project, fine. If not, query might need modification or URL.
-        // For safety, let's assume BaseUrl is organization level and user provides project in config or we use generic endpoint.
-        // Actually, usually it's POST https://dev.azure.com/{org}/{project}/_apis/wit/wiql
-        // We will assume HttpClient BaseAddress is configured correctly to the Project level or Org level.
-        // Let's assume standard usage: BaseAddress = https://dev.azure.com/{org}/
-        // We might need to handle project scope. But for now, let's use relative path assuming client is configured.
-        
-        // Better approach: User configures BaseUrl as https://dev.azure.com/{org}/{project}/
-        
         var wiqlUrl = $"_apis/wit/wiql?api-version={_options.ApiVersion}";
         var wiqlResponse = await PostAsync<AdoWiqlRequest, AdoWiqlResponse>(wiqlUrl, wiqlRequest, cancellationToken);
 
@@ -37,16 +25,22 @@ public class AzureDevOpsClient(
             return [];
         }
 
-        // 2. Get details for found IDs
-        var ids = wiqlResponse.WorkItems.Select(wi => wi.Id).Take(200).ToList(); // ADO limit is 200 for list
-        // If more than 200, we should batch. For this "mini project", taking first 200 is acceptable or we can implement batching logic.
-        
-        var idsString = string.Join(",", ids);
-        var detailsUrl = $"_apis/wit/workitems?ids={idsString}&api-version={_options.ApiVersion}";
-        
-        var detailsResponse = await GetAsync<AdoWorkItemListResponse>(detailsUrl, cancellationToken);
-        
-        return detailsResponse?.Value ?? [];
+        var workItemIds = wiqlResponse.WorkItems.Select(wi => wi.Id).ToList();
+        var allWorkItems = new List<AdoWorkItem>();
+
+        foreach (var batch in workItemIds.Chunk(200))
+        {
+            var idsString = string.Join(",", batch);
+            var detailsUrl = $"_apis/wit/workitems?ids={idsString}&api-version={_options.ApiVersion}";
+            var detailsResponse = await GetAsync<AdoWorkItemListResponse>(detailsUrl, cancellationToken);
+
+            if (detailsResponse?.Value != null)
+            {
+                allWorkItems.AddRange(detailsResponse.Value);
+            }
+        }
+
+        return allWorkItems;
     }
 
     public async Task<AdoWorkItem?> GetWorkItemByIdAsync(int id, CancellationToken cancellationToken = default)
@@ -57,49 +51,31 @@ public class AzureDevOpsClient(
 
     public async Task<AdoWorkItem?> CreateWorkItemAsync(string project, string type, Dictionary<string, object> fields, CancellationToken cancellationToken = default)
     {
-        // For creation, we need JSON Patch Document format usually, but some endpoints accept simple JSON?
-        // ADO REST API for Create Work Item requires application/json-patch+json
-        // This makes things tricky with simple PostAsJsonAsync if we don't change content type.
-        
-        // Actually, ADO Create Work Item requires:
-        // POST https://dev.azure.com/{organization}/{project}/_apis/wit/workitems/${type}?api-version=7.1
-        // Body: [ { "op": "add", "path": "/fields/System.Title", "value": "..." } ]
-        
-        var patchDocument = new List<object>();
-        foreach (var field in fields)
+        var patchDocument = fields.Select(field => new JsonPatchOperation
         {
-            patchDocument.Add(new
-            {
-                op = "add",
-                path = $"/fields/{field.Key}",
-                value = field.Value
-            });
-        }
-        
-        // We need to send this with specific content type: application/json-patch+json
-        // BaseIntegrationClient's PostAsync uses PostAsJsonAsync which uses application/json.
-        // We might need to override or use HttpClient directly here for Patch format.
-        
-        var url = $"{project}/_apis/wit/workitems/${type}?api-version={_options.ApiVersion}";
-        
+            Op = "add",
+            Path = $"/fields/{field.Key}",
+            Value = field.Value
+        }).ToList();
+
+        var url = $"{Uri.EscapeDataString(project)}/_apis/wit/workitems/${Uri.EscapeDataString(type)}?api-version={_options.ApiVersion}";
+
         try
         {
             Logger.LogDebug("Sending Create Work Item request to {RequestUri}", url);
-            
-            // Use JsonContent to create content with correct media type
+
             var content = JsonContent.Create(patchDocument, new System.Net.Http.Headers.MediaTypeHeaderValue("application/json-patch+json"), JsonSerializerOptions);
-            
             var response = await HttpClient.PostAsync(url, content, cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 return await response.Content.ReadFromJsonAsync<AdoWorkItem>(JsonSerializerOptions, cancellationToken);
             }
-            
+
             var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
             Logger.LogError("Failed to create work item. Status: {Status}, Content: {Content}", response.StatusCode, errorContent);
             response.EnsureSuccessStatusCode();
-            return null;
+            return null; // Unreachable, EnsureSuccessStatusCode throws
         }
         catch (Exception ex)
         {
@@ -119,56 +95,68 @@ public class AzureDevOpsClient(
         }
 
         var result = new List<AdoWorkLogEntry>();
+        const int batchSize = 20;
 
-        foreach (var workItem in workItems)
+        foreach (var batch in workItems.Chunk(batchSize))
         {
-            var updatesUrl = $"_apis/wit/workitems/{workItem.Id}/updates?api-version={_options.ApiVersion}";
-            var updatesResponse = await GetAsync<AdoWorkItemUpdatesResponse>(updatesUrl, cancellationToken);
+            var tasks = batch.Select(workItem => FetchWorkLogEntriesAsync(workItem, from, to, cancellationToken));
+            var batchResults = await Task.WhenAll(tasks);
+            result.AddRange(batchResults.SelectMany(x => x));
+        }
 
-            if (updatesResponse == null || updatesResponse.Value.Count == 0)
+        return result;
+    }
+
+    private async Task<List<AdoWorkLogEntry>> FetchWorkLogEntriesAsync(AdoWorkItem workItem, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken)
+    {
+        var updatesUrl = $"_apis/wit/workitems/{workItem.Id}/updates?api-version={_options.ApiVersion}";
+        var updatesResponse = await GetAsync<AdoWorkItemUpdatesResponse>(updatesUrl, cancellationToken);
+
+        if (updatesResponse == null || updatesResponse.Value.Count == 0)
+        {
+            return [];
+        }
+
+        var entries = new List<AdoWorkLogEntry>();
+
+        foreach (var update in updatesResponse.Value)
+        {
+            if (update.RevisedDate < from || update.RevisedDate > to)
             {
                 continue;
             }
 
-            foreach (var update in updatesResponse.Value)
+            if (!update.Fields.TryGetValue("Microsoft.VSTS.Scheduling.CompletedWork", out var change))
             {
-                if (update.RevisedDate < from || update.RevisedDate > to)
-                {
-                    continue;
-                }
-
-                if (!update.Fields.TryGetValue("Microsoft.VSTS.Scheduling.CompletedWork", out var change))
-                {
-                    continue;
-                }
-
-                if (!TryConvertToDouble(change.OldValue, out var oldValue) || !TryConvertToDouble(change.NewValue, out var newValue))
-                {
-                    continue;
-                }
-
-                var delta = newValue - oldValue;
-
-                if (delta <= 0)
-                {
-                    continue;
-                }
-
-                workItem.Fields.TryGetValue("System.TeamProject", out var project);
-
-                result.Add(new AdoWorkLogEntry
-                {
-                    WorkItemId = workItem.Id,
-                    Project = project?.ToString(),
-                    UserUniqueName = update.RevisedBy?.UniqueName,
-                    UserDisplayName = update.RevisedBy?.DisplayName,
-                    Hours = delta,
-                    LoggedAt = update.RevisedDate
-                });
+                continue;
             }
+
+            if (!TryConvertToDouble(change.OldValue, out var oldValue) || !TryConvertToDouble(change.NewValue, out var newValue))
+            {
+                continue;
+            }
+
+            var delta = newValue - oldValue;
+
+            if (delta <= 0)
+            {
+                continue;
+            }
+
+            workItem.Fields.TryGetValue("System.TeamProject", out var project);
+
+            entries.Add(new AdoWorkLogEntry
+            {
+                WorkItemId = workItem.Id,
+                Project = project?.ToString(),
+                UserUniqueName = update.RevisedBy?.UniqueName,
+                UserDisplayName = update.RevisedBy?.DisplayName,
+                Hours = delta,
+                LoggedAt = update.RevisedDate
+            });
         }
 
-        return result;
+        return entries;
     }
 
     private static bool TryConvertToDouble(object? value, out double result)

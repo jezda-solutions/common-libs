@@ -56,6 +56,21 @@ public class JiraPriority
     public string Name { get; set; } = string.Empty;
 }
 
+public class JiraSearchRequest
+{
+    [JsonPropertyName("jql")]
+    public string Jql { get; set; } = string.Empty;
+
+    [JsonPropertyName("startAt")]
+    public int StartAt { get; set; }
+
+    [JsonPropertyName("maxResults")]
+    public int MaxResults { get; set; } = 50;
+
+    [JsonPropertyName("fields")]
+    public string[] Fields { get; set; } = [];
+}
+
 public class JiraSearchResponse
 {
     [JsonPropertyName("startAt")]
