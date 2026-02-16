@@ -16,6 +16,10 @@ A comprehensive collection of reusable .NET libraries providing common functiona
 | **Jezda.Common.Data** | Repository and Unit of Work implementations | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Data.svg)](https://www.nuget.org/packages/Jezda.Common.Data/) |
 | **Jezda.Common.Extensions** | Extension methods | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Extensions.svg)](https://www.nuget.org/packages/Jezda.Common.Extensions/) |
 | **Jezda.Common.Helpers** | Helper utilities | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Helpers.svg)](https://www.nuget.org/packages/Jezda.Common.Helpers/) |
+| **Jezda.Common.Integrations** | Core integration abstractions | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Integrations.svg)](https://www.nuget.org/packages/Jezda.Common.Integrations/) |
+| **Jezda.Common.Integrations.AzureDevOps** | Azure DevOps REST client | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Integrations.AzureDevOps.svg)](https://www.nuget.org/packages/Jezda.Common.Integrations.AzureDevOps/) |
+| **Jezda.Common.Integrations.GitHub** | GitHub REST client | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Integrations.GitHub.svg)](https://www.nuget.org/packages/Jezda.Common.Integrations.GitHub/) |
+| **Jezda.Common.Integrations.Jira** | Jira Cloud REST client | [![NuGet](https://img.shields.io/nuget/v/Jezda.Common.Integrations.Jira.svg)](https://www.nuget.org/packages/Jezda.Common.Integrations.Jira/) |
 
 ## 🚀 Quick Start
 
@@ -25,12 +29,13 @@ A comprehensive collection of reusable .NET libraries providing common functiona
 # Install the Data package (includes Abstractions and Domain)
 dotnet add package Jezda.Common.Data
 
-# Optional: Install Extensions and Helpers
-dotnet add package Jezda.Common.Extensions
-dotnet add package Jezda.Common.Helpers
+# Optional: Install Integrations
+dotnet add package Jezda.Common.Integrations.AzureDevOps
+dotnet add package Jezda.Common.Integrations.GitHub
+dotnet add package Jezda.Common.Integrations.Jira
 ```
 
-### Basic Setup
+### Basic Setup (Data)
 
 ```csharp
 // 1. Create your DbContext
@@ -408,6 +413,28 @@ _repository.ReplaceChildCollection(
 );
 
 await _unitOfWork.SaveChangesAsync();
+```
+
+### 10. Integrations
+
+The library provides ready-to-use clients for popular external services.
+
+#### Azure DevOps
+```csharp
+builder.Services.AddAzureDevOpsIntegration(configuration);
+// Use IAzureDevOpsClient to manage Work Items, Logs, and Projects.
+```
+
+#### GitHub
+```csharp
+builder.Services.AddGitHubIntegration(configuration);
+// Use IGitHubClient to manage Repositories and Issues.
+```
+
+#### Jira
+```csharp
+builder.Services.AddJiraIntegration(configuration);
+// Use IJiraClient to search Issues (JQL) and list Projects.
 ```
 
 ## 🎯 Best Practices
