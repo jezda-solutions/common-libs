@@ -71,8 +71,8 @@ public enum OrganisationType : int
     Supplier = 256,
 
     /// <summary>
-    /// Organization that sells goods/services to end consumers.
-    /// Covers retail chains, webshops, independent stores, marketplace sellers.
+    /// A general category for an organization that sells goods/services to end consumers.
+    /// Use this type when more specific roles like Retailer, OnlineRetailer, or Marketplace are not applicable or not known.
     /// Industry standard term (Stripe, Shopify, Square).
     /// Previously named Vendor (512) — renamed for clarity.
     /// </summary>
