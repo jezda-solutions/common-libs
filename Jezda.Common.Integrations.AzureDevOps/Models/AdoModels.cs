@@ -116,6 +116,18 @@ public class AdoWorkLogEntry
     public DateTimeOffset LoggedAt { get; set; }
 }
 
+public class JsonPatchOperation
+{
+    [JsonPropertyName("op")]
+    public string Op { get; set; } = "add";
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("value")]
+    public object? Value { get; set; }
+}
+
 public class AdoProjectListResponse
 {
     [JsonPropertyName("count")]

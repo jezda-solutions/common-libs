@@ -20,6 +20,9 @@ public interface IAzureDevOpsClient
     /// </summary>
     Task<AdoWorkItem?> CreateWorkItemAsync(string project, string type, Dictionary<string, object> fields, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Retrieves completed work log entries for work items modified within the specified date range.
+    /// </summary>
     Task<IReadOnlyList<AdoWorkLogEntry>> GetCompletedWorkLogsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
 
     /// <summary>
