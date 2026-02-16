@@ -64,16 +64,19 @@ public enum OrganisationType : int
     LogisticsProvider = 128,
 
     /// <summary>
-    /// Legacy term - Generic supplier providing goods or services to other businesses.
-    /// Maintained for backward compatibility. Consider using more specific types.
+    /// Umbrella for supply-side organizations providing goods to merchants.
+    /// Subtypes: Manufacturer, Distributor, Wholesaler.
+    /// Maintained for backward compatibility with legacy systems.
     /// </summary>
     Supplier = 256,
 
     /// <summary>
-    /// Legacy term - Generic vendor selling products or services.
-    /// Maintained for backward compatibility. Consider using more specific types.
+    /// Organization that sells goods/services to end consumers.
+    /// Covers retail chains, webshops, independent stores, marketplace sellers.
+    /// Industry standard term (Stripe, Shopify, Square).
+    /// Previously named Vendor (512) — renamed for clarity.
     /// </summary>
-    Vendor = 512,
+    Merchant = 512,
 
     /// <summary>
     /// Provides software solutions for retail/supply chain ecosystem.
@@ -95,6 +98,6 @@ public enum OrganisationType : int
     /// Combination of all organization types - used for filtering/querying purposes
     /// </summary>
     All = Manufacturer | Distributor | Wholesaler | Retailer | OnlineRetailer |
-          Marketplace | Broker | LogisticsProvider | Supplier | Vendor | SoftwareProvider |
+          Marketplace | Broker | LogisticsProvider | Supplier | Merchant | SoftwareProvider |
           DataProvider | MarketingAgency
 }
