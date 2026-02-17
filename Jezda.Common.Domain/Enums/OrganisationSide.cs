@@ -25,5 +25,10 @@ public enum OrganisationSide
     /// Buy-side: organization purchases goods for resale to end consumers.
     /// Examples: retail chains, online stores, merchants.
     /// </summary>
-    Buy = 2
+    Buy = 2,
+
+    /// <summary>
+    /// Combination of all sides — used for filtering/querying purposes.
+    /// </summary>
+    All = Supply | Buy
 }
