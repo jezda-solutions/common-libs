@@ -364,3 +364,6 @@ FodyWeavers.xsd
 nuget.config
 push-nuget-packages.ps1
 **/test-results.trx
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
