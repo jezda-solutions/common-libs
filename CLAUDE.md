@@ -32,7 +32,7 @@ Jezda.Common.Data (depends on Abstractions + Extensions)
   - `Repositories/IGenericRepository<T>`: Comprehensive repository interface with CRUD, paging, and projection support
   - `Repositories/IUnitOfWork`: Transaction and change tracking interface
   - `Responses/`: API response base types (BaseResponse, CodeResponse, IBaseResponse, ICodeResponse)
-  - `Configuration/Options/`: Configuration option classes (HangfireOptions, JwtOptions, NationalityOptions, NexusOptions)
+  - `Configuration/Options/`: Configuration option classes (HangfireOptions, JwtOptions, NationalityOptions, NexusOptions, GrpcClientConfiguration)
   - `Identity/IUserContext`: User context abstraction
   - `Security/`: Security-related interfaces
 
