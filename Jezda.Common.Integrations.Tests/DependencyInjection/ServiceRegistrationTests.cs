@@ -2,10 +2,13 @@ using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.AzureDevOps;
 using Jezda.Common.Integrations.AzureDevOps.Extensions;
+using Jezda.Common.Integrations.ClickUp.Extensions;
 using Jezda.Common.Integrations.GitHub;
 using Jezda.Common.Integrations.GitHub.Extensions;
 using Jezda.Common.Integrations.Jira;
 using Jezda.Common.Integrations.Jira.Extensions;
+using Jezda.Common.Integrations.Monday.Extensions;
+using Jezda.Common.Integrations.Trello.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -85,7 +88,49 @@ public class ServiceRegistrationTests
     }
 
     [Fact]
-    public void AllIntegrations_RegistersThreeTaskProviders()
+    public void AddTrelloIntegration_RegistersTaskProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddTrelloIntegration();
+
+        var provider = services.BuildServiceProvider();
+
+        var taskProviders = provider.GetServices<IExternalTaskProvider>().ToList();
+        Assert.Single(taskProviders);
+        Assert.Equal(ExternalProvider.Trello, taskProviders[0].Provider);
+    }
+
+    [Fact]
+    public void AddClickUpIntegration_RegistersTaskProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddClickUpIntegration();
+
+        var provider = services.BuildServiceProvider();
+
+        var taskProviders = provider.GetServices<IExternalTaskProvider>().ToList();
+        Assert.Single(taskProviders);
+        Assert.Equal(ExternalProvider.ClickUp, taskProviders[0].Provider);
+    }
+
+    [Fact]
+    public void AddMondayIntegration_RegistersTaskProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddMondayIntegration();
+
+        var provider = services.BuildServiceProvider();
+
+        var taskProviders = provider.GetServices<IExternalTaskProvider>().ToList();
+        Assert.Single(taskProviders);
+        Assert.Equal(ExternalProvider.Monday, taskProviders[0].Provider);
+    }
+
+    [Fact]
+    public void AllIntegrations_RegistersSixTaskProviders()
     {
         var services = new ServiceCollection();
         var config = CreateConfiguration();
@@ -93,13 +138,19 @@ public class ServiceRegistrationTests
         services.AddGitHubIntegration(config);
         services.AddJiraIntegration(config);
         services.AddAzureDevOpsIntegration(config);
+        services.AddTrelloIntegration();
+        services.AddClickUpIntegration();
+        services.AddMondayIntegration();
 
         var provider = services.BuildServiceProvider();
 
         var taskProviders = provider.GetServices<IExternalTaskProvider>().ToList();
-        Assert.Equal(3, taskProviders.Count);
+        Assert.Equal(6, taskProviders.Count);
         Assert.Contains(taskProviders, p => p.Provider == ExternalProvider.GitHub);
         Assert.Contains(taskProviders, p => p.Provider == ExternalProvider.Jira);
         Assert.Contains(taskProviders, p => p.Provider == ExternalProvider.AzureDevOps);
+        Assert.Contains(taskProviders, p => p.Provider == ExternalProvider.Trello);
+        Assert.Contains(taskProviders, p => p.Provider == ExternalProvider.ClickUp);
+        Assert.Contains(taskProviders, p => p.Provider == ExternalProvider.Monday);
     }
 }

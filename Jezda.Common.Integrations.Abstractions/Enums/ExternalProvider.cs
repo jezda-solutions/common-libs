@@ -6,5 +6,11 @@ public enum ExternalProvider
     
     Jira = 2,
     
-    AzureDevOps = 3
+    AzureDevOps = 3,
+
+    Trello = 4,
+
+    ClickUp = 5,
+
+    Monday = 6
 }
