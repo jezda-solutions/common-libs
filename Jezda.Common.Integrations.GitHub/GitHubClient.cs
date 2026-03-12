@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Jezda.Common.Integrations.GitHub;
 
-public class GitHubClient(
+public sealed class GitHubClient(
     HttpClient httpClient,
     IOptions<GitHubOptions> options,
     ILogger<GitHubClient> logger) : BaseIntegrationClient(httpClient, logger), IGitHubClient

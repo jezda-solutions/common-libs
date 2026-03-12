@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Jezda.Common.Integrations.Jira;
 
-public class JiraClient(
+public sealed class JiraClient(
     HttpClient httpClient,
     IOptions<JiraOptions> options,
     ILogger<JiraClient> logger) : BaseIntegrationClient(httpClient, logger), IJiraClient

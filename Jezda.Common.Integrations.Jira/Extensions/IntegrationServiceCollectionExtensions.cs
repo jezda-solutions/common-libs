@@ -1,5 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
+using Jezda.Common.Integrations.Abstractions;
+using Jezda.Common.Integrations.Abstractions.Resilience;
+using Jezda.Common.Integrations.Jira.Providers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -15,6 +18,7 @@ public static class IntegrationServiceCollectionExtensions
         services.Configure<JiraOptions>(
             configuration.GetSection(JiraOptions.SectionName));
 
+        // Existing typed HttpClient for IJiraClient
         services.AddHttpClient<IJiraClient, JiraClient>((serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<JiraOptions>>().Value;
@@ -35,6 +39,14 @@ public static class IntegrationServiceCollectionExtensions
 
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         });
+
+        // Named HttpClient for IExternalTaskProvider (per-request auth + base URL)
+        services.AddHttpClient(JiraTaskProvider.HttpClientName, client =>
+        {
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }).AddIntegrationResilience();
+
+        services.AddSingleton<IExternalTaskProvider, JiraTaskProvider>();
 
         return services;
     }
