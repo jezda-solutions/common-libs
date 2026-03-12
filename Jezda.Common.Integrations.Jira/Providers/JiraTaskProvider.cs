@@ -67,7 +67,7 @@ public sealed class JiraTaskProvider(
         })];
     }
 
-    public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string projectId, string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 

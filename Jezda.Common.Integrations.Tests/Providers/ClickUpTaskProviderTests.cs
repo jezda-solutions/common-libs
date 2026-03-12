@@ -85,7 +85,7 @@ public class ClickUpTaskProviderTests
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, tasksResponse);
 
-        var result = await _provider.GetTasksAsync("team1", "pk_test_token");
+        var result = await _provider.GetTasksAsync("pk_test_token", "team1");
 
         Assert.Equal(2, result.Count);
         Assert.Equal("task1", result[0].Id);

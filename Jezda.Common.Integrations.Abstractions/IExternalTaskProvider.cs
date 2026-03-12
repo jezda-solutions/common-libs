@@ -18,8 +18,8 @@ public interface IExternalTaskProvider
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(
-        string projectId,
         string accessToken,
+        string projectId,
         string? baseUrl = null,
         CancellationToken cancellationToken = default);
 }

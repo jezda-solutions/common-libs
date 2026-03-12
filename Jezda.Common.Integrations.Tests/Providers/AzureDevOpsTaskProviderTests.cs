@@ -1,8 +1,10 @@
 using System.Net;
 using Jezda.Common.Integrations.Abstractions.Enums;
+using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Jezda.Common.Integrations.Tests.Providers;
@@ -15,7 +17,8 @@ public class AzureDevOpsTaskProviderTests
     public AzureDevOpsTaskProviderTests()
     {
         var factory = new MockHttpClientFactory(_handler, AzureDevOpsTaskProvider.HttpClientName);
-        _provider = new AzureDevOpsTaskProvider(factory, NullLogger<AzureDevOpsTaskProvider>.Instance);
+        var options = Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" });
+        _provider = new AzureDevOpsTaskProvider(factory, NullLogger<AzureDevOpsTaskProvider>.Instance, options);
     }
 
     [Fact]
@@ -121,7 +124,7 @@ public class AzureDevOpsTaskProviderTests
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, workItemsResponse);
 
-        var result = await _provider.GetTasksAsync("ProjectA", "my-pat", "https://dev.azure.com/myorg/");
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
 
         Assert.Equal(2, result.Count);
         Assert.Equal("1", result[0].Id);
@@ -137,7 +140,7 @@ public class AzureDevOpsTaskProviderTests
         var wiqlResponse = new { queryType = "flat", workItems = Array.Empty<object>() };
         _handler.EnqueueResponse(HttpStatusCode.OK, wiqlResponse);
 
-        var result = await _provider.GetTasksAsync("ProjectA", "my-pat", "https://dev.azure.com/myorg/");
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
 
         Assert.Empty(result);
     }

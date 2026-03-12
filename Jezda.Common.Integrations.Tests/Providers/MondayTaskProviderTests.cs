@@ -102,7 +102,7 @@ public class MondayTaskProviderTests
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, response);
 
-        var result = await _provider.GetTasksAsync("123", "monday-api-token");
+        var result = await _provider.GetTasksAsync("monday-api-token", "123");
 
         Assert.Equal(2, result.Count);
         Assert.Equal("item1", result[0].Id);

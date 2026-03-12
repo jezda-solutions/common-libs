@@ -96,7 +96,7 @@ public class JiraTaskProviderTests
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, searchResponse);
 
-        var result = await _provider.GetTasksAsync("PROJ", "user@test.com:token", "https://test.atlassian.net/");
+        var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/");
 
         Assert.Equal(2, result.Count);
         Assert.Equal("PROJ-1", result[0].Id);

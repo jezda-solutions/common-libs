@@ -1,8 +1,10 @@
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
+using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -12,10 +14,11 @@ namespace Jezda.Common.Integrations.AzureDevOps.Providers;
 
 public sealed class AzureDevOpsTaskProvider(
     IHttpClientFactory httpClientFactory,
-    ILogger<AzureDevOpsTaskProvider> logger) : IExternalTaskProvider
+    ILogger<AzureDevOpsTaskProvider> logger,
+    IOptions<AzureDevOpsOptions> options) : IExternalTaskProvider
 {
     public const string HttpClientName = "ExternalTaskProvider.AzureDevOps";
-    private const string ApiVersion = "7.1";
+    private readonly string _apiVersion = options.Value.ApiVersion;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -33,7 +36,7 @@ public sealed class AzureDevOpsTaskProvider(
 
         try
         {
-            var response = await client.GetAsync($"_apis/projects?$top=1&api-version={ApiVersion}", cancellationToken);
+            var response = await client.GetAsync($"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -50,7 +53,7 @@ public sealed class AzureDevOpsTaskProvider(
         using var client = CreateClient(accessToken, baseUrl);
 
         var response = await client.GetFromJsonAsync<AdoProjectListResponse>(
-            $"_apis/projects?api-version={ApiVersion}", JsonOptions, cancellationToken);
+            $"_apis/projects?api-version={_apiVersion}", JsonOptions, cancellationToken);
 
         return (response?.Value ?? []).Select(p => new ExternalProjectDto
         {
@@ -63,8 +66,8 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(
-        string projectId, 
-        string accessToken, 
+        string accessToken,
+        string projectId,
         string? baseUrl = null, 
         CancellationToken cancellationToken = default)
     {
@@ -79,7 +82,7 @@ public sealed class AzureDevOpsTaskProvider(
         };
 
         var wiqlResponse = await client.PostAsJsonAsync(
-            $"{Uri.EscapeDataString(projectId)}/_apis/wit/wiql?api-version={ApiVersion}", wiqlRequest, JsonOptions, cancellationToken);
+            $"{Uri.EscapeDataString(projectId)}/_apis/wit/wiql?api-version={_apiVersion}", wiqlRequest, JsonOptions, cancellationToken);
         wiqlResponse.EnsureSuccessStatusCode();
 
         var wiqlResult = await wiqlResponse.Content.ReadFromJsonAsync<AdoWiqlResponse>(JsonOptions, cancellationToken);
@@ -95,7 +98,7 @@ public sealed class AzureDevOpsTaskProvider(
         foreach (var batch in wiqlResult.WorkItems.Chunk(200))
         {
             var idsString = string.Join(",", batch.Select(wi => wi.Id));
-            var detailsUrl = $"_apis/wit/workitems?ids={idsString}&api-version={ApiVersion}";
+            var detailsUrl = $"_apis/wit/workitems?ids={idsString}&api-version={_apiVersion}";
             var detailsResponse = await client.GetFromJsonAsync<AdoWorkItemListResponse>(detailsUrl, JsonOptions, cancellationToken);
 
             if (detailsResponse?.Value != null)

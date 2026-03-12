@@ -60,7 +60,7 @@ public sealed class MondayTaskProvider(
         })];
     }
 
-    public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string projectId, string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(accessToken);
 

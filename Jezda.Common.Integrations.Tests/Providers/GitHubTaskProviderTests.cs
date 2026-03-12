@@ -82,7 +82,7 @@ public class GitHubTaskProviderTests
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, issues);
 
-        var result = await _provider.GetTasksAsync("owner/repo", "token");
+        var result = await _provider.GetTasksAsync("token", "owner/repo");
 
         Assert.Equal(2, result.Count);
         Assert.Equal("1", result[0].Id);

@@ -82,7 +82,7 @@ public class TrelloTaskProviderTests
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, cards);
 
-        var result = await _provider.GetTasksAsync("board1", "key:token");
+        var result = await _provider.GetTasksAsync("key:token", "board1");
 
         Assert.Equal(2, result.Count);
         Assert.Equal("card1", result[0].Id);
