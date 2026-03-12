@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Jezda.Common.Integrations.Jira.Models;
 
-public class JiraProject
+public sealed class JiraProject
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
@@ -17,7 +17,7 @@ public class JiraProject
     public string? ProjectTypeKey { get; set; }
 }
 
-public class JiraIssue
+public sealed class JiraIssue
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
@@ -29,7 +29,7 @@ public class JiraIssue
     public JiraIssueFields? Fields { get; set; }
 }
 
-public class JiraIssueFields
+public sealed class JiraIssueFields
 {
     [JsonPropertyName("summary")]
     public string Summary { get; set; } = string.Empty;
@@ -44,19 +44,19 @@ public class JiraIssueFields
     public JiraPriority? Priority { get; set; }
 }
 
-public class JiraStatus
+public sealed class JiraStatus
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 }
 
-public class JiraPriority
+public sealed class JiraPriority
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 }
 
-public class JiraSearchRequest
+public sealed class JiraSearchRequest
 {
     [JsonPropertyName("jql")]
     public string Jql { get; set; } = string.Empty;
@@ -71,7 +71,7 @@ public class JiraSearchRequest
     public string[] Fields { get; set; } = [];
 }
 
-public class JiraSearchResponse
+public sealed class JiraSearchResponse
 {
     [JsonPropertyName("startAt")]
     public int StartAt { get; set; }

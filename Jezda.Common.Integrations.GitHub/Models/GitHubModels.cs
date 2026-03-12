@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Jezda.Common.Integrations.GitHub.Models;
 
-public class GitHubRepository
+public sealed class GitHubRepository
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -26,7 +26,7 @@ public class GitHubRepository
     public GitHubUser? Owner { get; set; }
 }
 
-public class GitHubIssue
+public sealed class GitHubIssue
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -50,7 +50,7 @@ public class GitHubIssue
     public DateTimeOffset CreatedAt { get; set; }
 }
 
-public class GitHubUser
+public sealed class GitHubUser
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
