@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Jezda.Common.Integrations.AzureDevOps;
 
-public class AzureDevOpsClient(
+public sealed class AzureDevOpsClient(
     HttpClient httpClient,
     IOptions<AzureDevOpsOptions> options,
     ILogger<AzureDevOpsClient> logger) : BaseIntegrationClient(httpClient, logger), IAzureDevOpsClient

@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Jezda.Common.Integrations.AzureDevOps.Models;
 
-public class AdoWorkItem
+public sealed class AdoWorkItem
 {
     [JsonPropertyName("id")]
     public int Id { get; set; }
@@ -12,21 +12,21 @@ public class AdoWorkItem
 
     [JsonPropertyName("fields")]
     public Dictionary<string, object> Fields { get; set; } = new();
-    
+
     // Helper property to safely get title
     public string Title => Fields.TryGetValue("System.Title", out var title) ? title?.ToString() ?? string.Empty : string.Empty;
-    
+
     // Helper property to safely get state
     public string State => Fields.TryGetValue("System.State", out var state) ? state?.ToString() ?? string.Empty : string.Empty;
 }
 
-public class AdoWiqlRequest
+public sealed class AdoWiqlRequest
 {
     [JsonPropertyName("query")]
     public string Query { get; set; } = string.Empty;
 }
 
-public class AdoWiqlResponse
+public sealed class AdoWiqlResponse
 {
     [JsonPropertyName("queryType")]
     public string? QueryType { get; set; }
@@ -35,7 +35,7 @@ public class AdoWiqlResponse
     public List<AdoWorkItemReference> WorkItems { get; set; } = new();
 }
 
-public class AdoWorkItemReference
+public sealed class AdoWorkItemReference
 {
     [JsonPropertyName("id")]
     public int Id { get; set; }
@@ -44,7 +44,7 @@ public class AdoWorkItemReference
     public string? Url { get; set; }
 }
 
-public class AdoWorkItemListResponse
+public sealed class AdoWorkItemListResponse
 {
     [JsonPropertyName("count")]
     public int Count { get; set; }
@@ -53,7 +53,7 @@ public class AdoWorkItemListResponse
     public List<AdoWorkItem> Value { get; set; } = new();
 }
 
-public class AdoWorkItemUpdatesResponse
+public sealed class AdoWorkItemUpdatesResponse
 {
     [JsonPropertyName("count")]
     public int Count { get; set; }
@@ -62,7 +62,7 @@ public class AdoWorkItemUpdatesResponse
     public List<AdoWorkItemUpdate> Value { get; set; } = new();
 }
 
-public class AdoWorkItemUpdate
+public sealed class AdoWorkItemUpdate
 {
     [JsonPropertyName("id")]
     public int Id { get; set; }
@@ -80,7 +80,7 @@ public class AdoWorkItemUpdate
     public Dictionary<string, AdoFieldChange> Fields { get; set; } = new();
 }
 
-public class AdoFieldChange
+public sealed class AdoFieldChange
 {
     [JsonPropertyName("oldValue")]
     public object? OldValue { get; set; }
@@ -89,7 +89,7 @@ public class AdoFieldChange
     public object? NewValue { get; set; }
 }
 
-public class AdoIdentity
+public sealed class AdoIdentity
 {
     [JsonPropertyName("id")]
     public string? Id { get; set; }
@@ -101,7 +101,7 @@ public class AdoIdentity
     public string? UniqueName { get; set; }
 }
 
-public class AdoWorkLogEntry
+public sealed class AdoWorkLogEntry
 {
     public int WorkItemId { get; set; }
 
@@ -116,7 +116,7 @@ public class AdoWorkLogEntry
     public DateTimeOffset LoggedAt { get; set; }
 }
 
-public class JsonPatchOperation
+public sealed class JsonPatchOperation
 {
     [JsonPropertyName("op")]
     public string Op { get; set; } = "add";
@@ -128,7 +128,7 @@ public class JsonPatchOperation
     public object? Value { get; set; }
 }
 
-public class AdoProjectListResponse
+public sealed class AdoProjectListResponse
 {
     [JsonPropertyName("count")]
     public int Count { get; set; }
@@ -137,7 +137,7 @@ public class AdoProjectListResponse
     public List<AdoProject> Value { get; set; } = new();
 }
 
-public class AdoProject
+public sealed class AdoProject
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;

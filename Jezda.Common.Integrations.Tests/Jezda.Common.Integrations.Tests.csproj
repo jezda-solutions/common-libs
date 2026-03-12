@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jezda.Common.Integrations.Abstractions\Jezda.Common.Integrations.Abstractions.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Integrations.GitHub\Jezda.Common.Integrations.GitHub.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Integrations.Jira\Jezda.Common.Integrations.Jira.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Integrations.AzureDevOps\Jezda.Common.Integrations.AzureDevOps.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Integrations.Trello\Jezda.Common.Integrations.Trello.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Integrations.ClickUp\Jezda.Common.Integrations.ClickUp.csproj" />
+    <ProjectReference Include="..\Jezda.Common.Integrations.Monday\Jezda.Common.Integrations.Monday.csproj" />
+  </ItemGroup>
+
+</Project>
