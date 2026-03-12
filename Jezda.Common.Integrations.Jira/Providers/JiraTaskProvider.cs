@@ -75,7 +75,7 @@ public sealed class JiraTaskProvider(
 
         var searchRequest = new JiraSearchRequest
         {
-            Jql = $"project = {projectId}",
+            Jql = $"project = \"{projectId.Replace("\"", "\\\"")}\"",
             StartAt = 0,
             MaxResults = 50,
             Fields = ["summary", "status"]

@@ -76,9 +76,10 @@ public sealed class AzureDevOpsTaskProvider(
         using var client = CreateClient(accessToken, baseUrl);
 
         // Execute WIQL query to get work item IDs
+        var sanitizedProjectId = projectId.Replace("'", "''");
         var wiqlRequest = new AdoWiqlRequest
         {
-            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{projectId}' AND [System.State] <> 'Removed' ORDER BY [System.Id] DESC"
+            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{sanitizedProjectId}' AND [System.State] <> 'Removed' ORDER BY [System.Id] DESC"
         };
 
         var wiqlResponse = await client.PostAsJsonAsync(
