@@ -60,7 +60,7 @@ public sealed class GitHubTaskProvider(
     {
         using var client = CreateClient(accessToken);
 
-        var url = $"repos/{projectId}/issues?state=open";
+        var url = $"repos/{projectId}/issues?state=all&per_page=100";
         var issues = await client.GetFromJsonAsync<List<GitHubIssue>>(url, JsonOptions, cancellationToken)
                      ?? [];
 
