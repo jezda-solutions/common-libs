@@ -101,9 +101,10 @@ public class GitHubTaskProviderTests
         await _provider.GetTasksAsync("token", "owner/repo");
 
         var requestUri = _handler.SentRequests[0].RequestUri!;
-        var query = requestUri.Query;
-        Assert.Contains("state=all", query);
-        Assert.Contains("per_page=100", query);
+        var queryParams = requestUri.Query.TrimStart('?').Split('&')
+            .ToDictionary(s => s.Split('=')[0], s => s.Split('=')[1]);
+        Assert.Equal("all", queryParams["state"]);
+        Assert.Equal("100", queryParams["per_page"]);
         Assert.Contains("repos/owner/repo/issues", requestUri.AbsolutePath);
     }
 }
