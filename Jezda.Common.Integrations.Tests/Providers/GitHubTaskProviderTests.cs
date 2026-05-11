@@ -73,12 +73,12 @@ public class GitHubTaskProviderTests
     }
 
     [Fact]
-    public async Task GetTasksAsync_ReturnsExternalTaskDtos()
+    public async Task GetTasksAsync_ReturnsOpenAndClosedTaskDtos()
     {
         var issues = new[]
         {
             new { id = 100L, number = 1, title = "Bug fix", state = "open", html_url = "https://github.com/owner/repo/issues/1" },
-            new { id = 101L, number = 2, title = "Feature request", state = "open", html_url = "https://github.com/owner/repo/issues/2" }
+            new { id = 101L, number = 2, title = "Done feature", state = "closed", html_url = "https://github.com/owner/repo/issues/2" }
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, issues);
 
@@ -90,5 +90,21 @@ public class GitHubTaskProviderTests
         Assert.Equal("open", result[0].Status);
         Assert.Equal("owner/repo", result[0].ProjectId);
         Assert.Equal(ExternalProvider.GitHub, result[0].Provider);
+        Assert.Equal("closed", result[1].Status);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_RequestsAllStatesWithMaxPageSize()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Array.Empty<object>());
+
+        await _provider.GetTasksAsync("token", "owner/repo");
+
+        var requestUri = _handler.SentRequests[0].RequestUri!;
+        var queryParams = requestUri.Query.TrimStart('?').Split('&')
+            .ToDictionary(s => s.Split('=')[0], s => s.Split('=')[1]);
+        Assert.Equal("all", queryParams["state"]);
+        Assert.Equal("100", queryParams["per_page"]);
+        Assert.Contains("repos/owner/repo/issues", requestUri.AbsolutePath);
     }
 }

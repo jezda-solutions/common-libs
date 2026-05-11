@@ -60,11 +60,21 @@ public sealed class GitHubTaskProvider(
     {
         using var client = CreateClient(accessToken);
 
-        var url = $"repos/{projectId}/issues?state=open";
-        var issues = await client.GetFromJsonAsync<List<GitHubIssue>>(url, JsonOptions, cancellationToken)
-                     ?? [];
+        var allIssues = new List<GitHubIssue>();
+        string? url = $"repos/{projectId}/issues?state=all&per_page=100";
 
-        return [.. issues.Select(i => new ExternalTaskDto
+        while (url is not null)
+        {
+            var response = await client.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var page = await response.Content.ReadFromJsonAsync<List<GitHubIssue>>(JsonOptions, cancellationToken) ?? [];
+            allIssues.AddRange(page);
+
+            url = GetNextPageUrl(response);
+        }
+
+        return [.. allIssues.Select(i => new ExternalTaskDto
         {
             Id = i.Number.ToString(),
             Title = i.Title,
@@ -73,6 +83,26 @@ public sealed class GitHubTaskProvider(
             ProjectId = projectId,
             Provider = ExternalProvider.GitHub
         })];
+    }
+
+    private static string? GetNextPageUrl(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Link", out var linkValues))
+            return null;
+
+        var link = linkValues.FirstOrDefault();
+        if (link is null) return null;
+
+        foreach (var part in link.Split(','))
+        {
+            var trimmed = part.Trim();
+            if (!trimmed.Contains("rel=\"next\"")) continue;
+
+            var urlPart = trimmed.Split(';')[0].Trim();
+            return urlPart.TrimStart('<').TrimEnd('>');
+        }
+
+        return null;
     }
 
     private HttpClient CreateClient(string accessToken)
