@@ -48,6 +48,17 @@ public sealed class GitHubIssue
 
     [JsonPropertyName("created_at")]
     public DateTimeOffset CreatedAt { get; set; }
+
+    // Present only when this item is a pull request. GitHub's issues endpoint
+    // returns PRs alongside issues; a non-null value marks the item as a PR.
+    [JsonPropertyName("pull_request")]
+    public GitHubPullRequestRef? PullRequest { get; set; }
+}
+
+public sealed class GitHubPullRequestRef
+{
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
 }
 
 public sealed class GitHubUser
