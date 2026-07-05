@@ -215,4 +215,3 @@ All projects target **.NET 10.0** with nullable reference types enabled.
 - This is a shared library repository - avoid adding application-specific logic
 - All code should be generic and reusable across multiple microservices
 - Consider backward compatibility when modifying existing public APIs
-- The `nuget.config` file contains GitHub Packages feed configuration (note: contains credentials - should be gitignored in production)
