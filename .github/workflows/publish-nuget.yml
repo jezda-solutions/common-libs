@@ -77,5 +77,5 @@ jobs:
       - name: Push packages to NuGet.org
         run: |
           for pkg in ./nupkgs/*.nupkg; do
-            dotnet nuget push "$pkg" --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+            dotnet nuget push "$pkg" --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
           done

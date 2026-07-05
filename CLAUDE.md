@@ -84,11 +84,11 @@ dotnet pack Jezda.Common.Abstractions/Jezda.Common.Abstractions.csproj --configu
 GitHub Actions workflow (`.github/workflows/publish-nuget.yml`) handles automated publishing:
 - Triggered by version tags (e.g., `v1.0.0`) or manual workflow dispatch
 - Builds all projects, packs them, and publishes to NuGet.org
-- Uses `NUGET_API_KEY` secret
+- Authenticates via [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) (OIDC): `NuGet/login@v1` exchanges the GitHub OIDC token for a short-lived API key — no long-lived key secret. Requires the Trusted Publishing policy on nuget.org (repo `jezda-solutions/common-libs`, workflow `publish-nuget.yml`) and the `NUGET_USER` secret (nuget.org profile name)
 
-Manual publishing using the PowerShell script:
-```powershell
-./push-nuget-packages.ps1
+Manual/re-run publishing goes through the same workflow (no local API keys):
+```bash
+gh workflow run publish-nuget.yml -f version=1.2.3
 ```
 
 ## Architecture Patterns
