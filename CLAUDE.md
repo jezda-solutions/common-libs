@@ -205,9 +205,9 @@ All projects target **.NET 10.0** with nullable reference types enabled.
 - GitHub Actions workflow extracts version from git tags (v1.0.0 format)
 
 ### Git Workflow
-- Main branch: `master`
-- Development branch: `dev`
-- When creating PRs, target the `master` branch by default
+- Single long-lived branch: `master` (the `dev` branch was retired in July 2026)
+- All work goes through feature/fix branches with PRs targeting `master`
+- Releases are cut by pushing a version tag (`v1.2.3`) to `master`, which triggers the NuGet publish workflow
 
 ## Notes
 
