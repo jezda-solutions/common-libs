@@ -1103,10 +1103,10 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
 
     /// <summary>
     /// Updates all entities matching the predicate in a single database operation.
-    /// Uses ExecuteUpdateAsync (EF Core 7+) for optimal performance.
+    /// Uses ExecuteUpdateAsync with the EF Core 10 <see cref="UpdateSettersBuilder{TSource}"/> API.
     /// </summary>
     /// <param name="where">The filter predicate</param>
-    /// <param name="setters">The property setters expression</param>
+    /// <param name="setters">The property setters action (plain lambda, not an expression tree)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The number of entities updated</returns>
     /// <remarks>
@@ -1132,7 +1132,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     /// </remarks>
     public virtual async Task<int> UpdateWhereAsync(
         Expression<Func<T, bool>> where,
-        Expression<Func<SetPropertyCalls<T>, SetPropertyCalls<T>>> setters,
+        Action<UpdateSettersBuilder<T>> setters,
         CancellationToken cancellationToken = default)
     {
         return await _dbSet.Where(where).ExecuteUpdateAsync(setters, cancellationToken);

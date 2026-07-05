@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 9.0 libraries published as NuGet packages to support microservices architecture. The solution contains 5 packages organized as a monorepo.
+This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 10.0 libraries published as NuGet packages to support microservices architecture. The solution contains 15 packages organized as a monorepo (the 5 core packages described below, plus Jezda.Common.Contracts, Jezda.Common.Files, and the Jezda.Common.Integrations.* family), along with 3 test projects.
 
 ## Project Structure
 
@@ -170,7 +170,7 @@ await unitOfWork.SaveChangesAsync();
 ## Key Conventions
 
 ### Target Framework
-All projects target **.NET 9.0** with nullable reference types enabled.
+All projects target **.NET 10.0** with nullable reference types enabled.
 
 ### NuGet Package Configuration
 - All projects have `GeneratePackageOnBuild` set to true
@@ -179,10 +179,11 @@ All projects target **.NET 9.0** with nullable reference types enabled.
 - Repository URL: https://github.com/jezda-solutions/jezda-common-libs
 
 ### Dependencies
-- Entity Framework Core 9.0.8
+- Entity Framework Core 10.0.9
 - Hangfire 1.8.21 + Hangfire.PostgreSql 1.20.12 (in Extensions)
 - FastEndpoints 7.0.1 (in Domain for query binding)
-- Npgsql 9.0.3 (in Extensions)
+- Npgsql 10.0.3 (in Extensions)
+- Newtonsoft.Json 13.0.4 (in Extensions — security pin; Hangfire.PostgreSql transitively pulls a vulnerable 11.0.1)
 
 ### Naming
 - Projects: `Jezda.Common.[Purpose]`
@@ -205,9 +206,9 @@ All projects target **.NET 9.0** with nullable reference types enabled.
 - GitHub Actions workflow extracts version from git tags (v1.0.0 format)
 
 ### Git Workflow
-- Main branch: `master`
-- Development branch: `dev`
-- When creating PRs, target the `master` branch by default
+- Single long-lived branch: `master` (the `dev` branch was retired in July 2026)
+- All work goes through feature/fix branches with PRs targeting `master`
+- Releases are cut by pushing a version tag (`v1.2.3`) to `master`, which triggers the NuGet publish workflow
 
 ## Notes
 
