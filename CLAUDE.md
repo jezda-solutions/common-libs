@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 9.0 libraries published as NuGet packages to support microservices architecture. The solution contains 5 packages organized as a monorepo.
+This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 10.0 libraries published as NuGet packages to support microservices architecture. The solution contains 5 packages organized as a monorepo.
 
 ## Project Structure
 
@@ -170,7 +170,7 @@ await unitOfWork.SaveChangesAsync();
 ## Key Conventions
 
 ### Target Framework
-All projects target **.NET 9.0** with nullable reference types enabled.
+All projects target **.NET 10.0** with nullable reference types enabled.
 
 ### NuGet Package Configuration
 - All projects have `GeneratePackageOnBuild` set to true
@@ -179,10 +179,10 @@ All projects target **.NET 9.0** with nullable reference types enabled.
 - Repository URL: https://github.com/jezda-solutions/jezda-common-libs
 
 ### Dependencies
-- Entity Framework Core 9.0.8
+- Entity Framework Core 10.0.9
 - Hangfire 1.8.21 + Hangfire.PostgreSql 1.20.12 (in Extensions)
 - FastEndpoints 7.0.1 (in Domain for query binding)
-- Npgsql 9.0.3 (in Extensions)
+- Npgsql 10.0.3 (in Extensions)
 
 ### Naming
 - Projects: `Jezda.Common.[Purpose]`

@@ -381,7 +381,7 @@ public interface IGenericRepository<T> where T : class
     /// </summary>
     Task<int> UpdateWhereAsync(
         Expression<Func<T, bool>> where,
-        Expression<Func<SetPropertyCalls<T>, SetPropertyCalls<T>>> setters,
+        Action<UpdateSettersBuilder<T>> setters,
         CancellationToken cancellationToken = default);
 
     #endregion

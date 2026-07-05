@@ -1132,7 +1132,7 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
     /// </remarks>
     public virtual async Task<int> UpdateWhereAsync(
         Expression<Func<T, bool>> where,
-        Expression<Func<SetPropertyCalls<T>, SetPropertyCalls<T>>> setters,
+        Action<UpdateSettersBuilder<T>> setters,
         CancellationToken cancellationToken = default)
     {
         return await _dbSet.Where(where).ExecuteUpdateAsync(setters, cancellationToken);
