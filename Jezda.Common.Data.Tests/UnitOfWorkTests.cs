@@ -20,11 +20,13 @@ public class UnitOfWorkTests : SqliteTestBase
     [Fact]
     public async Task Transaction_Commit_PersistsChanges()
     {
-        await using var transaction = await UnitOfWork.BeginTransactionAsync();
+        await using (await UnitOfWork.BeginTransactionAsync())
+        {
+            Context.Products.Add(new Product { Id = Guid.NewGuid(), Name = "Committed", Price = 1m });
+            await UnitOfWork.SaveChangesAsync();
+            await UnitOfWork.CommitTransactionAsync();
+        }
 
-        Context.Products.Add(new Product { Id = Guid.NewGuid(), Name = "Committed", Price = 1m });
-        await UnitOfWork.SaveChangesAsync();
-        await UnitOfWork.CommitTransactionAsync();
         Context.ChangeTracker.Clear();
 
         var all = await Repository.GetAsNoTrackingAsync();
@@ -35,7 +37,7 @@ public class UnitOfWorkTests : SqliteTestBase
     [Fact]
     public async Task Transaction_Rollback_DiscardsChanges()
     {
-        await using (var transaction = await UnitOfWork.BeginTransactionAsync())
+        await using (await UnitOfWork.BeginTransactionAsync())
         {
             Context.Products.Add(new Product { Id = Guid.NewGuid(), Name = "Discarded", Price = 1m });
             await UnitOfWork.SaveChangesAsync();

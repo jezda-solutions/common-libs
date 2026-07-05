@@ -377,7 +377,8 @@ public interface IGenericRepository<T> where T : class
 
     /// <summary>
     /// Updates all entities matching the predicate in a single database operation.
-    /// Uses ExecuteUpdateAsync (EF Core 7+) for optimal performance.
+    /// Uses ExecuteUpdateAsync with the EF Core 10 <see cref="UpdateSettersBuilder{TSource}"/> API:
+    /// setters are a plain action (e.g. <c>s => s.SetProperty(x => x.IsActive, false)</c>), not an expression tree.
     /// </summary>
     Task<int> UpdateWhereAsync(
         Expression<Func<T, bool>> where,

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 10.0 libraries published as NuGet packages to support microservices architecture. The solution contains 5 packages organized as a monorepo.
+This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 10.0 libraries published as NuGet packages to support microservices architecture. The solution contains 15 packages organized as a monorepo (the 5 core packages described below, plus Jezda.Common.Contracts, Jezda.Common.Files, and the Jezda.Common.Integrations.* family), along with 3 test projects.
 
 ## Project Structure
 
@@ -183,6 +183,7 @@ All projects target **.NET 10.0** with nullable reference types enabled.
 - Hangfire 1.8.21 + Hangfire.PostgreSql 1.20.12 (in Extensions)
 - FastEndpoints 7.0.1 (in Domain for query binding)
 - Npgsql 10.0.3 (in Extensions)
+- Newtonsoft.Json 13.0.4 (in Extensions — security pin; Hangfire.PostgreSql transitively pulls a vulnerable 11.0.1)
 
 ### Naming
 - Projects: `Jezda.Common.[Purpose]`

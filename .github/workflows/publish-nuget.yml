@@ -46,7 +46,7 @@ jobs:
         run: dotnet restore
 
       - name: Build solution
-        run: dotnet build --configuration Release
+        run: dotnet build --configuration Release --no-restore
 
       - name: Run tests
         if: ${{ github.event.inputs.skip_tests != 'true' }}
@@ -54,7 +54,7 @@ jobs:
 
       - name: Pack all projects
         run: |
-          for proj in $(find . -name 'Jezda.Common*.csproj'); do
+          for proj in $(find . -name 'Jezda.Common*.csproj' -not -name '*.Tests.csproj'); do
             echo "Packing project: $proj"
             dotnet pack "$proj" --configuration Release -p:PackageVersion=${PACKAGE_VERSION} --output ./nupkgs
           done
