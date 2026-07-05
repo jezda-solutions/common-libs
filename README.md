@@ -520,8 +520,14 @@ dotnet pack --configuration Release
 
 ### Publish to NuGet
 
+Publishing runs exclusively through GitHub Actions using [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) (OIDC, no long-lived API keys):
+
 ```bash
-dotnet nuget push ./Jezda.Common.Data/bin/Release/Jezda.Common.Data.1.0.0.nupkg --source https://api.nuget.org/v3/index.json --api-key YOUR_API_KEY
+# Release: tag master and push the tag
+git tag v1.2.3 && git push origin v1.2.3
+
+# Or re-run/publish manually for a specific version
+gh workflow run publish-nuget.yml -f version=1.2.3
 ```
 
 ## 📖 Additional Documentation
