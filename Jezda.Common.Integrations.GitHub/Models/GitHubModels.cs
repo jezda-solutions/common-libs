@@ -48,6 +48,26 @@ public sealed class GitHubIssue
 
     [JsonPropertyName("created_at")]
     public DateTimeOffset CreatedAt { get; set; }
+
+    // Present only when this item is a pull request. GitHub's issues endpoint
+    // returns PRs alongside issues; a non-null value marks the item as a PR.
+    [JsonPropertyName("pull_request")]
+    public GitHubPullRequestRef? PullRequest { get; set; }
+}
+
+/// <summary>
+/// Present on an item only when it is a pull request.
+/// </summary>
+/// <remarks>
+/// GitHub models a pull request as an issue, so <b>both</b> the plain issues endpoint and issue
+/// search return PRs alongside issues, and a non-null value here is the only thing that
+/// distinguishes them. Shared by <see cref="GitHubIssue"/> and <see cref="GitHubSearchIssue"/>
+/// because the field has the same shape and the same meaning in both payloads.
+/// </remarks>
+public sealed class GitHubPullRequestRef
+{
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
 }
 
 /// <summary>
@@ -86,16 +106,6 @@ public sealed class GitHubSearchIssue
     // here is the only thing that distinguishes them.
     [JsonPropertyName("pull_request")]
     public GitHubPullRequestRef? PullRequest { get; set; }
-}
-
-/// <summary>
-/// Present on a search item only when it is a pull request. GitHub's issue search returns PRs
-/// alongside issues, and a non-null value is what distinguishes them.
-/// </summary>
-public sealed class GitHubPullRequestRef
-{
-    [JsonPropertyName("url")]
-    public string? Url { get; set; }
 }
 
 public sealed class GitHubUser
