@@ -18,6 +18,11 @@ public sealed class AdoWorkItem
 
     // Helper property to safely get state
     public string State => Fields.TryGetValue("System.State", out var state) ? state?.ToString() ?? string.Empty : string.Empty;
+
+    // The owning team project. Needed when the query was not scoped to one project — an
+    // organisation-wide WIQL search returns work items from many, and the project cannot be
+    // inferred from the request. `_apis/wit/workitems?ids=` returns this field by default.
+    public string TeamProject => Fields.TryGetValue("System.TeamProject", out var project) ? project?.ToString() ?? string.Empty : string.Empty;
 }
 
 public sealed class AdoWiqlRequest
