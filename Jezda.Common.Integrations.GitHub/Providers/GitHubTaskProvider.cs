@@ -87,6 +87,93 @@ public sealed class GitHubTaskProvider(
         })];
     }
 
+    /// <summary>
+    /// Searches issues through GitHub's search API — one request instead of the base
+    /// implementation's one-per-repository fan-out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Scope is <c>involves:@me</c>, which is narrower than <see cref="GetTasksAsync"/>.</b> It
+    /// finds issues the token's user opened, was assigned, was mentioned in, or commented on — not
+    /// every issue in every repository they can read, which is what a <c>user/repos</c> fan-out
+    /// covers. GitHub's search requires a scoping qualifier (an unscoped term searches all of
+    /// GitHub), and the alternative — one <c>repo:</c> qualifier per repository, built from
+    /// <c>user/repos</c> — does not fit inside the 256-character query limit for anyone with a
+    /// realistic number of repositories. For the case this exists to serve, picking a task to log
+    /// time against, "issues I am involved in" is the right set; a task nobody has touched yet is
+    /// the known gap.
+    /// </para>
+    /// <para>
+    /// <b>Rate limits are separate and much tighter</b> — the search API allows 30 requests per
+    /// minute for an authenticated user, against 5,000 per hour for the core API. Callers driving
+    /// this from a text field must debounce.
+    /// </para>
+    /// <para>
+    /// <c>ProjectId</c> is derived from each item's <c>repository_url</c> rather than a parameter,
+    /// and must equal the <c>owner/repo</c> full name <see cref="GetProjectsAsync"/> reports as
+    /// <c>ExternalProjectDto.Id</c> — consumers key stored rows on that value, so a different
+    /// spelling here would store a second row for a task they already have.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
+        string accessToken,
+        string searchTerm,
+        int limit = 20,
+        string? baseUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm) || limit <= 0)
+        {
+            return [];
+        }
+
+        using var client = CreateClient(accessToken);
+
+        // `is:issue` is applied server-side by the search index, so `per_page` already pages a
+        // pull-request-free result set and asking for headroom would only transfer rows to discard
+        // — search items carry the full issue payload (body, labels, assignees), several KB each.
+        // The filter below stays as a cheap guard, not as the thing `per_page` is sized around.
+        // 100 is GitHub's per-page maximum.
+        var perPage = Math.Min(limit, 100);
+        var query = Uri.EscapeDataString($"{searchTerm.Trim()} is:issue involves:@me");
+
+        var response = await client.GetFromJsonAsync<GitHubIssueSearchResponse>(
+            $"search/issues?q={query}&per_page={perPage}", JsonOptions, cancellationToken);
+
+        var items = (response?.Items ?? [])
+            .Where(i => i.PullRequest is null)
+            .Take(limit);
+
+        return [.. items.Select(i => new ExternalTaskDto
+        {
+            Id = i.Number.ToString(),
+            Title = i.Title,
+            Status = i.State,
+            Url = i.HtmlUrl,
+            ProjectId = ToFullName(i.RepositoryUrl),
+            Provider = ExternalProvider.GitHub
+        })];
+    }
+
+    /// <summary>
+    /// Turns <c>https://api.github.com/repos/{owner}/{repo}</c> into <c>{owner}/{repo}</c>, the same
+    /// value <see cref="GetProjectsAsync"/> reports from <c>GitHubRepository.FullName</c>.
+    /// </summary>
+    private static string ToFullName(string repositoryUrl)
+    {
+        // Null is the only case the length check below cannot absorb — "" and whitespace both split
+        // into a single segment and fall through to string.Empty on their own.
+        if (repositoryUrl is null)
+        {
+            return string.Empty;
+        }
+
+        var segments = repositoryUrl.TrimEnd('/').Split('/');
+        return segments.Length >= 2
+            ? $"{segments[^2]}/{segments[^1]}"
+            : string.Empty;
+    }
+
     private static string? GetNextPageUrl(HttpResponseMessage response)
     {
         if (!response.Headers.TryGetValues("Link", out var linkValues))

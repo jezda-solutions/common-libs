@@ -13,11 +13,20 @@ public sealed class AdoWorkItem
     [JsonPropertyName("fields")]
     public Dictionary<string, object> Fields { get; set; } = new();
 
-    // Helper property to safely get title
-    public string Title => Fields.TryGetValue("System.Title", out var title) ? title?.ToString() ?? string.Empty : string.Empty;
+    public string Title => Field("System.Title");
 
-    // Helper property to safely get state
-    public string State => Fields.TryGetValue("System.State", out var state) ? state?.ToString() ?? string.Empty : string.Empty;
+    public string State => Field("System.State");
+
+    // The owning team project. Needed when the query was not scoped to one project — an
+    // organisation-wide WIQL search returns work items from many, and the project cannot be
+    // inferred from the request. `_apis/wit/workitems?ids=` returns this field by default.
+    public string TeamProject => Field("System.TeamProject");
+
+    // Azure DevOps returns work item fields as an untyped bag, and which keys are present depends
+    // on the process template and on whether the request narrowed `fields`. Every read is
+    // therefore "absent and null both mean empty".
+    private string Field(string name) =>
+        Fields.TryGetValue(name, out var value) ? value?.ToString() ?? string.Empty : string.Empty;
 }
 
 public sealed class AdoWiqlRequest

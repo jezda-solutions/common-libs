@@ -55,10 +55,57 @@ public sealed class GitHubIssue
     public GitHubPullRequestRef? PullRequest { get; set; }
 }
 
+/// <summary>
+/// Present on an item only when it is a pull request.
+/// </summary>
+/// <remarks>
+/// GitHub models a pull request as an issue, so <b>both</b> the plain issues endpoint and issue
+/// search return PRs alongside issues, and a non-null value here is the only thing that
+/// distinguishes them. Shared by <see cref="GitHubIssue"/> and <see cref="GitHubSearchIssue"/>
+/// because the field has the same shape and the same meaning in both payloads.
+/// </remarks>
 public sealed class GitHubPullRequestRef
 {
     [JsonPropertyName("url")]
     public string? Url { get; set; }
+}
+
+/// <summary>
+/// One page of <c>GET /search/issues</c>. The items are ordinary issues plus a
+/// <c>repository_url</c> the plain issues endpoint does not need to send, because there the
+/// repository was in the request path.
+/// </summary>
+public sealed class GitHubIssueSearchResponse
+{
+    [JsonPropertyName("items")]
+    public List<GitHubSearchIssue> Items { get; set; } = [];
+}
+
+public sealed class GitHubSearchIssue
+{
+    [JsonPropertyName("number")]
+    public int Number { get; set; }
+
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = string.Empty;
+
+    [JsonPropertyName("html_url")]
+    public string HtmlUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// API URL of the owning repository, e.g. <c>https://api.github.com/repos/jezda-solutions/serp</c>.
+    /// Its last two segments are the <c>owner/repo</c> full name.
+    /// </summary>
+    [JsonPropertyName("repository_url")]
+    public string RepositoryUrl { get; set; } = string.Empty;
+
+    // GitHub models a pull request as an issue, so issue search returns both. A non-null value
+    // here is the only thing that distinguishes them.
+    [JsonPropertyName("pull_request")]
+    public GitHubPullRequestRef? PullRequest { get; set; }
 }
 
 public sealed class GitHubUser
