@@ -76,24 +76,17 @@ public class FallbackSearchTests
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task BlankTerm_ReturnsEmptyWithoutTouchingTheProvider(string term)
+    [InlineData("", 20)]
+    [InlineData("   ", 20)]
+    [InlineData("match", 0)]
+    [InlineData("match", -1)]
+    public async Task NothingToSearchFor_ReturnsEmptyWithoutTouchingTheProvider(string term, int limit)
     {
-        var provider = new FakeProvider(projects: ["alpha"], tasksByProject: new() { ["alpha"] = [("1", "anything")] });
-
-        var result = await ((IExternalTaskProvider)provider).SearchTasksAsync("token", term);
-
-        Assert.Empty(result);
-        Assert.False(provider.ProjectsRequested);
-    }
-
-    [Fact]
-    public async Task NonPositiveLimit_ReturnsEmptyWithoutTouchingTheProvider()
-    {
+        // A blank term must never become "every task in the account" — that is the enumeration this
+        // whole route exists to stop doing.
         var provider = new FakeProvider(projects: ["alpha"], tasksByProject: new() { ["alpha"] = [("1", "match")] });
 
-        var result = await ((IExternalTaskProvider)provider).SearchTasksAsync("token", "match", limit: 0);
+        var result = await ((IExternalTaskProvider)provider).SearchTasksAsync("token", term, limit);
 
         Assert.Empty(result);
         Assert.False(provider.ProjectsRequested);

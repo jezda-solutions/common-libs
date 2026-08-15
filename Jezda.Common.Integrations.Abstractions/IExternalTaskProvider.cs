@@ -33,15 +33,25 @@ public interface IExternalTaskProvider
     /// round trip per project and far too slow to sit behind a keystroke.
     /// </para>
     /// <para>
-    /// <b>The default implementation is that slow fan-out.</b> It is correct for every provider and
-    /// keeps implementors that have nothing better compiling and working, but it costs
-    /// <c>1 + N</c> requests and filters in memory. Any provider whose API can search server-side
-    /// should override it; <c>GitHubTaskProvider</c> and <c>AzureDevOpsTaskProvider</c> do.
+    /// <b>The default implementation is that slow fan-out.</b> It keeps implementors that have
+    /// nothing better compiling and working, but it costs <c>1 + N</c> requests and filters in
+    /// memory. Any provider whose API can search server-side should override it;
+    /// <c>GitHubTaskProvider</c> and <c>AzureDevOpsTaskProvider</c> do.
     /// </para>
     /// <para>
-    /// Matching is case-insensitive on <see cref="ExternalTaskDto.Title"/> and
-    /// <see cref="ExternalTaskDto.Id"/>. An override may match more (labels, description, assignee)
-    /// but must not match less, or the picker will behave differently per provider.
+    /// <b>The fallback is best-effort, not exhaustive.</b> It can only see what
+    /// <see cref="GetTasksAsync"/> returns, and several providers return a truncated first page
+    /// there — Jira caps at 50 issues per project with no <c>startAt</c> loop, ClickUp and Monday
+    /// take their API defaults. A task past that cut is simply not found, and the caller cannot
+    /// tell that apart from "no such task". Overriding with a native search is the fix; paging
+    /// <see cref="GetTasksAsync"/> is the other.
+    /// </para>
+    /// <para>
+    /// Matching in the fallback is case-insensitive on <see cref="ExternalTaskDto.Title"/> and
+    /// <see cref="ExternalTaskDto.Id"/>. An override may match more (labels, description,
+    /// assignee), and may match less where the provider's API leaves no choice — GitHub scopes to
+    /// <c>involves:@me</c>, Azure DevOps matches title only. A narrower scope must be documented on
+    /// the override, because the picker then behaves differently per provider.
     /// </para>
     /// </remarks>
     /// <param name="searchTerm">

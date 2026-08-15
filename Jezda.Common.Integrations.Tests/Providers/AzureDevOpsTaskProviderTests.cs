@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
@@ -151,7 +152,11 @@ public class AzureDevOpsTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { queryType = "flat", workItems = Array.Empty<object>() });
 
-        await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+        // Through the interface on purpose: SearchTasksAsync is a default interface implementation
+        // that this class overrides implicitly, with no `override` keyword and no diagnostic if the
+        // signature drifts. Calling the concrete method would keep passing after the override had
+        // silently stopped implementing the interface member.
+        await ((IExternalTaskProvider)_provider).SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
         // No project segment in the path and no [System.TeamProject] in the WHERE clause: that is
         // what makes this organisation-wide rather than one query per project. The "myorg" segment
@@ -164,6 +169,68 @@ public class AzureDevOpsTaskProviderTests
         Assert.Contains("[System.Title] CONTAINS 'webhook'", wiql);
         Assert.Contains("[System.State] <> 'Removed'", wiql);
         Assert.DoesNotContain("System.TeamProject", wiql);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_BoundsTheIdQueryServerSide()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { queryType = "flat", workItems = Array.Empty<object>() });
+
+        await _provider.SearchTasksAsync("my-pat", "webhook", limit: 5, baseUrl: "https://dev.azure.com/myorg/");
+
+        // Without TOP, a common term against a large organisation returns thousands of refs that
+        // are fetched, parsed, and then thrown away by the Take below.
+        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
+        Assert.Contains("SELECT TOP 5 [System.Id]", wiql);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_RestoresTheQueryOrderAfterTheDetailsBatch()
+    {
+        // WIQL sorts newest-changed first; `workitems?ids=` does not contract to answer in the
+        // order the ids were supplied. Here it answers in the opposite order.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[]
+            {
+                new { id = 9, url = "https://dev.azure.com/myorg/_apis/wit/workItems/9" },
+                new { id = 3, url = "https://dev.azure.com/myorg/_apis/wit/workItems/3" }
+            }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            count = 2,
+            value = new object[]
+            {
+                new
+                {
+                    id = 3,
+                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/3",
+                    fields = new Dictionary<string, object>
+                    {
+                        ["System.Title"] = "Older",
+                        ["System.State"] = "Active",
+                        ["System.TeamProject"] = "Platform"
+                    }
+                },
+                new
+                {
+                    id = 9,
+                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/9",
+                    fields = new Dictionary<string, object>
+                    {
+                        ["System.Title"] = "Newest",
+                        ["System.State"] = "Active",
+                        ["System.TeamProject"] = "Platform"
+                    }
+                }
+            }
+        });
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["9", "3"], result.Select(t => t.Id));
     }
 
     [Fact]

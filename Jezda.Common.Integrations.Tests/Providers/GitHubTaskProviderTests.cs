@@ -1,4 +1,5 @@
 using System.Net;
+using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.GitHub.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
@@ -113,7 +114,12 @@ public class GitHubTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { total_count = 0, items = Array.Empty<object>() });
 
-        await _provider.SearchTasksAsync("token", "webhook");
+        // Deliberately called through the interface. SearchTasksAsync is a default interface
+        // implementation that this class overrides implicitly — there is no `override` keyword and
+        // no compiler diagnostic, so if the interface signature ever changes the concrete method
+        // silently stops implementing it and every caller falls back to the fan-out. Through the
+        // interface, the single-request assertion below is what catches that.
+        await ((IExternalTaskProvider)_provider).SearchTasksAsync("token", "webhook");
 
         // The whole point of the override: one call, not GetProjects + GetTasks per repository.
         Assert.Single(_handler.SentRequests);

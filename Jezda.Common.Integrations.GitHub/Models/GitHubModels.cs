@@ -57,9 +57,6 @@ public sealed class GitHubIssue
 /// </summary>
 public sealed class GitHubIssueSearchResponse
 {
-    [JsonPropertyName("total_count")]
-    public int TotalCount { get; set; }
-
     [JsonPropertyName("items")]
     public List<GitHubSearchIssue> Items { get; set; } = [];
 }
@@ -85,7 +82,8 @@ public sealed class GitHubSearchIssue
     [JsonPropertyName("repository_url")]
     public string RepositoryUrl { get; set; } = string.Empty;
 
-    // Same meaning as on GitHubIssue: non-null marks the item as a pull request.
+    // GitHub models a pull request as an issue, so issue search returns both. A non-null value
+    // here is the only thing that distinguishes them.
     [JsonPropertyName("pull_request")]
     public GitHubPullRequestRef? PullRequest { get; set; }
 }

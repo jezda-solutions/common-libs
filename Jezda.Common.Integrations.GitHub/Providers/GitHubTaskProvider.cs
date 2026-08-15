@@ -127,9 +127,12 @@ public sealed class GitHubTaskProvider(
 
         using var client = CreateClient(accessToken);
 
-        // GitHub counts `per_page` before `is:issue` filtering is visible to us, and we drop pull
-        // requests below, so ask for headroom and trim after. 100 is GitHub's per-page maximum.
-        var perPage = Math.Min(limit * 2, 100);
+        // `is:issue` is applied server-side by the search index, so `per_page` already pages a
+        // pull-request-free result set and asking for headroom would only transfer rows to discard
+        // — search items carry the full issue payload (body, labels, assignees), several KB each.
+        // The filter below stays as a cheap guard, not as the thing `per_page` is sized around.
+        // 100 is GitHub's per-page maximum.
+        var perPage = Math.Min(limit, 100);
         var query = Uri.EscapeDataString($"{searchTerm.Trim()} is:issue involves:@me");
 
         var response = await client.GetFromJsonAsync<GitHubIssueSearchResponse>(
@@ -156,7 +159,9 @@ public sealed class GitHubTaskProvider(
     /// </summary>
     private static string ToFullName(string repositoryUrl)
     {
-        if (string.IsNullOrWhiteSpace(repositoryUrl))
+        // Null is the only case the length check below cannot absorb — "" and whitespace both split
+        // into a single segment and fall through to string.Empty on their own.
+        if (repositoryUrl is null)
         {
             return string.Empty;
         }
