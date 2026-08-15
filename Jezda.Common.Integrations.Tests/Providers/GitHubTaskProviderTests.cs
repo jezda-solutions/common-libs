@@ -94,6 +94,23 @@ public class GitHubTaskProviderTests
     }
 
     [Fact]
+    public async Task GetTasksAsync_ExcludesPullRequests()
+    {
+        var items = new object[]
+        {
+            new { id = 100L, number = 1, title = "Real issue", state = "open", html_url = "https://github.com/owner/repo/issues/1" },
+            new { id = 101L, number = 2, title = "A pull request", state = "open", html_url = "https://github.com/owner/repo/pull/2", pull_request = new { url = "https://api.github.com/repos/owner/repo/pulls/2" } }
+        };
+        _handler.EnqueueResponse(HttpStatusCode.OK, items);
+
+        var result = await _provider.GetTasksAsync("token", "owner/repo");
+
+        Assert.Single(result);
+        Assert.Equal("1", result[0].Id);
+        Assert.Equal("Real issue", result[0].Title);
+    }
+
+    [Fact]
     public async Task GetTasksAsync_RequestsAllStatesWithMaxPageSize()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Array.Empty<object>());

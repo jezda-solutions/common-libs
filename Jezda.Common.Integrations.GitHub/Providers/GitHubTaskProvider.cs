@@ -74,7 +74,9 @@ public sealed class GitHubTaskProvider(
             url = GetNextPageUrl(response);
         }
 
-        return [.. allIssues.Select(i => new ExternalTaskDto
+        return [.. allIssues
+            .Where(i => i.PullRequest is null) // GitHub's issues endpoint returns PRs too — keep only real issues
+            .Select(i => new ExternalTaskDto
         {
             Id = i.Number.ToString(),
             Title = i.Title,
