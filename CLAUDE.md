@@ -2,16 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Class-by-class inventories are left out — read the package directories for those. What follows
+is the layering, the conventions, and the EF Core tracking rules that have caused real bugs.
+
 ## Project Overview
 
-This is **Jezda Solutions Common Libraries** - a collection of reusable .NET 10.0 libraries published as NuGet packages to support microservices architecture. The solution contains 15 packages organized as a monorepo (the 5 core packages described below, plus Jezda.Common.Contracts, Jezda.Common.Files, and the Jezda.Common.Integrations.* family), along with 3 test projects.
+**Jezda Solutions Common Libraries** — reusable .NET 10.0 libraries published as NuGet packages
+for the microservices. 15 packages in one monorepo (the 5 core packages below, plus
+`Jezda.Common.Contracts`, `Jezda.Common.Files` and the `Jezda.Common.Integrations.*` family)
+and 3 test projects.
 
-## Project Structure
+**This is a shared library repo.** No application-specific logic, everything generic and
+reusable, and public API changes have to consider backward compatibility.
 
-The solution follows a layered dependency architecture:
+## Layering
 
 ```
-Jezda.Common.Domain (base layer - no dependencies)
+Jezda.Common.Domain (base layer — no dependencies)
     ↓
 Jezda.Common.Abstractions (depends on Domain)
     ↓
@@ -20,198 +27,102 @@ Jezda.Common.Helpers + Jezda.Common.Extensions (depend on Abstractions + Domain)
 Jezda.Common.Data (depends on Abstractions + Extensions)
 ```
 
-### Package Descriptions
+- **Domain** — base entities (`AuditableBaseEntity<T>` with CreatedBy/CreatedOnUtc/ModifiedBy/
+  ModifiedOnUtc/IsDeleted), `PagingInfo` and `PagedList<T>`, shared enums
+- **Abstractions** — `IGenericRepository<T>`, `IUnitOfWork`, response base types, options
+  classes under `Configuration/Options/`, `IUserContext`, security interfaces
+- **Data** — `GenericRepository<T>` and `UnitOfWork<TContext>`, EF Core implementations. Both
+  are **abstract base classes**, meant to be inherited by concrete types in consumer projects
+- **Extensions** — `PagedListExtensions`, `HangfireExtensions`, `DateTimeExtensions`,
+  `HttpResponseDataExtension`
+- **Helpers** — `DateTimeOffsetHelper`, `EncryptionHelper`, `DisplayMasker`, `StringHelper`,
+  `CurrencyCodeHelper`, `PermissionHelper`, `Identity/`
 
-- **Jezda.Common.Domain**: Base entities, enums, and domain models
-  - `Entities/Base/AuditableBaseEntity<T>`: Base entity with audit fields (CreatedBy, CreatedOnUtc, ModifiedBy, ModifiedOnUtc, IsDeleted)
-  - `Paged/PagingInfo`: Query parameter model for pagination (CurrentPage, PageSize, SortColumn, SortDescending, SearchTerm, GlobalSearch)
-  - `Paged/PagedList<T>`: Paginated result container
-  - `Enums/`: Shared enumerations (CurrencyCode, OrganisationType)
+Adding shared functionality means picking the layer by its dependencies: contracts and
+interfaces to Abstractions, base entities and enums to Domain, EF Core implementations to Data,
+extension methods to Extensions, utilities to Helpers.
 
-- **Jezda.Common.Abstractions**: Interfaces and contracts
-  - `Repositories/IGenericRepository<T>`: Comprehensive repository interface with CRUD, paging, and projection support
-  - `Repositories/IUnitOfWork`: Transaction and change tracking interface
-  - `Responses/`: API response base types (BaseResponse, CodeResponse, IBaseResponse, ICodeResponse)
-  - `Configuration/Options/`: Configuration option classes (HangfireOptions, JwtOptions, NationalityOptions, NexusOptions, GrpcClientConfiguration)
-  - `Identity/IUserContext`: User context abstraction
-  - `Security/`: Security-related interfaces
+## Commands
 
-- **Jezda.Common.Data**: Entity Framework Core implementations
-  - `GenericRepository<T>`: Full implementation of IGenericRepository with EF Core
-  - `UnitOfWork<TContext>`: Transaction management and change tracking implementation
-  - Both are abstract base classes meant to be inherited by concrete implementations in consumer projects
-
-- **Jezda.Common.Extensions**: Extension methods
-  - `PagedListExtensions`: Pagination and filtering extensions (ApplyPagingAndFilteringAsync, ApplyGlobalSearchFilter, ApplySorting)
-  - `HangfireExtensions`: Hangfire job scheduling configuration
-  - `DateTimeExtensions`: DateTime utility methods
-  - `HttpResponseDataExtension`: HTTP response helpers
-
-- **Jezda.Common.Helpers**: Utility classes
-  - `DateTimeOffsetHelper`: Date/time conversion utilities
-  - `EncryptionHelper`: Encryption utilities
-  - `DisplayMasker`: Data masking utilities
-  - `StringHelper`: String manipulation utilities
-  - `CurrencyCodeHelper`: Currency code utilities
-  - `PermissionHelper`: Permission utilities
-  - `Identity/`: Identity-related helper classes
-
-## Common Development Commands
-
-### Build
 ```bash
-dotnet build
-dotnet build --configuration Release
-```
-
-### Restore Dependencies
-```bash
+dotnet build [--configuration Release]
 dotnet restore
-```
 
-### Pack NuGet Packages
-```bash
-# Pack all projects
+# pack all
 for proj in $(find . -name 'Jezda.Common*.csproj'); do
   dotnet pack "$proj" --configuration Release -p:PackageVersion=1.0.0 --output ./nupkgs
 done
 
-# Pack single project
+# pack one
 dotnet pack Jezda.Common.Abstractions/Jezda.Common.Abstractions.csproj --configuration Release -p:PackageVersion=1.0.0
 ```
 
-### Publish to NuGet
-GitHub Actions workflow (`.github/workflows/publish-nuget.yml`) handles automated publishing:
-- Triggered by version tags (e.g., `v1.0.0`) or manual workflow dispatch
-- Builds all projects, packs them, and publishes to NuGet.org
-- Authenticates via [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) (OIDC): `NuGet/login@v1` exchanges the GitHub OIDC token for a short-lived API key — no long-lived key secret. Requires the Trusted Publishing policy on nuget.org (repo `jezda-solutions/common-libs`, workflow `publish-nuget.yml`) and the `NUGET_USER` secret (nuget.org profile name)
+## Publishing
 
-Manual/re-run publishing goes through the same workflow (no local API keys):
+`.github/workflows/publish-nuget.yml` publishes to NuGet.org, triggered by a version tag
+(`v1.0.0`) or manual dispatch. Authentication is
+[NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)
+(OIDC): `NuGet/login@v1` exchanges the GitHub OIDC token for a short-lived API key — **there is
+no long-lived key secret**. Requires the Trusted Publishing policy on nuget.org (repo
+`jezda-solutions/common-libs`, workflow `publish-nuget.yml`) plus the `NUGET_USER` secret.
+
+Re-runs and manual publishes go through the same workflow — **never a local API key**:
+
 ```bash
 gh workflow run publish-nuget.yml -f version=1.2.3
 ```
 
-## Architecture Patterns
+## EF Core Tracking — read before writing an update
 
-### Repository Pattern
-- All repositories inherit from `GenericRepository<T>` (in Jezda.Common.Data)
-- Implement `IGenericRepository<T>` (in Jezda.Common.Abstractions)
-- Key features:
-  - Async-first design with CancellationToken support
-  - Flexible querying with include/projection support
-  - Built-in pagination via `GetPagedItemsAsync` and `GetPagedProjection`
-  - Global and column-specific search capabilities
+This is where the bugs come from. `GenericRepository<T>` behaves differently depending on how
+the entity reached you.
 
-#### Working with Tracked vs Disconnected Entities
+**Tracked** (loaded through the repository): modify properties and save. No `Update()` call.
+For child collections use `ReplaceChildCollection(existing, newItems)` (clear + add).
 
-**CRITICAL**: Understand EF Core tracking behavior to avoid bugs:
+**Disconnected** (mapped from a DTO or API request): EF knows nothing about it, so it must be
+marked explicitly with `UpdateDisconnected(entity)` before `SaveChangesAsync()`. Skip that and
+the save silently does nothing.
 
-**For TRACKED entities** (loaded from repository):
-```csharp
-// Load entity (tracked by default)
-var product = await repository.GetFirstOrDefaultAsync<Product>(
-    where: x => x.Id == id,
-    include: q => q.Include(x => x.ProductCategoryRelations)
-);
+Helpers: `UpdateDisconnected(T)`, `ReplaceChildCollection<TChild>(collection, newItems)`,
+`IsTracked(T)`.
 
-// Simply modify properties - EF tracks changes automatically
-product.Name = "New Name";
+**Projection decides tracking too:** `GetFirstOrDefaultAsync<TProjection>()` and
+`GetPagedProjection<TProjection>()` return a **tracked** entity when `projection` is null, and
+an **untracked, read-only** result when a projection is given. Use the null-projection form
+when you intend to update.
 
-// For child collections, use ReplaceChildCollection helper
-var newRelations = categoryIds.Select(id => new ProductCategoryRelation
-{
-    ProductId = product.Id,
-    CategoryId = id
-});
-repository.ReplaceChildCollection(product.ProductCategoryRelations, newRelations);
+## Repository & Unit of Work
 
-// Save - no need to call Update()!
-await unitOfWork.SaveChangesAsync();
-```
+Repositories inherit `GenericRepository<T>` and implement `IGenericRepository<T>`: async-first
+with `CancellationToken`, include/projection support, pagination via `GetPagedItemsAsync` and
+`GetPagedProjection`, global and column-specific search.
 
-**For DISCONNECTED entities** (from DTOs/API):
-```csharp
-// Entity from DTO mapping
-var product = mapper.Map<Product>(request);
+`UnitOfWork<TContext>` carries transactions (BeginTransaction, Commit, Rollback), change
+tracking (`HasChanges`, `DetachAllEntities`), and implements both `IDisposable` and
+`IAsyncDisposable`.
 
-// Must explicitly mark as modified
-repository.UpdateDisconnected(product);
+## Pagination
 
-await unitOfWork.SaveChangesAsync();
-```
+`PagingInfo` is the query parameter model (**snake_case binding** for FastEndpoints and MVC);
+`PagedList<T>` carries results plus TotalCount, CurrentPage and TotalPages.
+`ApplyPagingAndFilteringAsync` handles global search across properties, column-specific search
+through the SearchTerm dictionary, dynamic sorting by any column, and skip/take.
 
-**Helper Methods:**
-- `UpdateDisconnected(T entity)` - Explicitly update disconnected entities
-- `ReplaceChildCollection<TChild>(collection, newItems)` - Clear + Add pattern for child collections
-- `IsTracked(T entity)` - Check if entity is tracked by context
+## Conventions
 
-### Unit of Work Pattern
-- Inherit from `UnitOfWork<TContext>` where TContext is your DbContext
-- Provides transaction support (BeginTransaction, Commit, Rollback)
-- Change tracking utilities (HasChanges, DetachAllEntities)
-- Implements IDisposable and IAsyncDisposable
+- **.NET 10.0**, nullable reference types enabled, everywhere
+- Projects, packages and namespaces all named `Jezda.Common.[Purpose]`
+- `GeneratePackageOnBuild` is on for every project; package metadata lives in the `.csproj`;
+  MIT licensed; repository URL `https://github.com/jezda-solutions/jezda-common-libs`
+- Versions live in the `.csproj` files (currently 1.0.0). For a release either bump them all or
+  override with `-p:PackageVersion`; the workflow reads the version from the git tag
+- **Newtonsoft.Json is pinned in Extensions as a security pin** — `Hangfire.PostgreSql` pulls a
+  vulnerable transitive version, so do not drop the explicit reference. Other versions
+  (EF Core, Hangfire, FastEndpoints, Npgsql) live in the `.csproj` files
 
-### Pagination
-- Use `PagingInfo` for query parameters (supports snake_case binding for FastEndpoints and MVC)
-- `PagedList<T>` contains results + metadata (TotalCount, CurrentPage, TotalPages)
-- Extension method `ApplyPagingAndFilteringAsync` handles:
-  - Global search across all properties
-  - Column-specific search via SearchTerm dictionary
-  - Dynamic sorting by any column
-  - Skip/take pagination
+## Git Workflow
 
-### Projection Support
-- `GetFirstOrDefaultAsync<TProjection>()` supports both full entity retrieval and projection
-- `GetPagedProjection<TProjection>()` for paginated projections
-- **Tracking behavior:**
-  - If `projection` is NULL → returns TRACKED entity (use for updates)
-  - If `projection` is provided → returns UNTRACKED result (read-only)
-
-## Key Conventions
-
-### Target Framework
-All projects target **.NET 10.0** with nullable reference types enabled.
-
-### NuGet Package Configuration
-- All projects have `GeneratePackageOnBuild` set to true
-- Package metadata defined in .csproj files (Authors, Company, Description, PackageTags, etc.)
-- MIT License
-- Repository URL: https://github.com/jezda-solutions/jezda-common-libs
-
-### Dependencies
-- Entity Framework Core 10.0.9
-- Hangfire 1.8.21 + Hangfire.PostgreSql 1.20.12 (in Extensions)
-- FastEndpoints 7.0.1 (in Domain for query binding)
-- Npgsql 10.0.3 (in Extensions)
-- Newtonsoft.Json 13.0.4 (in Extensions — security pin; Hangfire.PostgreSql transitively pulls a vulnerable 11.0.1)
-
-### Naming
-- Projects: `Jezda.Common.[Purpose]`
-- NuGet packages: Same as project names
-- Namespace: Matches project name
-
-## Working with This Repository
-
-### Adding New Shared Functionality
-1. Determine the appropriate layer based on dependencies
-2. If adding interfaces/contracts → Jezda.Common.Abstractions
-3. If adding base entities/enums → Jezda.Common.Domain
-4. If adding EF Core implementations → Jezda.Common.Data
-5. If adding extension methods → Jezda.Common.Extensions
-6. If adding utility classes → Jezda.Common.Helpers
-
-### Version Management
-- Version is specified in .csproj files (currently 1.0.0)
-- For releases, update version in all .csproj files or override with -p:PackageVersion during pack
-- GitHub Actions workflow extracts version from git tags (v1.0.0 format)
-
-### Git Workflow
-- Single long-lived branch: `master` (the `dev` branch was retired in July 2026)
-- All work goes through feature/fix branches with PRs targeting `master`
-- Releases are cut by pushing a version tag (`v1.2.3`) to `master`, which triggers the NuGet publish workflow
-
-## Notes
-
-- This is a shared library repository - avoid adding application-specific logic
-- All code should be generic and reusable across multiple microservices
-- Consider backward compatibility when modifying existing public APIs
+Single long-lived branch: **`master`** (`dev` was retired in July 2026). All work goes through
+feature/fix branches with PRs targeting `master`. A release is cut by pushing a version tag
+(`v1.2.3`) to `master`, which triggers the NuGet publish workflow.
