@@ -194,7 +194,7 @@ public class AzureDevOpsTaskProviderTests
     {
         _handler.EnqueueResponse(
             HttpStatusCode.BadRequest,
-            """{"message":"TF51006: The query statement is malformed."}""");
+            """{"message":"TF51006: The query statement is missing a FROM clause. The error is caused by «20»."}""");
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
