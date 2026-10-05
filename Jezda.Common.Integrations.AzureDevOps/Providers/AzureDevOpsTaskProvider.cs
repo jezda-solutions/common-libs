@@ -117,6 +117,13 @@ public sealed class AzureDevOpsTaskProvider(
     /// discard. It has to be the URL parameter: WIQL has no <c>TOP</c> keyword, and a query that
     /// contains one is rejected with 400 Bad Request.
     /// </para>
+    /// <para>
+    /// <b>A number is also a work item id.</b> Developers usually know the id (<c>1234</c>, or
+    /// <c>#1234</c> as Azure DevOps writes it) better than the title. Such a term matches
+    /// <c>[System.Id]</c> as well as the title, and the exact id is moved to the top: the WIQL orders
+    /// by change date, so without that the item asked for by number could sit below titles that
+    /// merely contain the digits. Ids are unique across the organisation, so this adds at most one row.
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
         string accessToken,
@@ -134,9 +141,16 @@ public sealed class AzureDevOpsTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
+        var term = searchTerm.Trim();
+        var exactId = TryParseWorkItemId(term);
+        var titleTerm = exactId is null ? term : term.TrimStart('#');
+        var match = exactId is null
+            ? $"[System.Title] CONTAINS '{EscapeWiql(titleTerm)}'"
+            : $"([System.Id] = {exactId.Value} OR [System.Title] CONTAINS '{EscapeWiql(titleTerm)}')";
+
         var wiqlRequest = new AdoWiqlRequest
         {
-            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(searchTerm.Trim())}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
+            Query = $"SELECT [System.Id] FROM WorkItems WHERE {match} AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
         };
 
         // No project segment in the path: that is what makes this organisation-wide.
@@ -150,6 +164,12 @@ public sealed class AzureDevOpsTaskProvider(
         // $top already bounded the query, but a server that ignores it must not turn into an
         // unbounded details batch.
         var ids = references.Take(limit).Select(wi => wi.Id).ToList();
+
+        if (exactId is { } wanted && ids.Remove(wanted))
+        {
+            ids.Insert(0, wanted);
+        }
+
         var workItems = await FetchWorkItemDetailsAsync(client, ids, cancellationToken);
 
         // The details batch does not contract to return items in the order the ids were supplied,
@@ -162,6 +182,21 @@ public sealed class AzureDevOpsTaskProvider(
             .. ids.Where(byId.ContainsKey)
                   .Select(id => ToExternalTask(byId[id], byId[id].TeamProject))
         ];
+    }
+
+    /// <summary>
+    /// Reads a search term as a work item id: digits only, optionally prefixed with <c>#</c>.
+    /// </summary>
+    private static int? TryParseWorkItemId(string term)
+    {
+        var digits = term.StartsWith('#') ? term[1..] : term;
+
+        return digits.Length > 0
+            && digits.All(char.IsAsciiDigit)
+            && int.TryParse(digits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
+            && id > 0
+                ? id
+                : null;
     }
 
     /// <summary>

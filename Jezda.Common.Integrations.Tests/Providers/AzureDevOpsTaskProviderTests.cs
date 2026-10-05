@@ -347,6 +347,90 @@ public class AzureDevOpsTaskProviderTests
     /// <c>JavaScriptEncoder</c> escapes <c>'</c> and <c>&lt;&gt;</c> to <c>'</c> / <c><</c>,
     /// so the query reads nothing like what Azure DevOps receives after parsing.
     /// </summary>
+    [Theory]
+    [InlineData("1234")]
+    [InlineData("#1234")]
+    [InlineData(" #1234 ")]
+    public async Task SearchTasksAsync_NumericTerm_AlsoMatchesTheWorkItemId(string term)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { queryType = "flat", workItems = Array.Empty<object>() });
+
+        await _provider.SearchTasksAsync("my-pat", term, baseUrl: "https://dev.azure.com/myorg/");
+
+        // Developers know the id better than the title; "#1234" is how Azure DevOps writes it. The
+        // title still matches too, so a task with the digits in its name is not lost.
+        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
+        Assert.Contains("([System.Id] = 1234 OR [System.Title] CONTAINS '1234')", wiql);
+        Assert.Contains("[System.State] <> 'Removed'", wiql);
+    }
+
+    [Theory]
+    [InlineData("v2 login")]
+    [InlineData("12a")]
+    [InlineData("#")]
+    [InlineData("99999999999")]
+    public async Task SearchTasksAsync_NonIdTerm_SearchesTheTitleOnly(string term)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { queryType = "flat", workItems = Array.Empty<object>() });
+
+        await _provider.SearchTasksAsync("my-pat", term, baseUrl: "https://dev.azure.com/myorg/");
+
+        // Text, mixed text, a bare "#" and a number beyond int range are not ids: no [System.Id]
+        // clause, which for the last would otherwise be a WIQL Azure DevOps rejects.
+        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
+        Assert.DoesNotContain("System.Id] =", wiql);
+        Assert.Contains($"[System.Title] CONTAINS '{term.Trim()}'", wiql);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_ExactIdMatch_ComesFirst()
+    {
+        // WIQL orders by change date, so the item asked for by number can come back below more
+        // recently changed items that only contain the digits in their title.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[]
+            {
+                new { id = 5000, url = "https://dev.azure.com/myorg/_apis/wit/workItems/5000" },
+                new { id = 1234, url = "https://dev.azure.com/myorg/_apis/wit/workItems/1234" }
+            }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            count = 2,
+            value = new object[]
+            {
+                new
+                {
+                    id = 5000,
+                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/5000",
+                    fields = new Dictionary<string, object>
+                    {
+                        ["System.Title"] = "Follow-up to 1234",
+                        ["System.State"] = "Active",
+                        ["System.TeamProject"] = "Platform"
+                    }
+                },
+                new
+                {
+                    id = 1234,
+                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/1234",
+                    fields = new Dictionary<string, object>
+                    {
+                        ["System.Title"] = "Login fails",
+                        ["System.State"] = "Active",
+                        ["System.TeamProject"] = "Platform"
+                    }
+                }
+            }
+        });
+
+        var result = await _provider.SearchTasksAsync("my-pat", "#1234", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["1234", "5000"], result.Select(t => t.Id));
+    }
+
     private static async Task<string> ReadWiqlQueryAsync(HttpRequestMessage request)
     {
         var body = await request.Content!.ReadAsStringAsync();
