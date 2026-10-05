@@ -117,6 +117,14 @@ public sealed class AzureDevOpsTaskProvider(
     /// discard. It has to be the URL parameter: WIQL has no <c>TOP</c> keyword, and a query that
     /// contains one is rejected with 400 Bad Request.
     /// </para>
+    /// <para>
+    /// <b>A number is also a work item id.</b> Developers usually know the id (<c>1234</c>, or
+    /// <c>#1234</c> as Azure DevOps writes it) better than the title. Such a term runs a second, tiny
+    /// WIQL on <c>[System.Id]</c> next to the title search, and its hit goes first. It is a separate
+    /// query rather than an <c>OR</c> in the title one because that query is cut by <c>$top</c> after
+    /// ordering by change date: an older item asked for by its number would be cut off by newer titles
+    /// that merely contain the same digits.
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
         string accessToken,
@@ -134,22 +142,43 @@ public sealed class AzureDevOpsTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
+        var term = searchTerm.Trim();
+        var exactId = TryParseWorkItemId(term);
+        var titleTerm = exactId is not null && term.StartsWith('#') ? term[1..] : term;
+
+        // The id lookup first, unbounded by the title search's $top. It matches at most one row:
+        // ids are unique across the organisation.
+        var exactIds = new List<int>();
+        if (exactId is { } wanted)
+        {
+            var idQuery = new AdoWiqlRequest
+            {
+                Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Id] = {wanted} AND [System.State] <> 'Removed'"
+            };
+            exactIds.AddRange((await RunWiqlAsync(client, idQuery, "_apis/wit/wiql", cancellationToken)).Select(wi => wi.Id));
+        }
+
         var wiqlRequest = new AdoWiqlRequest
         {
-            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(searchTerm.Trim())}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
+            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(titleTerm)}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
         };
 
         // No project segment in the path: that is what makes this organisation-wide.
         var references = await RunWiqlAsync(client, wiqlRequest, "_apis/wit/wiql", cancellationToken, top: limit);
 
-        if (references.Count == 0)
+        // $top already bounded the title query, but a server that ignores it must not turn into an
+        // unbounded details batch. The exact id leads; a title hit on the same item is not repeated.
+        var ids = exactIds
+            .Concat(references.Select(wi => wi.Id))
+            .Distinct()
+            .Take(limit)
+            .ToList();
+
+        if (ids.Count == 0)
         {
             return [];
         }
 
-        // $top already bounded the query, but a server that ignores it must not turn into an
-        // unbounded details batch.
-        var ids = references.Take(limit).Select(wi => wi.Id).ToList();
         var workItems = await FetchWorkItemDetailsAsync(client, ids, cancellationToken);
 
         // The details batch does not contract to return items in the order the ids were supplied,
@@ -162,6 +191,21 @@ public sealed class AzureDevOpsTaskProvider(
             .. ids.Where(byId.ContainsKey)
                   .Select(id => ToExternalTask(byId[id], byId[id].TeamProject))
         ];
+    }
+
+    /// <summary>
+    /// Reads a search term as a work item id: digits only, optionally prefixed with <c>#</c>.
+    /// </summary>
+    private static int? TryParseWorkItemId(string term)
+    {
+        var digits = term.StartsWith('#') ? term[1..] : term;
+
+        return digits.Length > 0
+            && digits.All(char.IsAsciiDigit)
+            && int.TryParse(digits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
+            && id > 0
+                ? id
+                : null;
     }
 
     /// <summary>
