@@ -342,26 +342,28 @@ public class AzureDevOpsTaskProviderTests
         Assert.Empty(_handler.SentRequests);
     }
 
-    /// <summary>
-    /// Pulls the WIQL out of the request body. Asserting on the raw JSON does not work: the default
-    /// <c>JavaScriptEncoder</c> escapes <c>'</c> and <c>&lt;&gt;</c> to <c>'</c> / <c><</c>,
-    /// so the query reads nothing like what Azure DevOps receives after parsing.
-    /// </summary>
     [Theory]
     [InlineData("1234")]
     [InlineData("#1234")]
     [InlineData(" #1234 ")]
-    public async Task SearchTasksAsync_NumericTerm_AlsoMatchesTheWorkItemId(string term)
+    public async Task SearchTasksAsync_NumericTerm_LooksUpTheIdAndSearchesTheTitle(string term)
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { queryType = "flat", workItems = Array.Empty<object>() });
         _handler.EnqueueResponse(HttpStatusCode.OK, new { queryType = "flat", workItems = Array.Empty<object>() });
 
         await _provider.SearchTasksAsync("my-pat", term, baseUrl: "https://dev.azure.com/myorg/");
 
-        // Developers know the id better than the title; "#1234" is how Azure DevOps writes it. The
-        // title still matches too, so a task with the digits in its name is not lost.
-        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
-        Assert.Contains("([System.Id] = 1234 OR [System.Title] CONTAINS '1234')", wiql);
-        Assert.Contains("[System.State] <> 'Removed'", wiql);
+        // Developers know the id better than the title; "#1234" is how Azure DevOps writes it. The id
+        // lookup is its own query so the title query's $top cannot cut it off.
+        Assert.Equal(2, _handler.SentRequests.Count);
+
+        var idWiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
+        Assert.Contains("WHERE [System.Id] = 1234 AND [System.State] <> 'Removed'", idWiql);
+        Assert.DoesNotContain("$top", _handler.SentRequests[0].RequestUri!.Query);
+
+        var titleWiql = await ReadWiqlQueryAsync(_handler.SentRequests[1]);
+        Assert.Contains("[System.Title] CONTAINS '1234'", titleWiql);
+        Assert.DoesNotContain("System.Id] =", titleWiql);
     }
 
     [Theory]
@@ -375,62 +377,69 @@ public class AzureDevOpsTaskProviderTests
 
         await _provider.SearchTasksAsync("my-pat", term, baseUrl: "https://dev.azure.com/myorg/");
 
-        // Text, mixed text, a bare "#" and a number beyond int range are not ids: no [System.Id]
-        // clause, which for the last would otherwise be a WIQL Azure DevOps rejects.
-        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
+        // Text, mixed text, a bare "#" and a number beyond int range are not ids: one query, no
+        // [System.Id] clause, which for the last would otherwise be a WIQL Azure DevOps rejects.
+        var request = Assert.Single(_handler.SentRequests);
+        var wiql = await ReadWiqlQueryAsync(request);
         Assert.DoesNotContain("System.Id] =", wiql);
         Assert.Contains($"[System.Title] CONTAINS '{term.Trim()}'", wiql);
     }
 
     [Fact]
-    public async Task SearchTasksAsync_ExactIdMatch_ComesFirst()
+    public async Task SearchTasksAsync_ExactIdMatch_ComesFirst_AndIsNotRepeated()
     {
-        // WIQL orders by change date, so the item asked for by number can come back below more
-        // recently changed items that only contain the digits in their title.
-        _handler.EnqueueResponse(HttpStatusCode.OK, new
-        {
-            queryType = "flat",
-            workItems = new object[]
-            {
-                new { id = 5000, url = "https://dev.azure.com/myorg/_apis/wit/workItems/5000" },
-                new { id = 1234, url = "https://dev.azure.com/myorg/_apis/wit/workItems/1234" }
-            }
-        });
-        _handler.EnqueueResponse(HttpStatusCode.OK, new
-        {
-            count = 2,
-            value = new object[]
-            {
-                new
-                {
-                    id = 5000,
-                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/5000",
-                    fields = new Dictionary<string, object>
-                    {
-                        ["System.Title"] = "Follow-up to 1234",
-                        ["System.State"] = "Active",
-                        ["System.TeamProject"] = "Platform"
-                    }
-                },
-                new
-                {
-                    id = 1234,
-                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/1234",
-                    fields = new Dictionary<string, object>
-                    {
-                        ["System.Title"] = "Login fails",
-                        ["System.State"] = "Active",
-                        ["System.TeamProject"] = "Platform"
-                    }
-                }
-            }
-        });
+        // The title query orders by change date, so the item asked for by number can come back below
+        // more recently changed items that only contain the digits in their title.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1234));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(5000, 1234));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((5000, "Follow-up to 1234"), (1234, "Login fails")));
 
         var result = await _provider.SearchTasksAsync("my-pat", "#1234", baseUrl: "https://dev.azure.com/myorg/");
 
         Assert.Equal(["1234", "5000"], result.Select(t => t.Id));
     }
 
+    [Fact]
+    public async Task SearchTasksAsync_ExactIdBeyondTheTitleWindow_IsStillReturnedFirst()
+    {
+        // "12" is in the titles of many newer items; with limit 2 the title query's $top keeps only
+        // those, and the older #12 is found by the id lookup alone.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(12));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(9012, 8120));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((9012, "Release 2.12"), (12, "Old bug")));
+
+        var result = await _provider.SearchTasksAsync("my-pat", "12", limit: 2, baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["12", "9012"], result.Select(t => t.Id));
+    }
+
+    private static object Refs(params int[] ids) => new
+    {
+        queryType = "flat",
+        workItems = ids.Select(id => new { id, url = $"https://dev.azure.com/myorg/_apis/wit/workItems/{id}" }).ToArray()
+    };
+
+    private static object Details(params (int Id, string Title)[] items) => new
+    {
+        count = items.Length,
+        value = items.Select(i => new
+        {
+            id = i.Id,
+            url = $"https://dev.azure.com/myorg/_apis/wit/workItems/{i.Id}",
+            fields = new Dictionary<string, object>
+            {
+                ["System.Title"] = i.Title,
+                ["System.State"] = "Active",
+                ["System.TeamProject"] = "Platform"
+            }
+        }).ToArray()
+    };
+
+    /// <summary>
+    /// Pulls the WIQL out of the request body. Asserting on the raw JSON does not work: the default
+    /// <c>JavaScriptEncoder</c> escapes <c>'</c> and <c>&lt;&gt;</c> to <c>'</c> / <c><</c>,
+    /// so the query reads nothing like what Azure DevOps receives after parsing.
+    /// </summary>
     private static async Task<string> ReadWiqlQueryAsync(HttpRequestMessage request)
     {
         var body = await request.Content!.ReadAsStringAsync();
