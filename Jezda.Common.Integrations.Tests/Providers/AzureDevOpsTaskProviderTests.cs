@@ -178,10 +178,43 @@ public class AzureDevOpsTaskProviderTests
 
         await _provider.SearchTasksAsync("my-pat", "webhook", limit: 5, baseUrl: "https://dev.azure.com/myorg/");
 
-        // Without TOP, a common term against a large organisation returns thousands of refs that
-        // are fetched, parsed, and then thrown away by the Take below.
-        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[0]);
-        Assert.Contains("SELECT TOP 5 [System.Id]", wiql);
+        // Without a server-side bound, a common term against a large organisation returns thousands
+        // of refs that are fetched, parsed, and then thrown away by the Take below. The bound is the
+        // $top URL parameter: WIQL has no TOP keyword, and Azure DevOps rejects a query containing
+        // one with 400 — which is how search failed on every call in production.
+        var request = _handler.SentRequests[0];
+        Assert.Contains("$top=5", request.RequestUri!.Query);
+
+        var wiql = await ReadWiqlQueryAsync(request);
+        Assert.DoesNotContain("TOP", wiql);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_RejectedQuery_CarriesTheAzureDevOpsReasonAndStatus()
+    {
+        _handler.EnqueueResponse(
+            HttpStatusCode.BadRequest,
+            """{"message":"TF51006: The query statement is malformed."}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
+
+        // The reason is what makes the next rejected query diagnosable from the logs alone.
+        Assert.Contains("TF51006", ex.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_Unauthorized_KeepsTheStatusCode()
+    {
+        // The platform flags an integration for re-authentication by matching 401/403 on
+        // HttpRequestException.StatusCode; carrying the body must not lose it.
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized, "");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
     }
 
     [Fact]

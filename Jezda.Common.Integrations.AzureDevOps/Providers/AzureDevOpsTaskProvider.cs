@@ -111,9 +111,11 @@ public sealed class AzureDevOpsTaskProvider(
     /// <c>CONTAINS</c> is a substring match on the title only, and is what Azure DevOps can index;
     /// <c>CONTAINS WORDS</c> would be full-text but requires the search extension to be installed.
     /// Results come back newest-changed first, which is the useful order for someone looking for
-    /// what they were working on. <c>TOP</c> applies that ordering server-side, so the rows the
-    /// caller keeps are chosen by Azure DevOps rather than by trimming an unbounded id list here —
-    /// a common term against a large organisation otherwise returns thousands of refs to discard.
+    /// what they were working on. The <c>$top</c> URL parameter applies that ordering server-side, so
+    /// the rows the caller keeps are chosen by Azure DevOps rather than by trimming an unbounded id
+    /// list here — a common term against a large organisation otherwise returns thousands of refs to
+    /// discard. It has to be the URL parameter: WIQL has no <c>TOP</c> keyword, and a query that
+    /// contains one is rejected with 400 Bad Request.
     /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
@@ -134,18 +136,18 @@ public sealed class AzureDevOpsTaskProvider(
 
         var wiqlRequest = new AdoWiqlRequest
         {
-            Query = $"SELECT TOP {limit} [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(searchTerm.Trim())}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
+            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(searchTerm.Trim())}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
         };
 
         // No project segment in the path: that is what makes this organisation-wide.
-        var references = await RunWiqlAsync(client, wiqlRequest, "_apis/wit/wiql", cancellationToken);
+        var references = await RunWiqlAsync(client, wiqlRequest, "_apis/wit/wiql", cancellationToken, top: limit);
 
         if (references.Count == 0)
         {
             return [];
         }
 
-        // TOP already bounded the query, but a server that ignores it must not turn into an
+        // $top already bounded the query, but a server that ignores it must not turn into an
         // unbounded details batch.
         var ids = references.Take(limit).Select(wi => wi.Id).ToList();
         var workItems = await FetchWorkItemDetailsAsync(client, ids, cancellationToken);
@@ -183,15 +185,48 @@ public sealed class AzureDevOpsTaskProvider(
         HttpClient client,
         AdoWiqlRequest wiqlRequest,
         string path,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? top = null)
     {
-        var response = await client.PostAsJsonAsync(
-            $"{path}?api-version={_apiVersion}", wiqlRequest, JsonOptions, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        var url = top is null
+            ? $"{path}?api-version={_apiVersion}"
+            : $"{path}?api-version={_apiVersion}&$top={top.Value}";
+
+        var response = await client.PostAsJsonAsync(url, wiqlRequest, JsonOptions, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
 
         var result = await response.Content.ReadFromJsonAsync<AdoWiqlResponse>(JsonOptions, cancellationToken);
 
         return result?.WorkItems ?? [];
+    }
+
+    /// <summary>
+    /// <see cref="HttpResponseMessage.EnsureSuccessStatusCode"/>, but carrying the error Azure DevOps
+    /// returned in the exception message.
+    /// </summary>
+    /// <remarks>
+    /// A WIQL that Azure DevOps rejects comes back as 400 with the reason in the body
+    /// (<c>TF51005: …</c>). The bare status says only "Bad Request", which hid a query bug in search
+    /// until it was read off production. The status code stays on the exception, so callers that
+    /// treat 401/403 as an expired token keep working.
+    /// </remarks>
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (body.Length > 500)
+        {
+            body = body[..500];
+        }
+
+        throw new HttpRequestException(
+            $"Azure DevOps returned {(int)response.StatusCode} ({response.ReasonPhrase}): {body}",
+            inner: null,
+            statusCode: response.StatusCode);
     }
 
     /// <summary>
