@@ -184,6 +184,7 @@ public class AzureDevOpsTaskProviderTests
         // one with 400 — which is how search failed on every call in production.
         var request = _handler.SentRequests[0];
         Assert.Contains("$top=5", request.RequestUri!.Query);
+        Assert.Contains("api-version=", request.RequestUri!.Query);
 
         var wiql = await ReadWiqlQueryAsync(request);
         Assert.DoesNotContain("TOP", wiql);

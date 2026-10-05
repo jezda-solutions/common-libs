@@ -192,7 +192,7 @@ public sealed class AzureDevOpsTaskProvider(
             ? $"{path}?api-version={_apiVersion}"
             : $"{path}?api-version={_apiVersion}&$top={top.Value}";
 
-        var response = await client.PostAsJsonAsync(url, wiqlRequest, JsonOptions, cancellationToken);
+        using var response = await client.PostAsJsonAsync(url, wiqlRequest, JsonOptions, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
         var result = await response.Content.ReadFromJsonAsync<AdoWiqlResponse>(JsonOptions, cancellationToken);
@@ -206,7 +206,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// </summary>
     /// <remarks>
     /// A WIQL that Azure DevOps rejects comes back as 400 with the reason in the body
-    /// (<c>TF51005: …</c>). The bare status says only "Bad Request", which hid a query bug in search
+    /// (<c>TF51006: …</c>). The bare status says only "Bad Request", which hid a query bug in search
     /// until it was read off production. The status code stays on the exception, so callers that
     /// treat 401/403 as an expired token keep working.
     /// </remarks>
@@ -217,7 +217,18 @@ public sealed class AzureDevOpsTaskProvider(
             return;
         }
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        // Best effort: a body that cannot be read must not replace the status code, which is what
+        // callers branch on.
+        string body;
+        try
+        {
+            body = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException)
+        {
+            body = string.Empty;
+        }
+
         if (body.Length > 500)
         {
             body = body[..500];
