@@ -6,16 +6,9 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Files</PackageId>
     <Version>1.0.34</Version>
-    <Authors>Jezda Solutions</Authors>
-    <Company>Jezda Solutions</Company>
     <Description>Centralized file validation library: MIME detection via magic numbers, filename policy, size/ext/MIME checks, optional security heuristics (zip safety, executables, image dimensions), SHA-256 hashing, and DI integration.</Description>
     <PackageTags>files;validation;mime;security;zip;images;hashing;aspnetcore;di</PackageTags>
-    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

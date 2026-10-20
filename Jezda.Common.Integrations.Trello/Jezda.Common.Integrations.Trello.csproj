@@ -7,16 +7,9 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Integrations.Trello</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions</Authors>
-    <Company>Jezda Solutions</Company>
     <Description>Trello integration external task provider for importing boards and cards. Includes IExternalTaskProvider implementation with API key and token authentication.</Description>
     <PackageTags>integrations;trello;task-provider;boards;cards</PackageTags>
-    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

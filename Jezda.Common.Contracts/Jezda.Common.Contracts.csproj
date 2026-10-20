@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Version>1.0.33</Version>
+    <Description>Shared request and response contracts exchanged between Jezda services, such as permission registration DTOs.</Description>
+    <PackageTags>contracts;dto;permissions</PackageTags>
   </PropertyGroup>
 
 </Project>

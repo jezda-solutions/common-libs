@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- Package metadata shared by every project; per-project values (PackageId, Description, PackageTags, PackageReadmeFile) stay in each .csproj. -->
+  <PropertyGroup>
+    <Authors>Jezda Solutions</Authors>
+    <Company>Jezda Solutions</Company>
+    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/jezda-solutions/common-libs</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jezda-solutions/common-libs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>

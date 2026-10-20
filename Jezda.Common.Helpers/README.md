@@ -53,8 +53,8 @@ var slug = StringHelper.ToSlug("Hello World!");
 
 ## 📚 Documentation
 
-For complete documentation, see the [main repository README](https://github.com/jezda-solutions/jezda-common-libs).
+For complete documentation, see the [main repository README](https://github.com/jezda-solutions/common-libs).
 
 ## 📄 License
 
-MIT License - see [LICENSE](https://github.com/jezda-solutions/jezda-common-libs/blob/master/LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/jezda-solutions/common-libs/blob/master/LICENSE.txt) for details.
