@@ -134,6 +134,9 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal("Active", result[0].Status);
         Assert.Equal("ProjectA", result[0].ProjectId);
         Assert.Equal(ExternalProvider.AzureDevOps, result[0].Provider);
+
+        // The page a person opens, not the REST resource the API returned as `url`.
+        Assert.Equal("https://dev.azure.com/myorg/ProjectA/_workitems/edit/1", result[0].Url);
     }
 
     [Fact]
@@ -302,6 +305,39 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal("Active", task.Status);
         Assert.Equal("Platform", task.ProjectId);
         Assert.Equal(ExternalProvider.AzureDevOps, task.Provider);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_LinksToTheWorkItemPageInItsOwnProject()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[] { new { id = 9469, url = "https://dev.azure.com/myorg/_apis/wit/workItems/9469" } }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            count = 1,
+            value = new object[]
+            {
+                new
+                {
+                    id = 9469,
+                    url = "https://dev.azure.com/myorg/3d0b922f-ad9b-4a3b-8782-fb898190824a/_apis/wit/workItems/9469",
+                    fields = new Dictionary<string, object>
+                    {
+                        ["System.Title"] = "Fix webhook retry",
+                        ["System.State"] = "Active",
+                        ["System.TeamProject"] = "Mobile Team"
+                    }
+                }
+            }
+        });
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg");
+
+        var task = Assert.Single(result);
+        Assert.Equal("https://dev.azure.com/myorg/Mobile%20Team/_workitems/edit/9469", task.Url);
     }
 
     [Fact]
