@@ -92,7 +92,7 @@ public sealed class AzureDevOpsTaskProvider(
         var workItems = await FetchWorkItemDetailsAsync(
             client, references.Select(wi => wi.Id), cancellationToken);
 
-        return [.. workItems.Select(wi => ToExternalTask(wi, projectId))];
+        return [.. workItems.Select(wi => ToExternalTask(wi, projectId, client.BaseAddress!))];
     }
 
     /// <summary>
@@ -189,7 +189,7 @@ public sealed class AzureDevOpsTaskProvider(
         return
         [
             .. ids.Where(byId.ContainsKey)
-                  .Select(id => ToExternalTask(byId[id], byId[id].TeamProject))
+                  .Select(id => ToExternalTask(byId[id], byId[id].TeamProject, client.BaseAddress!))
         ];
     }
 
@@ -322,15 +322,27 @@ public sealed class AzureDevOpsTaskProvider(
     /// passes the project it asked for; the organisation-wide search reads it back off the work
     /// item, because it did not name one.
     /// </param>
-    private static ExternalTaskDto ToExternalTask(AdoWorkItem workItem, string projectId) => new()
+    /// <param name="organisationUrl">The organisation base address the client was created with.</param>
+    private static ExternalTaskDto ToExternalTask(AdoWorkItem workItem, string projectId, Uri organisationUrl) => new()
     {
         Id = workItem.Id.ToString(),
         Title = workItem.Title,
         Status = workItem.State,
-        Url = workItem.Url,
+        // Without a project there is no page to name; the REST link is still a real link to the item.
+        Url = string.IsNullOrEmpty(projectId) ? workItem.Url : WorkItemWebUrl(organisationUrl, projectId, workItem.Id),
         ProjectId = projectId,
         Provider = ExternalProvider.AzureDevOps
     };
+
+    /// <summary>
+    /// The link a person opens in the browser: <c>{organisation}/{project}/_workitems/edit/{id}</c>.
+    /// </summary>
+    /// <remarks>
+    /// The work item's own <c>url</c> is the REST resource (<c>_apis/wit/workItems/{id}</c>), which
+    /// answers with JSON, not the work item page.
+    /// </remarks>
+    private static string WorkItemWebUrl(Uri organisationUrl, string projectId, int workItemId) =>
+        new Uri(organisationUrl, $"{Uri.EscapeDataString(projectId)}/_workitems/edit/{workItemId}").AbsoluteUri;
 
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
