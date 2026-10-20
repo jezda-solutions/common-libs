@@ -7,16 +7,9 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Integrations.Jira</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions</Authors>
-    <Company>Jezda Solutions</Company>
     <Description>Jira integration client and external task provider for importing projects and issues. Includes typed HttpClient and IExternalTaskProvider implementation.</Description>
     <PackageTags>integrations;jira;task-provider;issues;projects</PackageTags>
-    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

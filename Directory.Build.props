@@ -1,0 +1,16 @@
+<Project>
+
+  <!-- Package metadata shared by every project; per-package values (PackageId, Description, PackageTags,
+       PackageReadmeFile) stay in each .csproj. Build settings still repeated per project
+       (TargetFramework, Nullable, ...) move here with docs/plans/central-package-management.md. -->
+  <PropertyGroup>
+    <Authors>Jezda Solutions</Authors>
+    <Company>Jezda Solutions</Company>
+    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/jezda-solutions/common-libs</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jezda-solutions/common-libs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>

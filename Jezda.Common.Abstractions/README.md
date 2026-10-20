@@ -70,7 +70,7 @@ public class ActiveProductsSpec : BaseSpecification<Product>
 
 ## 📚 Documentation
 
-For complete documentation, see the [main repository README](https://github.com/jezda-solutions/jezda-common-libs).
+For complete documentation, see the [main repository README](https://github.com/jezda-solutions/common-libs).
 
 ## 🔗 Related Packages
 
@@ -79,4 +79,4 @@ For complete documentation, see the [main repository README](https://github.com/
 
 ## 📄 License
 
-MIT License - see [LICENSE](https://github.com/jezda-solutions/jezda-common-libs/blob/master/LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/jezda-solutions/common-libs/blob/master/LICENSE.txt) for details.

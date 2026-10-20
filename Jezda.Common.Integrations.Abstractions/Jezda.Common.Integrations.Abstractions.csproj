@@ -7,16 +7,9 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Integrations.Abstractions</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions</Authors>
-    <Company>Jezda Solutions</Company>
     <Description>Abstractions for external task provider integrations. Includes IExternalTaskProvider interface, shared DTOs, and resilience defaults for GitHub, Jira, and Azure DevOps integrations.</Description>
     <PackageTags>integrations;task-provider;github;jira;azure-devops;abstractions</PackageTags>
-    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

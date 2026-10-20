@@ -106,7 +106,7 @@ await _unitOfWork.SaveChangesAsync();
 
 ## 📚 Documentation
 
-For complete documentation with examples, see the [main repository README](https://github.com/jezda-solutions/jezda-common-libs).
+For complete documentation with examples, see the [main repository README](https://github.com/jezda-solutions/common-libs).
 
 ## 🔗 Dependencies
 
@@ -116,4 +116,4 @@ For complete documentation with examples, see the [main repository README](https
 
 ## 📄 License
 
-MIT License - see [LICENSE](https://github.com/jezda-solutions/jezda-common-libs/blob/master/LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/jezda-solutions/common-libs/blob/master/LICENSE.txt) for details.

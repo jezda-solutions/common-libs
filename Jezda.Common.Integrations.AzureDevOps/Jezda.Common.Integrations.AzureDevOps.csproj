@@ -7,16 +7,9 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Jezda.Common.Integrations.AzureDevOps</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Jezda Solutions</Authors>
-    <Company>Jezda Solutions</Company>
     <Description>Azure DevOps integration client and external task provider for importing projects and work items. Includes typed HttpClient and IExternalTaskProvider implementation.</Description>
     <PackageTags>integrations;azure-devops;task-provider;work-items;projects</PackageTags>
-    <PackageProjectUrl>https://github.com/jezda-solutions/jezda-common-libs</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/jezda-solutions/jezda-common-libs</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Copyright>Copyright © Jezda Solutions 2025</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
