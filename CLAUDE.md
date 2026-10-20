@@ -59,12 +59,13 @@ Authentication is
 [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)
 (OIDC): `NuGet/login@v1` exchanges the GitHub OIDC token for a short-lived API key — there is
 no long-lived key secret. Requires the Trusted Publishing policy on nuget.org (repo
-`jezda-solutions/common-libs`, workflow `publish-nuget.yml`) plus the `NUGET_USER` secret.
+`jezda-solutions/common-libs`, workflow `publish-nuget.yml`) plus the `NUGET_USER` secret (nuget.org profile name).
 
-Re-runs and manual publishes go through the same workflow, never a local API key:
+Re-runs and manual publishes go through the same workflow, never a local API key. Manual
+dispatch skips tests by default (`skip_tests` defaults to `true`), so pass it explicitly:
 
 ```bash
-gh workflow run publish-nuget.yml -f version=1.2.3
+gh workflow run publish-nuget.yml -f version=1.2.3 -f skip_tests=false
 ```
 
 ## EF Core Tracking — read before writing an update
@@ -78,9 +79,10 @@ the entity reached you.
   with `UpdateDisconnected(entity)` before `SaveChangesAsync()`. Skip that and the save
   **silently does nothing**. `IsTracked(entity)` tells the two apart.
 - **Projection decides tracking too:** `GetFirstOrDefaultAsync<TProjection>()` and
-  `GetPagedProjection<TProjection>()` return a tracked entity when `projection` is null, and
-  an untracked, read-only result when a projection is given. Use the null-projection form
-  when you intend to update.
+  `GetAsync<TProjection>()` return tracked entities when `projection` is null (then
+  `TProjection` must be `T`, or they throw), and untracked, read-only results when a projection
+  is given. Use the null-projection form when you intend to update. `GetPagedProjection`
+  always projects, so it is read-only.
 
 ## Integrations
 
