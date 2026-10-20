@@ -328,7 +328,8 @@ public sealed class AzureDevOpsTaskProvider(
         Id = workItem.Id.ToString(),
         Title = workItem.Title,
         Status = workItem.State,
-        Url = WorkItemWebUrl(organisationUrl, projectId, workItem.Id),
+        // Without a project there is no page to name; the REST link is still a real link to the item.
+        Url = string.IsNullOrEmpty(projectId) ? workItem.Url : WorkItemWebUrl(organisationUrl, projectId, workItem.Id),
         ProjectId = projectId,
         Provider = ExternalProvider.AzureDevOps
     };

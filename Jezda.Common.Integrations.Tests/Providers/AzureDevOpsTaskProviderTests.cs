@@ -308,6 +308,61 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task GetTasksAsync_KeepsTheCollectionSegmentOfAnOnPremisesServer()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[] { new { id = 5, url = "https://server/tfs/Collection/_apis/wit/workItems/5" } }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            count = 1,
+            value = new object[]
+            {
+                new
+                {
+                    id = 5,
+                    url = "https://server/tfs/Collection/_apis/wit/workItems/5",
+                    fields = new Dictionary<string, object> { ["System.Title"] = "On-prem", ["System.State"] = "New" }
+                }
+            }
+        });
+
+        // No trailing slash: resolving against it would otherwise drop "Collection".
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://server/tfs/Collection");
+
+        Assert.Equal("https://server/tfs/Collection/ProjectA/_workitems/edit/5", Assert.Single(result).Url);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_WithoutAProject_KeepsTheItemsOwnLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[] { new { id = 8, url = "https://dev.azure.com/myorg/_apis/wit/workItems/8" } }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            count = 1,
+            value = new object[]
+            {
+                new
+                {
+                    id = 8,
+                    url = "https://dev.azure.com/myorg/_apis/wit/workItems/8",
+                    fields = new Dictionary<string, object> { ["System.Title"] = "No project", ["System.State"] = "New" }
+                }
+            }
+        });
+
+        var result = await _provider.SearchTasksAsync("my-pat", "project", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal("https://dev.azure.com/myorg/_apis/wit/workItems/8", Assert.Single(result).Url);
+    }
+
+    [Fact]
     public async Task SearchTasksAsync_LinksToTheWorkItemPageInItsOwnProject()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new
