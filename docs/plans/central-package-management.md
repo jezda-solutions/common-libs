@@ -20,8 +20,8 @@
 
 ## Suggested fix
 
-- Introduce `Directory.Build.props` (TargetFramework, Nullable, ImplicitUsings, shared package
-  metadata) and `Directory.Packages.props` with `ManagePackageVersionsCentrally` +
+- Introduce `Directory.Build.props` (TargetFramework, Nullable, ImplicitUsings; the shared package
+  metadata is already there since PR #153) and `Directory.Packages.props` with `ManagePackageVersionsCentrally` +
   `CentralPackageTransitivePinningEnabled` (moves the security pins repo-wide).
   The `dotnet-nuget:convert-to-cpm` skill automates this conversion with build validation.
 - Drop `GeneratePackageOnBuild` from csprojs; let the publish workflow's pack loop (with

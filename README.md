@@ -5,7 +5,7 @@ A comprehensive collection of reusable .NET libraries providing common functiona
 [![Build & Test](https://github.com/jezda-solutions/common-libs/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/jezda-solutions/common-libs/actions/workflows/pr-validation.yml)
 [![.NET](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/download)
 [![Entity Framework Core](https://img.shields.io/badge/EF%20Core-10.0.9-blue.svg)](https://www.nuget.org/packages/Microsoft.EntityFrameworkCore/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.txt)
 
 ## 📦 NuGet Packages
 
@@ -580,7 +580,7 @@ Use the provided scripts to update versions across all packages:
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details
+MIT License - see [LICENSE](LICENSE.txt) file for details
 
 ## 🤝 Contributing
 
