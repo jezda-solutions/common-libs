@@ -8,7 +8,7 @@ public interface IExternalTaskProvider
     ExternalProvider Provider { get; }
 
     /// <summary>
-    /// Asks the provider whether it accepts the token.
+    /// Tells whether the provider accepts the token, asking it unless the token cannot be sent.
     /// </summary>
     /// <remarks>
     /// What counts as a rejected token differs per provider:
@@ -26,7 +26,7 @@ public interface IExternalTaskProvider
     /// rate limit does not read as a bad token. The resilience pipeline can also throw Polly's
     /// <c>TimeoutRejectedException</c> or <c>BrokenCircuitException</c>, which derive from none of them.
     /// </remarks>
-    /// <returns><c>true</c> if the token is accepted, <c>false</c> only if the provider rejected it.</returns>
+    /// <returns><c>true</c> if the token is accepted, <c>false</c> only if the provider rejected it or it cannot go in a header.</returns>
     /// <exception cref="HttpRequestException">The request failed, or the provider answered with any other failure.</exception>
     /// <exception cref="OperationCanceledException">The request was cancelled or <c>HttpClient.Timeout</c> elapsed.</exception>
     /// <exception cref="System.Text.Json.JsonException">Monday.com answered status 200 with a body that is not the expected JSON.</exception>

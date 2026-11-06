@@ -22,7 +22,7 @@ services.AddMondayIntegration();
 
 ## Connection validation
 
-`ValidateConnectionAsync` returns `false` only when Monday.com rejects the token: 401, or one of
+`ValidateConnectionAsync` returns `false` when Monday.com rejects the token: 401, or one of
 `NOT_AUTHENTICATED`, `Unauthorized`, `UserUnauthorizedException`, `USER_ACCESS_DENIED`,
 `missingRequiredPermissions` as a GraphQL error on status 200 or 403. An IP restriction, a temporary API block,
 a 403 without one of those codes and every other failure propagate, so they are not shown to the user as a bad
