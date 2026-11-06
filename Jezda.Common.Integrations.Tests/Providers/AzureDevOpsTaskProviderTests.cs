@@ -623,10 +623,7 @@ public class AzureDevOpsTaskProviderTests
     public async Task GetTasksAsync_ItemsOmitted_LogsAWarningWithTheCounts()
     {
         var logger = new RecordingLogger<AzureDevOpsTaskProvider>();
-        var provider = new AzureDevOpsTaskProvider(
-            new MockHttpClientFactory(_handler, AzureDevOpsTaskProvider.HttpClientName),
-            logger,
-            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }));
+        var provider = ProviderWith(logger);
         _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(

@@ -82,6 +82,10 @@ public class MyService
 }
 ```
 
+`GetWorkItemsByQueryAsync` takes flat queries only. A link query (`FROM WorkItemLinks`) throws
+`NotSupportedException`. The result can hold fewer items than the query matched: an item deleted or
+made unreadable after the query ran is left out, with a warning in the log.
+
 ## 🔐 Errors and authentication
 
 Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps report failures as
