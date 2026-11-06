@@ -23,7 +23,7 @@ Umesto kreiranja zasebnih mikroservisa za svaku integraciju, koristimo **Shared 
 Trenutno su dostupne sledeće integracije:
 
 1.  **Azure DevOps** (`Jezda.Common.Integrations.AzureDevOps`)
-    *   **Features**: Work Items, Worklogs (Time Tracking), Projects, WIQL queries.
+    *   **Features**: Work Items, Projects, WIQL queries.
     *   **Auth**: PAT (Personal Access Token).
 2.  **GitHub** (`Jezda.Common.Integrations.GitHub`)
     *   **Features**: Repositories, Issues.
