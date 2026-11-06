@@ -67,9 +67,9 @@ public sealed class MondayTaskProvider(
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<MondayMeData>>(JsonOptions, cancellationToken);
+        var result = await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
 
-        if (result?.Data?.Me is not null)
+        if (ReadData<MondayMeData>(result)?.Me is not null)
         {
             return true;
         }
@@ -83,7 +83,7 @@ public sealed class MondayTaskProvider(
             return false;
         }
 
-        var reasons = string.Join(", ", errors.Select(error => error.Extensions?.Code ?? error.Message));
+        var reasons = DescribeErrors(errors);
 
         throw new HttpRequestException(
             $"Monday.com did not return the current user: {(reasons.Length > 0 ? reasons : "no error reported")}.",
@@ -95,7 +95,7 @@ public sealed class MondayTaskProvider(
     {
         try
         {
-            var errors = JsonSerializer.Deserialize<MondayGraphQlResponse<MondayMeData>>(body, JsonOptions)?.Errors;
+            var errors = JsonSerializer.Deserialize<MondayGraphQlResponse<JsonElement>>(body, JsonOptions)?.Errors;
 
             return errors?.Any(error => RejectedTokenCodes.Contains(error.Extensions?.Code)) == true;
         }
@@ -109,10 +109,10 @@ public sealed class MondayTaskProvider(
     {
         using var client = CreateClient(accessToken);
 
-        var response = await ExecuteGraphQlAsync<MondayBoardsData>(
+        var data = await ExecuteGraphQlAsync<MondayBoardsData>(
             client, "{ boards(limit:100) { id name description } }", cancellationToken);
 
-        var boards = response?.Data?.Boards ?? [];
+        var boards = data.Boards ?? [];
 
         return [.. boards.Select(b => new ExternalProjectDto
         {
@@ -130,10 +130,10 @@ public sealed class MondayTaskProvider(
         using var client = CreateClient(accessToken);
 
         var query = $$"""{ boards(ids:{{projectId}}) { items_page { items { id name state } } } }""";
-        var response = await ExecuteGraphQlAsync<MondayBoardItemsData>(
+        var data = await ExecuteGraphQlAsync<MondayBoardItemsData>(
             client, query, cancellationToken);
 
-        var items = response?.Data?.Boards?.FirstOrDefault()?.ItemsPage?.Items ?? [];
+        var items = data.Boards?.FirstOrDefault()?.ItemsPage?.Items ?? [];
 
         return [.. items.Select(i => new ExternalTaskDto
         {
@@ -153,12 +153,37 @@ public sealed class MondayTaskProvider(
         return client;
     }
 
-    private static async Task<MondayGraphQlResponse<T>?> ExecuteGraphQlAsync<T>(
+    private static async Task<T> ExecuteGraphQlAsync<T>(
         HttpClient client, string query, CancellationToken cancellationToken)
+        where T : class
     {
         var request = new MondayGraphQlRequest { Query = query };
-        var response = await client.PostAsJsonAsync("", request, JsonOptions, cancellationToken);
+        using var response = await client.PostAsJsonAsync("", request, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<T>>(JsonOptions, cancellationToken);
+
+        var result = await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
+
+        // Monday reports application errors with status 200, and can send them next to partial data.
+        // Callers read these lists as complete, so a list that may have gaps is a failure too.
+        if (result?.Errors is { Count: > 0 } errors)
+        {
+            throw new HttpRequestException(
+                $"Monday.com answered with errors: {DescribeErrors(errors)}.",
+                null,
+                response.StatusCode);
+        }
+
+        return ReadData<T>(result) ?? throw new HttpRequestException(
+            "Monday.com answered without data and without reporting an error.",
+            null,
+            response.StatusCode);
     }
+
+    // An error-only answer can carry "data": [], so the data is read only once it is known to be an object.
+    private static T? ReadData<T>(MondayGraphQlResponse<JsonElement>? result)
+        where T : class =>
+        result?.Data.ValueKind == JsonValueKind.Object ? result.Data.Deserialize<T>(JsonOptions) : null;
+
+    private static string DescribeErrors(IEnumerable<MondayGraphQlError> errors) =>
+        string.Join(", ", errors.Select(error => error.Extensions?.Code ?? error.Message));
 }
