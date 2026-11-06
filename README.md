@@ -422,7 +422,7 @@ The library provides ready-to-use clients for popular external services.
 #### Azure DevOps
 ```csharp
 builder.Services.AddAzureDevOpsIntegration(configuration);
-// Use IAzureDevOpsClient to manage Work Items, Logs, and Projects.
+// Use IAzureDevOpsClient to manage Work Items and Projects.
 ```
 
 #### GitHub

@@ -66,69 +66,6 @@ public sealed class AdoWorkItemListResponse
     public List<AdoWorkItem?> Value { get; set; } = new();
 }
 
-public sealed class AdoWorkItemUpdatesResponse
-{
-    [JsonPropertyName("count")]
-    public int Count { get; set; }
-
-    [JsonPropertyName("value")]
-    public List<AdoWorkItemUpdate> Value { get; set; } = new();
-}
-
-public sealed class AdoWorkItemUpdate
-{
-    [JsonPropertyName("id")]
-    public int Id { get; set; }
-
-    [JsonPropertyName("rev")]
-    public int Rev { get; set; }
-
-    [JsonPropertyName("revisedDate")]
-    public DateTimeOffset RevisedDate { get; set; }
-
-    [JsonPropertyName("revisedBy")]
-    public AdoIdentity? RevisedBy { get; set; }
-
-    [JsonPropertyName("fields")]
-    public Dictionary<string, AdoFieldChange> Fields { get; set; } = new();
-}
-
-public sealed class AdoFieldChange
-{
-    [JsonPropertyName("oldValue")]
-    public object? OldValue { get; set; }
-
-    [JsonPropertyName("newValue")]
-    public object? NewValue { get; set; }
-}
-
-public sealed class AdoIdentity
-{
-    [JsonPropertyName("id")]
-    public string? Id { get; set; }
-
-    [JsonPropertyName("displayName")]
-    public string? DisplayName { get; set; }
-
-    [JsonPropertyName("uniqueName")]
-    public string? UniqueName { get; set; }
-}
-
-public sealed class AdoWorkLogEntry
-{
-    public int WorkItemId { get; set; }
-
-    public string? Project { get; set; }
-
-    public string? UserUniqueName { get; set; }
-
-    public string? UserDisplayName { get; set; }
-
-    public double Hours { get; set; }
-
-    public DateTimeOffset LoggedAt { get; set; }
-}
-
 public sealed class JsonPatchOperation
 {
     [JsonPropertyName("op")]
