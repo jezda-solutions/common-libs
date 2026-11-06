@@ -319,6 +319,55 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUnknownCharset_StillReturnsFalse()
+    {
+        // windows-1252 is one such charset: .NET cannot decode it without the CodePages provider.
+        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.Forbidden));
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUnknownCharset_KeepsTheStatus()
+    {
+        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.InternalServerError));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.InternalServerError, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ForbiddenWithLineBreaksInBody_LogsOneLine()
+    {
+        // The base URL comes from the user, so the body may be written to forge a log entry.
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("denied\r\nfake log entry\ttabbed")
+        });
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.DoesNotContain(message, char.IsControl);
+        Assert.Contains("denied", message);
+        Assert.Contains("fake log entry", message);
+    }
+
+    private static HttpResponseMessage WithUnknownCharset(HttpStatusCode statusCode)
+    {
+        var content = new ByteArrayContent("blocked"u8.ToArray());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = "windows-1252" };
+
+        return new HttpResponseMessage(statusCode) { Content = content };
+    }
+
+    [Fact]
     public async Task ValidateConnectionAsync_SignInPage_LogsThatInsteadOfThePage()
     {
         var logger = new RecordingLogger();

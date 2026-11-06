@@ -110,14 +110,17 @@ later on the first work item call.
 ### Keeping redirects off
 
 `AddAzureDevOpsIntegration` turns off redirects on the default primary handler. Without that, a redirect drops
-`Authorization` and a valid PAT reads as expired. Three setups need care:
+`Authorization` and a valid PAT reads as expired. It also sets the `X-TFS-FedAuthRedirect: Suppress` header, which
+asks for 401 instead of a redirect to sign-in. Four setups need care:
 
 - **A custom primary handler registered before `AddAzureDevOpsIntegration`:** one that is not `SocketsHttpHandler`
   or `HttpClientHandler` stays as it is, and a warning is logged. Make sure it does not follow redirects.
 - **`ConfigurePrimaryHttpMessageHandler` called after `AddAzureDevOpsIntegration`:** the handler replaces the
   configured one and nothing warns, so set `AllowAutoRedirect = false` on it yourself.
 - **`AzureDevOpsClient` given an `HttpClient` made outside DI:** set `AllowAutoRedirect = false` on its handler,
-  and send the `X-TFS-FedAuthRedirect: Suppress` header, which asks for 401 instead of a redirect to sign-in.
+  and send the header yourself.
+- **`AzureDevOpsTaskProvider` built on your own `IHttpClientFactory`:** the same two apply to the client it creates
+  under `AzureDevOpsTaskProvider.HttpClientName`.
 
 ## 🛠️ Key Models
 
