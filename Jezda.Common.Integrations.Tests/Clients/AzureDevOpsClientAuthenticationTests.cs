@@ -25,17 +25,27 @@ public class AzureDevOpsClientAuthenticationTests
         _client = new AzureDevOpsClient(httpClient, options, NullLogger<AzureDevOpsClient>.Instance);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
-    [InlineData(HttpStatusCode.OK)]
-    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized(HttpStatusCode status)
+    [Fact]
+    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized()
     {
-        _handler.EnqueueResponse(() => SignInPage(status));
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
 
         // Not a JSON parsing error without a status: 401, which callers read as an expired token.
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_HtmlOnOk_ThrowsWithItsOwnStatusInsteadOfBlamingTheToken()
+    {
+        // A website or a captive portal. 401 here would have the user replace a valid PAT.
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.OK));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("HTML page", ex.Message);
     }
 
     [Fact]
@@ -77,9 +87,9 @@ public class AzureDevOpsClientAuthenticationTests
     }
 
     [Theory]
-    [InlineData("https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&redirect=1")]
-    [InlineData("/_signin?realm=dev.azure.com")]
-    public async Task GetProjectsAsync_RedirectToSignIn_ThrowsUnauthorized(string location)
+    [InlineData("https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&redirect=1", "https://spsprodwus24.vssps.visualstudio.com/_signin")]
+    [InlineData("/_signin?realm=dev.azure.com", "https://dev.azure.com/_signin")]
+    public async Task GetProjectsAsync_RedirectToSignIn_ThrowsUnauthorizedNamingTheTarget(string location, string target)
     {
         _handler.EnqueueResponse(() =>
         {
@@ -91,6 +101,7 @@ public class AzureDevOpsClientAuthenticationTests
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+        Assert.Contains($"at {target} with 302", ex.Message);
     }
 
     [Fact]

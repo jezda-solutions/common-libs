@@ -8,6 +8,14 @@ public interface IAzureDevOpsClient
     /// Executes a WIQL query and returns a list of work items with their fields.
     /// This method automatically fetches details for the work items found by the query.
     /// </summary>
+    /// <remarks>
+    /// The result can hold fewer items than the query matched: an item deleted or made unreadable
+    /// after the query ran is left out, with a warning in the log, instead of failing the call.
+    /// </remarks>
+    /// <exception cref="NotSupportedException">
+    /// The query is a link query (<c>FROM WorkItemLinks</c>). Its results are links between work
+    /// items, which this list cannot hold.
+    /// </exception>
     Task<List<AdoWorkItem>> GetWorkItemsByQueryAsync(string query, CancellationToken cancellationToken = default);
 
     /// <summary>

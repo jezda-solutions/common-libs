@@ -22,8 +22,18 @@ services.AddMondayIntegration();
 
 ## Connection validation
 
-`ValidateConnectionAsync` returns `false` only when Monday.com rejects the token: 401, or one of
+`ValidateConnectionAsync` returns `false` when Monday.com rejects the token: 401, or one of
 `NOT_AUTHENTICATED`, `Unauthorized`, `UserUnauthorizedException`, `USER_ACCESS_DENIED`,
 `missingRequiredPermissions` as a GraphQL error on status 200 or 403. An IP restriction, a temporary API block,
 a 403 without one of those codes and every other failure propagate, so they are not shown to the user as a bad
 token.
+
+A token with a character outside printable ASCII, such as a pasted smart quote or line break, also returns
+`false`, without a request: it cannot go in a header, and the failure would otherwise read as an outage.
+
+## Failures on status 200
+
+Monday.com reports application errors with status 200. `GetProjectsAsync` and `GetTasksAsync` throw
+`HttpRequestException` when the answer has any GraphQL error, or has no data at all, so a failure does not read
+as "no boards" or "no tasks". That includes partial data next to an error: the list may have gaps, and callers
+read it as complete. The message names the error code, or the error message where there is no code.

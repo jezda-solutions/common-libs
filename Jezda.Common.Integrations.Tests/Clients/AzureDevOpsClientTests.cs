@@ -48,6 +48,82 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
+    public async Task GetWorkItemsByQueryAsync_ItemsOmitted_LogsAWarningWithTheCounts()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2, 3));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"count":3,"value":[{"id":1,"fields":{}},null,{"id":3,"fields":{}}]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("returned 2 of 3", warning);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_NothingOmitted_LogsNoWarning()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[{"id":1,"fields":{}}]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Empty(logger.Warnings);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_MoreIdsThanOneBatch_SplitsAt200()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. Enumerable.Range(1, 201)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[{"id":1,"fields":{}}]}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[{"id":201,"fields":{}}]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1, 201], result.Select(w => w.Id));
+        Assert.Equal(3, _handler.SentRequests.Count);
+        Assert.Contains("ids=201&", _handler.SentRequests[2].RequestUri!.Query);
+    }
+
+    [Theory]
+    [InlineData("tree")]
+    [InlineData("oneHop")]
+    public async Task GetWorkItemsByQueryAsync_LinkQuery_ThrowsInsteadOfReadingAsEmpty(string queryType)
+    {
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            $$$"""{"queryType":"{{{queryType}}}","queryResultType":"workItemLink","workItemRelations":[{"target":{"id":1}}]}""");
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItemLinks"));
+
+        Assert.Contains(queryType, ex.Message);
+        Assert.Single(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_FlatQueryType_ReturnsItems()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"queryType":"flat","workItems":[{"id":1}]}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[{"id":1,"fields":{}}]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1], result.Select(w => w.Id));
+    }
+
+    [Fact]
     public async Task GetWorkItemsByQueryAsync_NoMatches_SkipsTheDetailsBatch()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs());

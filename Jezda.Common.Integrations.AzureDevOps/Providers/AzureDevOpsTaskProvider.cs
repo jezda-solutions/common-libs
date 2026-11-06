@@ -5,6 +5,7 @@ using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -20,6 +21,7 @@ public sealed class AzureDevOpsTaskProvider(
 {
     public const string HttpClientName = "ExternalTaskProvider.AzureDevOps";
     private const int ProjectPageSize = 100;
+    private const int MaxConcurrentLookups = 5;
     private const string ContinuationTokenHeader = "x-ms-continuationtoken";
     private readonly string _apiVersion = options.Value.ApiVersion;
 
@@ -32,22 +34,30 @@ public sealed class AzureDevOpsTaskProvider(
     public ExternalProvider Provider => ExternalProvider.AzureDevOps;
 
     /// <summary>
-    /// Checks whether Azure DevOps accepts the token for the organisation.
+    /// Checks whether Azure DevOps accepts the token for the organisation, for both projects and work items.
     /// </summary>
     /// <returns>
     /// <see langword="true"/> when the token is accepted; <see langword="false"/> when Azure DevOps
-    /// rejects it: 401, 403, or a sign-in page in place of JSON.
+    /// rejects it on either request: 401, 403, or a sign-in page in place of JSON.
     /// </returns>
     /// <remarks>
+    /// Listing projects needs "Project and Team (Read)", and listing work item fields needs
+    /// "Work Items (Read)". Checking only the first would confirm a PAT that fails on the first sync.
+    /// <para />
     /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
     /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
-    /// the resilience pipeline's own exceptions: Polly's <c>TimeoutRejectedException</c> for a timeout
-    /// and <c>BrokenCircuitException</c> for an open circuit, neither of which derives from
-    /// <see cref="HttpRequestException"/>.
+    /// the resilience pipeline's own exceptions, all deriving from Polly's
+    /// <c>ExecutionRejectedException</c> and none from <see cref="HttpRequestException"/>:
+    /// <c>TimeoutRejectedException</c> for a timeout, <c>BrokenCircuitException</c> for an open circuit
+    /// and <c>RateLimiterRejectedException</c> for too many concurrent requests.
+    /// <para />
+    /// A 403 can also come from Conditional Access, an IP allow-list or a WAF, for a valid PAT. It still
+    /// answers <see langword="false"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">
-    /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page: the base URL
-    /// answers somewhere else. The status code is on the exception.
+    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or an HTML page
+    /// on a success status: the base URL answers somewhere else, or something other than Azure DevOps
+    /// answered. The status code is on the exception.
     /// </exception>
     /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
@@ -55,12 +65,34 @@ public sealed class AzureDevOpsTaskProvider(
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
-        using var response = await client.GetAsync($"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken);
 
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-            || AzureDevOpsHttp.IsSignInPage(response))
+        var accepted = await IsTokenAcceptedAsync(client, $"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken)
+            && await IsTokenAcceptedAsync(client, $"_apis/wit/fields?api-version={_apiVersion}", cancellationToken);
+
+        if (accepted)
         {
-            logger.LogWarning("Azure DevOps rejected the token with {StatusCode}", (int)response.StatusCode);
+            logger.LogInformation(
+                "Azure DevOps accepted the token for projects and work items on {Organisation}",
+                OrganisationForLog(client));
+        }
+
+        return accepted;
+    }
+
+    private async Task<bool> IsTokenAcceptedAsync(HttpClient client, string url, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(url, cancellationToken);
+
+        var isSignInPage = AzureDevOpsHttp.IsSignInPage(response);
+
+        if (isSignInPage || response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            logger.LogWarning(
+                "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}: {Answer}",
+                (int)response.StatusCode,
+                url.Split('?')[0],
+                OrganisationForLog(client),
+                isSignInPage ? "a sign-in page" : await ReadErrorBodyAsync(response, cancellationToken));
             return false;
         }
 
@@ -68,6 +100,10 @@ public sealed class AzureDevOpsTaskProvider(
 
         return true;
     }
+
+    // The base URL comes from the user, so leave out any credentials written into it.
+    private static string? OrganisationForLog(HttpClient client) =>
+        client.BaseAddress?.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
@@ -155,8 +191,9 @@ public sealed class AzureDevOpsTaskProvider(
     /// it is read back per work item from <c>System.TeamProject</c>. That field is the project's
     /// <i>name</i>, while <c>ProjectId</c> must equal the GUID <see cref="GetProjectsAsync"/> reports
     /// as <c>ExternalProjectDto.Id</c>, because consumers key stored rows on it. So each distinct
-    /// project in the result costs one more request, and an item whose project answers 404 cannot be
-    /// bound to one and is dropped.
+    /// project in the result costs one more request, at most five at once, and an item whose project
+    /// answers 404 cannot be bound to one and is dropped. A 403 stays an error, because it can mean a
+    /// PAT without the scope, which should not look like results that silently went missing.
     /// </para>
     /// <para>
     /// <c>CONTAINS</c> is a substring match on the title only, and is what Azure DevOps can index;
@@ -251,36 +288,32 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     /// <summary>
-    /// Looks up each named project once, concurrently because a person is waiting on the search. A
-    /// project that answers 404 is left out; any other failure propagates, so an expired token still
-    /// surfaces as one.
+    /// Looks up each named project once, a few at a time because a person is waiting on the search. A
+    /// project that answers 404 is left out; any other failure propagates and cancels the lookups
+    /// still running, so an expired token still surfaces as one.
     /// </summary>
-    private async Task<Dictionary<string, AdoProject>> FindProjectsAsync(
+    private async Task<IReadOnlyDictionary<string, AdoProject>> FindProjectsAsync(
         HttpClient client,
         IEnumerable<string> names,
         CancellationToken cancellationToken)
     {
-        var lookups = names
-            .Where(name => name.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .Select(async name =>
+        var found = new ConcurrentDictionary<string, AdoProject>(StringComparer.Ordinal);
+        var distinct = names.Where(name => name.Length > 0).Distinct(StringComparer.Ordinal);
+        var options = new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentLookups, CancellationToken = cancellationToken };
+
+        await Parallel.ForEachAsync(distinct, options, async (name, token) =>
+        {
+            try
             {
-                try
-                {
-                    return (Name: name, Project: (AdoProject?)await GetProjectAsync(client, name, cancellationToken));
-                }
-                catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-                {
-                    logger.LogWarning("Azure DevOps search returned a work item in {Project}, which answers 404", name);
-                    return (Name: name, Project: null);
-                }
-            });
+                found[name] = await GetProjectAsync(client, name, token);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                logger.LogWarning("Azure DevOps search returned a work item in {Project}, which answers 404", name);
+            }
+        });
 
-        var found = await Task.WhenAll(lookups);
-
-        return found
-            .Where(l => l.Project is not null)
-            .ToDictionary(l => l.Name, l => l.Project!, StringComparer.Ordinal);
+        return found;
     }
 
     /// <param name="client">The client created for the organisation.</param>
@@ -381,8 +414,8 @@ public sealed class AzureDevOpsTaskProvider(
     /// treat 401/403 as an expired token keep working.
     /// </para>
     /// <para>
-    /// A sign-in page or a redirect to one throws as 401, and any other redirect with its own status;
-    /// see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
+    /// A sign-in page or a redirect to one throws as 401, and any other redirect or an HTML page with
+    /// its own status; see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
     /// </para>
     /// </remarks>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -394,22 +427,7 @@ public sealed class AzureDevOpsTaskProvider(
             return;
         }
 
-        // Best effort: a body that cannot be read must not replace the status code, which is what
-        // callers branch on.
-        string body;
-        try
-        {
-            body = await response.Content.ReadAsStringAsync(cancellationToken);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or IOException)
-        {
-            body = string.Empty;
-        }
-
-        if (body.Length > 500)
-        {
-            body = body[..500];
-        }
+        var body = await ReadErrorBodyAsync(response, cancellationToken);
 
         throw new HttpRequestException(
             $"Azure DevOps returned {(int)response.StatusCode} ({response.ReasonPhrase}): {body}",
@@ -417,44 +435,45 @@ public sealed class AzureDevOpsTaskProvider(
             statusCode: response.StatusCode);
     }
 
-    /// <summary>
-    /// Hydrates work item ids into full work items.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Chunked at 200 because that is the maximum number of ids Azure DevOps accepts on a single
-    /// <c>workitems?ids=</c> request; beyond it the call fails outright rather than truncating.
-    /// </para>
-    /// <para>
-    /// <c>errorPolicy=omit</c> because an id deleted or made unreadable after the WIQL ran would
-    /// otherwise fail the whole batch with 404. Azure DevOps answers such an id with a null slot,
-    /// which is dropped here, so the result can hold fewer items than ids were asked for.
-    /// </para>
-    /// </remarks>
-    private async Task<List<AdoWorkItem>> FetchWorkItemDetailsAsync(
-        HttpClient client,
-        IEnumerable<int> ids,
-        CancellationToken cancellationToken)
+    // Best effort: a body that cannot be read must not replace the status code, which is what callers
+    // branch on. InvalidOperationException is a charset .NET cannot decode.
+    // The base URL comes from the user, so the body can be anything: control characters go, because a
+    // line break in it would forge an entry in a plain-text log.
+    private static async Task<string> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        var workItems = new List<AdoWorkItem>();
-
-        foreach (var batch in ids.Chunk(200))
+        string body;
+        try
         {
-            var idsString = string.Join(",", batch);
-            using var httpResponse = await client.GetAsync(
-                $"_apis/wit/workitems?ids={idsString}&errorPolicy=omit&api-version={_apiVersion}", cancellationToken);
-            await EnsureSuccessAsync(httpResponse, cancellationToken);
-
-            var response = await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, cancellationToken);
-
-            if (response?.Value is not null)
-            {
-                workItems.AddRange(response.Value.OfType<AdoWorkItem>());
-            }
+            body = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException)
+        {
+            return string.Empty;
         }
 
-        return workItems;
+        return string.Concat((body.Length > 500 ? body[..500] : body).Select(c => char.IsControl(c) ? ' ' : c));
     }
+
+    /// <summary>
+    /// Hydrates work item ids into full work items. The result can hold fewer items than ids were
+    /// asked for; see <see cref="AzureDevOpsWorkItemBatch.FetchAsync"/>.
+    /// </summary>
+    private Task<List<AdoWorkItem>> FetchWorkItemDetailsAsync(
+        HttpClient client,
+        IEnumerable<int> ids,
+        CancellationToken cancellationToken) =>
+        AzureDevOpsWorkItemBatch.FetchAsync(
+            ids,
+            _apiVersion,
+            async (url, ct) =>
+            {
+                using var httpResponse = await client.GetAsync(url, ct);
+                await EnsureSuccessAsync(httpResponse, ct);
+
+                return await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
+            },
+            logger,
+            cancellationToken);
 
     /// <summary>
     /// Projects a work item onto the shared DTO.
@@ -492,10 +511,8 @@ public sealed class AzureDevOpsTaskProvider(
         var client = httpClientFactory.CreateClient(HttpClientName);
         client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
 
-        var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{accessToken}"));
+        var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
-
-        client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
 
         return client;
     }

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Net;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Jira.Providers;
@@ -42,6 +43,17 @@ public class JiraTaskProviderTests
         Assert.True(result);
         Assert.Single(_handler.SentRequests);
         Assert.Equal("Basic", _handler.SentRequests[0].Headers.Authorization?.Scheme);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NonAsciiEmail_SendsItAsUtf8()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { accountId = "123" });
+
+        await _provider.ValidateConnectionAsync("\u017Eika@example.com:token", "https://test.atlassian.net/");
+
+        var sent = Convert.FromBase64String(_handler.SentRequests[0].Headers.Authorization!.Parameter!);
+        Assert.Equal("\u017Eika@example.com:token", Encoding.UTF8.GetString(sent));
     }
 
     [Fact]
@@ -119,6 +131,181 @@ public class JiraTaskProviderTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Redirect_ThrowsWithTheStatusAndTarget()
+    {
+        // .NET drops Authorization on a followed redirect, so following it would blame a valid token.
+        _handler.EnqueueResponse(() => Redirect("https://new.atlassian.net/rest/api/3/myself"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://old.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+        Assert.Contains("https://old.atlassian.net/rest/api/3/myself", ex.Message);
+        Assert.Contains("https://new.atlassian.net/rest/api/3/myself", ex.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RelativeRedirect_NamesTheResolvedTarget()
+    {
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.MovedPermanently);
+            response.Headers.Location = new Uri("/jira/rest/api/3/myself", UriKind.Relative);
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://jira.example.com/"));
+
+        Assert.Equal(HttpStatusCode.MovedPermanently, ex.StatusCode);
+        Assert.Contains("https://jira.example.com/jira/rest/api/3/myself", ex.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectWithoutLocation_StillThrows()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Found));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+        Assert.Contains("(no location)", ex.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Redirect_KeepsCredentialsAndQueryOutOfTheMessage()
+    {
+        // A consumer that logs the exception must not log a password typed into the base URL, or the
+        // opaque context a sign-in redirect carries.
+        _handler.EnqueueResponse(() => Redirect("https://admin:location-secret@sso.example.com/login?state=opaque"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://admin:base-secret@jira.example.com/"));
+
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.DoesNotContain("opaque", ex.Message);
+        Assert.Contains("https://jira.example.com/rest/api/3/myself", ex.Message);
+        Assert.Contains("https://sso.example.com/login", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("text/html")]
+    [InlineData("application/xhtml+xml")]
+    [InlineData("text/plain")]
+    [InlineData(null)]
+    public async Task ValidateConnectionAsync_SuccessWithoutJson_ThrowsBecauseTheTokenWasNotChecked(string? mediaType)
+    {
+        // An SSO login page or a site that is not Jira answers 200 whatever the token is.
+        _handler.EnqueueResponse(() => Page(mediaType));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("not checked", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("application/json")]
+    [InlineData("APPLICATION/JSON")]
+    [InlineData("application/vnd.api+json")]
+    public async Task ValidateConnectionAsync_AnyJsonType_ReturnsTrue(string mediaType)
+    {
+        _handler.EnqueueResponse(() => Page(mediaType));
+
+        Assert.True(await _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_UnauthorizedWithHtml_ReturnsFalse()
+    {
+        // A failure status is an answer about the token, whatever the body looks like.
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent("<html></html>", System.Text.Encoding.UTF8, "text/html")
+        });
+
+        Assert.False(await _provider.ValidateConnectionAsync("bad:token", "https://test.atlassian.net/"));
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_Redirect_ThrowsWithTheStatusAndTarget()
+    {
+        _handler.EnqueueResponse(() => Redirect("https://new.atlassian.net/rest/api/3/project"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("user:token", "https://old.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+        Assert.Contains("https://new.atlassian.net/rest/api/3/project", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_HtmlOnSuccess_ThrowsHttpRequestException()
+    {
+        _handler.EnqueueResponse(() => Page("text/html"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_FailureStatus_ThrowsWithThatStatus()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_Redirect_ThrowsWithTheStatusAndTarget()
+    {
+        _handler.EnqueueResponse(() => Redirect("https://new.atlassian.net/rest/api/3/search"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("user:token", "PROJ", "https://old.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+        Assert.Contains("https://new.atlassian.net/rest/api/3/search", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_HtmlOnSuccess_ThrowsHttpRequestException()
+    {
+        _handler.EnqueueResponse(() => Page("text/html"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("user:token", "PROJ", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+    }
+
+    private static HttpResponseMessage Redirect(string location)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Found);
+        response.Headers.Location = new Uri(location);
+        return response;
+    }
+
+    private static HttpResponseMessage Page(string? mediaType)
+    {
+        var content = new ByteArrayContent("{}"u8.ToArray());
+
+        if (mediaType is not null)
+        {
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
     }
 
     private static HttpResponseMessage WithLoginReason(HttpStatusCode status, string reason)

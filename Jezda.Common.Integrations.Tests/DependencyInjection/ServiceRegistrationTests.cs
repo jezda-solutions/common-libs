@@ -8,11 +8,13 @@ using Jezda.Common.Integrations.GitHub;
 using Jezda.Common.Integrations.GitHub.Extensions;
 using Jezda.Common.Integrations.Jira;
 using Jezda.Common.Integrations.Jira.Extensions;
+using Jezda.Common.Integrations.Jira.Providers;
 using Jezda.Common.Integrations.Monday.Extensions;
 using Jezda.Common.Integrations.Trello.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Jezda.Common.Integrations.Tests.DependencyInjection;
@@ -52,16 +54,137 @@ public class ServiceRegistrationTests
         Assert.Equal(ExternalProvider.GitHub, taskProviders[0].Provider);
     }
 
-    [Fact]
-    public void AddAzureDevOpsIntegration_TypedClientAsksNotToRedirectToSignIn()
+    [Theory]
+    [InlineData(nameof(IAzureDevOpsClient))]
+    [InlineData(AzureDevOpsTaskProvider.HttpClientName)]
+    public void AddAzureDevOpsIntegration_ClientsAskNotToRedirectToSignIn(string clientName)
     {
         var services = new ServiceCollection();
         services.AddAzureDevOpsIntegration(CreateConfiguration());
 
         using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(clientName);
+
+        // Without it a bad PAT gets a sign-in page ending as 203, instead of a plain 401.
+        Assert.Equal(["Suppress"], client.DefaultRequestHeaders.GetValues("X-TFS-FedAuthRedirect"));
+    }
+
+    [Fact]
+    public void AddJiraIntegration_TypedClient_SendsNonAsciiEmailAsUtf8()
+    {
+        var services = new ServiceCollection();
+        services.AddJiraIntegration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Integrations:Jira:BaseUrl"] = "https://test.atlassian.net/",
+            ["Integrations:Jira:Email"] = "\u017Eika@example.com",
+            ["Integrations:Jira:ApiToken"] = "token"
+        }).Build());
+
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IJiraClient));
+
+        var sent = Convert.FromBase64String(client.DefaultRequestHeaders.Authorization!.Parameter!);
+        Assert.Equal("\u017Eika@example.com:token", System.Text.Encoding.UTF8.GetString(sent));
+    }
+
+    [Fact]
+    public void AddAzureDevOpsIntegration_TypedClient_SendsNonAsciiTokenAsUtf8()
+    {
+        var services = new ServiceCollection();
+        services.AddAzureDevOpsIntegration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Integrations:AzureDevOps:BaseUrl"] = "https://dev.azure.com/testorg/",
+            ["Integrations:AzureDevOps:PersonalAccessToken"] = "pat\u201D"
+        }).Build());
+
+        using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IAzureDevOpsClient));
 
-        Assert.Equal(["Suppress"], client.DefaultRequestHeaders.GetValues("X-TFS-FedAuthRedirect"));
+        var sent = Convert.FromBase64String(client.DefaultRequestHeaders.Authorization!.Parameter!);
+        Assert.Equal(":pat\u201D", System.Text.Encoding.UTF8.GetString(sent));
+    }
+
+    [Theory]
+    [InlineData(nameof(IAzureDevOpsClient))]
+    [InlineData(AzureDevOpsTaskProvider.HttpClientName)]
+    public void AddAzureDevOpsIntegration_UnknownPrimaryHandler_WarnsThatRedirectsStayOn(string clientName)
+    {
+        var logs = new RecordingLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddSingleton<ILoggerProvider>(logs);
+        services.ConfigureHttpClientDefaults(builder =>
+            builder.ConfigurePrimaryHttpMessageHandler(() => new CustomPrimaryHandler()));
+        services.AddAzureDevOpsIntegration(CreateConfiguration());
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(clientName);
+
+        var warning = Assert.Single(logs.Warnings);
+        Assert.Contains(nameof(CustomPrimaryHandler), warning);
+    }
+
+    [Theory]
+    [InlineData(nameof(IAzureDevOpsClient))]
+    [InlineData(AzureDevOpsTaskProvider.HttpClientName)]
+    public void AddAzureDevOpsIntegration_DefaultPrimaryHandler_DoesNotWarn(string clientName)
+    {
+        var logs = new RecordingLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddSingleton<ILoggerProvider>(logs);
+        services.AddAzureDevOpsIntegration(CreateConfiguration());
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(clientName);
+
+        Assert.Empty(logs.Warnings);
+    }
+
+    private sealed class CustomPrimaryHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class RecordingLoggerProvider : ILoggerProvider, ILogger
+    {
+        private readonly List<string> _warnings = [];
+
+        public IReadOnlyList<string> Warnings
+        {
+            get
+            {
+                lock (_warnings)
+                {
+                    return [.. _warnings];
+                }
+            }
+        }
+
+        public ILogger CreateLogger(string categoryName) => this;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Warning)
+            {
+                lock (_warnings)
+                {
+                    _warnings.Add(formatter(state, exception));
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+        }
     }
 
     [Theory]
@@ -73,6 +196,26 @@ public class ServiceRegistrationTests
         services.AddAzureDevOpsIntegration(CreateConfiguration());
 
         using var provider = services.BuildServiceProvider();
+
+        Assert.False(AllowsAutoRedirect(provider, clientName));
+    }
+
+    [Theory]
+    [InlineData(nameof(IJiraClient))]
+    [InlineData(JiraTaskProvider.HttpClientName)]
+    public void AddJiraIntegration_ClientsDoNotFollowRedirects(string clientName)
+    {
+        var services = new ServiceCollection();
+        services.AddJiraIntegration(CreateConfiguration());
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.False(AllowsAutoRedirect(provider, clientName));
+    }
+
+    // .NET drops Authorization on a followed redirect, so a valid token would answer 401.
+    private static bool AllowsAutoRedirect(IServiceProvider provider, string clientName)
+    {
         var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(clientName);
 
         while (handler is DelegatingHandler delegating)
@@ -80,14 +223,12 @@ public class ServiceRegistrationTests
             handler = delegating.InnerHandler!;
         }
 
-        // .NET drops Authorization on a followed redirect, so a valid PAT would answer 401.
-        var allowAutoRedirect = handler switch
+        return handler switch
         {
             SocketsHttpHandler sockets => sockets.AllowAutoRedirect,
             HttpClientHandler client => client.AllowAutoRedirect,
             _ => throw new InvalidOperationException($"Unexpected primary handler {handler.GetType()}")
         };
-        Assert.False(allowAutoRedirect);
     }
 
     [Fact]

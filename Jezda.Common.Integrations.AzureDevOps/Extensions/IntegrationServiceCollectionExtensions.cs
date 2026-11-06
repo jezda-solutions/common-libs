@@ -30,20 +30,21 @@ public static class IntegrationServiceCollectionExtensions
 
             if (!string.IsNullOrEmpty(options.PersonalAccessToken))
             {
-                var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{options.PersonalAccessToken}"));
+                var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{options.PersonalAccessToken}"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
             }
 
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
-        }).ConfigurePrimaryHttpMessageHandler((handler, _) => AzureDevOpsHttp.DisableAutoRedirect(handler));
+        }).DisableAutoRedirect();
 
         // Named HttpClient for IExternalTaskProvider (per-request auth + base URL)
         services.AddHttpClient(AzureDevOpsTaskProvider.HttpClientName, client =>
         {
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
         })
-        .ConfigurePrimaryHttpMessageHandler((handler, _) => AzureDevOpsHttp.DisableAutoRedirect(handler))
+        .DisableAutoRedirect()
         .AddIntegrationResilience();
 
         services.AddSingleton<IExternalTaskProvider, AzureDevOpsTaskProvider>();

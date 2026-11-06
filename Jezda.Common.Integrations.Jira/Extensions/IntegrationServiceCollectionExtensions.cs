@@ -33,18 +33,20 @@ public static class IntegrationServiceCollectionExtensions
             if (!string.IsNullOrEmpty(options.Email) && !string.IsNullOrEmpty(options.ApiToken))
             {
                 var authString = $"{options.Email}:{options.ApiToken}";
-                var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes(authString));
+                var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes(authString));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
             }
 
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        });
+        }).DisableAutoRedirect();
 
         // Named HttpClient for IExternalTaskProvider (per-request auth + base URL)
         services.AddHttpClient(JiraTaskProvider.HttpClientName, client =>
         {
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddIntegrationResilience();
+        })
+        .DisableAutoRedirect()
+        .AddIntegrationResilience();
 
         services.AddSingleton<IExternalTaskProvider, JiraTaskProvider>();
 

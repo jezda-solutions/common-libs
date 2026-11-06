@@ -6,9 +6,36 @@ namespace Jezda.Common.Integrations.Tests.Helpers;
 
 public sealed class MockHttpMessageHandler : HttpMessageHandler
 {
+    private readonly Lock _gate = new();
     private readonly Queue<MockResponse> _responses = new();
+    private readonly Dictionary<string, MockResponse> _responsesByPath = new(StringComparer.Ordinal);
+    private int _inFlight;
 
     public List<HttpRequestMessage> SentRequests { get; } = [];
+
+    /// <summary>The most requests that were in flight at once.</summary>
+    public int MaxInFlight { get; private set; }
+
+    /// <summary>
+    /// Answers every request to one path with the same response, whatever order they arrive in, for
+    /// requests a provider sends concurrently. Takes precedence over the queued responses.
+    /// </summary>
+    /// <param name="absolutePath">The request's path, such as <c>/repos/owner/a</c>.</param>
+    /// <param name="response">Builds the response, once per request.</param>
+    /// <param name="delay">How long the answer takes, so a test can overlap requests.</param>
+    public void RespondTo(string absolutePath, Func<HttpResponseMessage> response, TimeSpan delay = default)
+    {
+        _responsesByPath[absolutePath] = new MockResponse(default, string.Empty, Build: response, Delay: delay);
+    }
+
+    /// <summary>
+    /// Answers every request to one path with a JSON body. See the overload taking a response builder.
+    /// </summary>
+    public void RespondTo(string absolutePath, HttpStatusCode statusCode, object? body = null, TimeSpan delay = default)
+    {
+        var json = body is not null ? JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) : "{}";
+        _responsesByPath[absolutePath] = new MockResponse(statusCode, json, Delay: delay);
+    }
 
     public void EnqueueResponse(HttpStatusCode statusCode, object? body = null)
     {
@@ -47,43 +74,68 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
         _responses.Enqueue(new MockResponse(default, string.Empty, Build: () => throw exception));
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        SentRequests.Add(request);
+        MockResponse? mock;
 
-        if (_responses.Count == 0)
+        lock (_gate)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            SentRequests.Add(request);
+            MaxInFlight = Math.Max(MaxInFlight, ++_inFlight);
+
+            if (!_responsesByPath.TryGetValue(request.RequestUri!.AbsolutePath, out mock))
             {
-                Content = new StringContent("No mock response configured")
-            });
+                _responses.TryDequeue(out mock);
+            }
         }
 
-        var mock = _responses.Dequeue();
-
-        if (mock.Build is not null)
+        try
         {
-            var built = mock.Build();
-            built.RequestMessage ??= request;
-            return Task.FromResult(built);
+            if (mock is null)
+            {
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("No mock response configured")
+                };
+            }
+
+            if (mock.Delay > TimeSpan.Zero)
+            {
+                await Task.Delay(mock.Delay, cancellationToken);
+            }
+
+            if (mock.Build is not null)
+            {
+                var built = mock.Build();
+                built.RequestMessage ??= request;
+                return built;
+            }
+
+            var response = new HttpResponseMessage(mock.StatusCode)
+            {
+                Content = new StringContent(mock.Body, Encoding.UTF8, "application/json")
+            };
+
+            if (mock.Header is { } header)
+            {
+                response.Headers.Add(header.Name, header.Value);
+            }
+
+            return response;
         }
-
-        var response = new HttpResponseMessage(mock.StatusCode)
+        finally
         {
-            Content = new StringContent(mock.Body, Encoding.UTF8, "application/json")
-        };
-
-        if (mock.Header is { } header)
-        {
-            response.Headers.Add(header.Name, header.Value);
+            lock (_gate)
+            {
+                _inFlight--;
+            }
         }
-
-        return Task.FromResult(response);
     }
 
     private sealed record MockResponse(
         HttpStatusCode StatusCode,
         string Body,
         (string Name, string Value)? Header = null,
-        Func<HttpResponseMessage>? Build = null);
+        Func<HttpResponseMessage>? Build = null,
+        TimeSpan Delay = default);
 }

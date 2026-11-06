@@ -83,3 +83,22 @@ public class JiraService
 token was not checked; the user has to sign in through the Jira website. Every other failure propagates,
 including a 403, which can come from an IP allow list or a gateway, so an outage is not shown to the user as
 a bad token.
+
+The email and API token are sent as UTF-8, so an email with a character outside ASCII reaches Jira intact.
+
+Two answers say nothing about the token, so every call on `IJiraClient` and the `IExternalTaskProvider` for Jira
+throws `HttpRequestException` with the response's own status for them:
+
+| What happened | `StatusCode` |
+|---|---|
+| Base URL redirects (3xx: the site was renamed, or single sign-on stands in front of Jira). The message names the target's host and path. | The 3xx |
+| Success without a JSON content type (a login page, a website, a proxy) | The success status, e.g. 200 |
+
+`AddJiraIntegration` turns off redirects on the default primary handler, because .NET drops `Authorization` on
+the next hop and a valid token would read as rejected. Setups it cannot reach:
+
+- **A custom primary handler registered before `AddJiraIntegration`:** one that is not `SocketsHttpHandler` or
+  `HttpClientHandler` stays as it is, and a warning is logged. Make sure it does not follow redirects.
+- **`ConfigurePrimaryHttpMessageHandler` called after `AddJiraIntegration`, a `JiraClient` given an `HttpClient`
+  made outside DI, or `JiraTaskProvider` built on your own `IHttpClientFactory`:** nothing warns, so set
+  `AllowAutoRedirect = false` on the handler yourself.

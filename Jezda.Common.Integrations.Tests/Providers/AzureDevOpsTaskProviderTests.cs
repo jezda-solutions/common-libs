@@ -1,3 +1,4 @@
+using System.Text;
 using System.Net;
 using System.Text.Json;
 using Jezda.Common.Integrations.Abstractions;
@@ -5,6 +6,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -33,12 +35,74 @@ public class AzureDevOpsTaskProviderTests
     public async Task ValidateConnectionAsync_WithValidToken_ReturnsTrue()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "proj-1", name = "Project" } } });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
 
         var result = await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
 
         Assert.True(result);
-        Assert.Single(_handler.SentRequests);
-        Assert.Equal("Basic", _handler.SentRequests[0].Headers.Authorization?.Scheme);
+        Assert.Equal(2, _handler.SentRequests.Count);
+        Assert.All(_handler.SentRequests, request => Assert.Equal("Basic", request.Headers.Authorization?.Scheme));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ChecksProjectsThenWorkItemFieldsForTheOrganisation()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+
+        await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
+
+        Assert.Equal("/myorg/_apis/projects", _handler.SentRequests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/myorg/_apis/wit/fields", _handler.SentRequests[1].RequestUri!.AbsolutePath);
+        Assert.Equal("?api-version=7.1", _handler.SentRequests[1].RequestUri!.Query);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ValidateConnectionAsync_WorkItemsRefused_ReturnsFalse(HttpStatusCode status)
+    {
+        // A PAT with "Project and Team (Read)" only: it lists projects, then fails on the first sync.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(status);
+
+        var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
+
+        var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ServerErrorOnWorkItems_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.ServiceUnavailable);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NonAsciiToken_SendsItAsUtf8()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        await _provider.ValidateConnectionAsync("pat\u201D", "https://dev.azure.com/myorg/");
+
+        var sent = Convert.FromBase64String(_handler.SentRequests[0].Headers.Authorization!.Parameter!);
+        Assert.Equal(":pat\u201D", Encoding.UTF8.GetString(sent));
     }
 
     [Fact]
@@ -49,18 +113,7 @@ public class AzureDevOpsTaskProviderTests
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
         Assert.False(result);
-    }
-
-    [Fact]
-    public async Task EveryRequest_AsksAzureDevOpsNotToRedirectToSignIn()
-    {
-        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
-
-        await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
-
-        // Without it a bad PAT gets a sign-in page ending as 203, which reads as a valid connection.
-        var values = _handler.SentRequests[0].Headers.GetValues("X-TFS-FedAuthRedirect");
-        Assert.Equal(["Suppress"], values);
+        Assert.Single(_handler.SentRequests);
     }
 
     [Fact]
@@ -70,17 +123,28 @@ public class AzureDevOpsTaskProviderTests
             _provider.ValidateConnectionAsync("pat", baseUrl: null));
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
-    [InlineData(HttpStatusCode.OK)]
-    public async Task ValidateConnectionAsync_SignInPage_ReturnsFalse(HttpStatusCode status)
+    [Fact]
+    public async Task ValidateConnectionAsync_SignInPage_ReturnsFalse()
     {
         // What a bad PAT gets when the FedAuthRedirect header is dropped on the way or ignored.
-        _handler.EnqueueResponse(() => SignInPage(status));
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_HtmlOnOk_ThrowsInsteadOfBlamingTheToken()
+    {
+        // A base URL pointing at a website or a captive portal: the token was never checked.
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.OK));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("HTML page", ex.Message);
     }
 
     [Fact]
@@ -169,6 +233,7 @@ public class AzureDevOpsTaskProviderTests
         {
             Content = new StringContent("""{"count":0,"value":[]}""", System.Text.Encoding.UTF8, "application/json")
         });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
@@ -193,22 +258,23 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_DisposesTheResponse()
+    public async Task ValidateConnectionAsync_DisposesBothResponses()
     {
-        var content = new TrackingContent();
-        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        var projects = new TrackingContent();
+        var fields = new TrackingContent();
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = projects });
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = fields });
 
         await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
-        Assert.True(content.Disposed);
+        Assert.True(projects.Disposed);
+        Assert.True(fields.Disposed);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
-    [InlineData(HttpStatusCode.OK)]
-    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized(HttpStatusCode status)
+    [Fact]
+    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized()
     {
-        _handler.EnqueueResponse(() => SignInPage(status));
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
@@ -227,6 +293,175 @@ public class AzureDevOpsTaskProviderTests
             _provider.GetTasksAsync("bad-pat", "proj-1", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    // These two logs are what tells, from a real connection, whether _apis/wit/fields behaves as
+    // documented: a token refused on it, or accepted and then refused on the first sync.
+    [Fact]
+    public async Task ValidateConnectionAsync_WorkItemsRefused_LogsTheStatusAndWhichRequest()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden);
+
+        await provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Equal("Azure DevOps rejected the token with 403 on _apis/wit/fields for https://dev.azure.com/myorg/: {}", entry.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Forbidden_LogsTheBody()
+    {
+        // Conditional Access, an IP allow-list or a WAF answer 403 for a valid PAT; only the body says so.
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("Blocked by IP policy " + new string('x', 1000))
+        });
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.Contains("Blocked by IP policy", message);
+        Assert.DoesNotContain(new string('x', 500), message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUnknownCharset_StillReturnsFalse()
+    {
+        // windows-1252 is one such charset: .NET cannot decode it without the CodePages provider.
+        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.Forbidden));
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUnknownCharset_KeepsTheStatus()
+    {
+        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.InternalServerError));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.InternalServerError, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ForbiddenWithLineBreaksInBody_LogsOneLine()
+    {
+        // The base URL comes from the user, so the body may be written to forge a log entry.
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("denied\r\nfake log entry\ttabbed")
+        });
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.DoesNotContain(message, char.IsControl);
+        Assert.Contains("denied", message);
+        Assert.Contains("fake log entry", message);
+    }
+
+    private static HttpResponseMessage WithUnknownCharset(HttpStatusCode statusCode)
+    {
+        var content = new ByteArrayContent("blocked"u8.ToArray());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = "windows-1252" };
+
+        return new HttpResponseMessage(statusCode) { Content = content };
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_SignInPage_LogsThatInsteadOfThePage()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.EndsWith(": a sign-in page", message);
+        Assert.DoesNotContain("<html>", message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Accepted_LogsWithoutTheToken()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+
+        await provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Equal("Azure DevOps accepted the token for projects and work items on https://dev.azure.com/myorg/", entry.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_BaseUrlWithCredentials_LeavesThemOutOfTheLog()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        await provider.ValidateConnectionAsync("pat", "https://user:hunter2@dev.azure.com/myorg/");
+
+        Assert.DoesNotContain("hunter2", Assert.Single(logger.Entries).Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectToSignInOnWorkItems_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectOnWorkItems_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => Redirect("https://dev.azure.com/neworg/_apis/wit/fields"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/oldorg/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+    }
+
+    private AzureDevOpsTaskProvider ProviderWith(ILogger<AzureDevOpsTaskProvider> logger) => new(
+        new MockHttpClientFactory(_handler, AzureDevOpsTaskProvider.HttpClientName),
+        logger,
+        Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }));
+
+    private sealed class RecordingLogger : ILogger<AzureDevOpsTaskProvider>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Add((logLevel, formatter(state, exception)));
     }
 
     private static HttpResponseMessage SignInPage(HttpStatusCode status) => new(status)
@@ -382,6 +617,28 @@ public class AzureDevOpsTaskProviderTests
         var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
 
         Assert.Equal(["1"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ItemsOmitted_LogsAWarningWithTheCounts()
+    {
+        var logger = new RecordingLogger<AzureDevOpsTaskProvider>();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{"System.Title":"One","System.State":"Active"}},
+              null
+            ]}
+            """);
+
+        await provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("returned 1 of 2", warning);
     }
 
     [Fact]
@@ -947,8 +1204,8 @@ public class AzureDevOpsTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2, 3));
         _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn((1, "Alpha"), (2, "Beta"), (3, "Alpha")));
-        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Alpha"));
-        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Beta"));
+        _handler.RespondTo("/myorg/_apis/projects/Alpha", HttpStatusCode.OK, Project("Alpha"));
+        _handler.RespondTo("/myorg/_apis/projects/Beta", HttpStatusCode.OK, Project("Beta"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -961,8 +1218,8 @@ public class AzureDevOpsTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn((1, "Gone"), (2, "Kept")));
-        _handler.EnqueueResponse(HttpStatusCode.NotFound);
-        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Kept"));
+        _handler.RespondTo("/myorg/_apis/projects/Gone", HttpStatusCode.NotFound);
+        _handler.RespondTo("/myorg/_apis/projects/Kept", HttpStatusCode.OK, Project("Kept"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -980,6 +1237,39 @@ public class AzureDevOpsTaskProviderTests
             _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_ForbiddenProjectLookup_KeepsTheStatusCode()
+    {
+        // Unlike GitHub, a 403 here can mean a PAT without the scope, so hiding it would turn a
+        // misconfigured integration into results that silently go missing.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One")));
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, "");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_LimitsConcurrentLookups()
+    {
+        var items = Enumerable.Range(1, 12).Select(i => (Id: i, Project: $"P{i}")).ToArray();
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. items.Select(i => i.Id)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn(items));
+
+        foreach (var item in items)
+        {
+            _handler.RespondTo($"/myorg/_apis/projects/{item.Project}", HttpStatusCode.OK, Project(item.Project), TimeSpan.FromMilliseconds(50));
+        }
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(12, result.Count);
+        Assert.InRange(_handler.MaxInFlight, 2, 5);
     }
 
     private static object Project(string name, string? id = null) => new

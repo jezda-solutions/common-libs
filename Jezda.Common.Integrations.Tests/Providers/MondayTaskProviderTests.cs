@@ -41,6 +41,19 @@ public class MondayTaskProviderTests
         Assert.Equal("monday-api-token", _handler.SentRequests[0].Headers.Authorization?.Parameter);
     }
 
+    [Theory]
+    [InlineData("token\u201D")] // A pasted smart quote
+    [InlineData("tok\u00E9n")]
+    [InlineData("token\n")] // A pasted line break
+    [InlineData("token\r\n")]
+    public async Task ValidateConnectionAsync_TokenThatCannotGoInAHeader_ReturnsFalseWithoutSending(string token)
+    {
+        var result = await _provider.ValidateConnectionAsync(token);
+
+        Assert.False(result);
+        Assert.Empty(_handler.SentRequests);
+    }
+
     [Fact]
     public async Task ValidateConnectionAsync_WithInvalidToken_ReturnsFalse()
     {
@@ -237,5 +250,101 @@ public class MondayTaskProviderTests
         Assert.Equal("active", result[0].Status);
         Assert.Equal("123", result[0].ProjectId);
         Assert.Equal(ExternalProvider.Monday, result[0].Provider);
+    }
+
+    // Monday's documented error-only answer carries "data": [], an array where an object is expected.
+    private const string ErrorWithEmptyDataArray =
+        """{"errors":[{"message":"Refused","extensions":{"code":"UserUnauthorizedException"}}],"data":[]}""";
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ValidateConnectionAsync_RejectionWithEmptyDataArray_ReturnsFalse(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(status, ErrorWithEmptyDataArray);
+
+        var result = await _provider.ValidateConnectionAsync("token");
+
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData("""{"data":null,"errors":[{"message":"Refused","extensions":{"code":"API_TEMPORARILY_BLOCKED"}}]}""", "API_TEMPORARILY_BLOCKED")]
+    [InlineData(ErrorWithEmptyDataArray, "UserUnauthorizedException")]
+    [InlineData("""{"errors":[{"message":"Budget exhausted"}]}""", "Budget exhausted")]
+    public async Task GetProjectsAsync_GraphQlError_ThrowsInsteadOfReturningEmpty(string body, string reason)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Contains(reason, ex.Message);
+    }
+
+    [Theory]
+    [InlineData("""{"data":null,"errors":[{"message":"Refused","extensions":{"code":"API_TEMPORARILY_BLOCKED"}}]}""", "API_TEMPORARILY_BLOCKED")]
+    [InlineData(ErrorWithEmptyDataArray, "UserUnauthorizedException")]
+    [InlineData("""{"errors":[{"message":"Budget exhausted"}]}""", "Budget exhausted")]
+    public async Task GetTasksAsync_GraphQlError_ThrowsInsteadOfReturningEmpty(string body, string reason)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+
+        Assert.Contains(reason, ex.Message);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_PartialDataWithErrors_ThrowsBecauseTheListMayBeIncomplete()
+    {
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"data":{"boards":[{"id":"1","name":"Kept"}]},"errors":[{"message":"Refused","extensions":{"code":"ASSET_UNAVAILABLE"}}]}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Contains("ASSET_UNAVAILABLE", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_NulledFieldWithErrors_ThrowsBecauseTheListIsMissing()
+    {
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"data":{"boards":[{"items_page":null}]},"errors":[{"message":"Refused","extensions":{"code":"ASSET_UNAVAILABLE"}}]}""");
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+    }
+
+    [Theory]
+    [InlineData("""{"data":null}""")]
+    [InlineData("""{"data":[]}""")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    public async Task GetProjectsAsync_NoDataAndNoErrors_ThrowsInsteadOfReturningEmpty(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_NoBoards_ReturnsEmpty()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[]}}""");
+
+        var result = await _provider.GetProjectsAsync("token");
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_NoItems_ReturnsEmpty()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[{"items_page":{"items":[]}}]}}""");
+
+        var result = await _provider.GetTasksAsync("token", "123");
+
+        Assert.Empty(result);
     }
 }
