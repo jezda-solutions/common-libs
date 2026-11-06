@@ -41,6 +41,19 @@ public class ClickUpTaskProviderTests
         Assert.Equal("pk_test_token", _handler.SentRequests[0].Headers.Authorization?.Parameter);
     }
 
+    [Theory]
+    [InlineData("token\u201D")] // A pasted smart quote
+    [InlineData("tok\u00E9n")]
+    [InlineData("token\n")] // A pasted line break
+    [InlineData("token\r\n")]
+    public async Task ValidateConnectionAsync_TokenThatCannotGoInAHeader_ReturnsFalseWithoutSending(string token)
+    {
+        var result = await _provider.ValidateConnectionAsync(token);
+
+        Assert.False(result);
+        Assert.Empty(_handler.SentRequests);
+    }
+
     [Fact]
     public async Task ValidateConnectionAsync_WithInvalidToken_ReturnsFalse()
     {

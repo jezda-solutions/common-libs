@@ -30,7 +30,7 @@ public static class IntegrationServiceCollectionExtensions
 
             if (!string.IsNullOrEmpty(options.PersonalAccessToken))
             {
-                var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{options.PersonalAccessToken}"));
+                var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{options.PersonalAccessToken}"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
             }
 

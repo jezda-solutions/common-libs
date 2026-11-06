@@ -28,6 +28,9 @@ services.AddMondayIntegration();
 a 403 without one of those codes and every other failure propagate, so they are not shown to the user as a bad
 token.
 
+A token with a character outside printable ASCII, such as a pasted smart quote or line break, also returns
+`false`, without a request: it cannot go in a header, and the failure would otherwise read as an outage.
+
 ## Failures on status 200
 
 Monday.com reports application errors with status 200. `GetProjectsAsync` and `GetTasksAsync` throw

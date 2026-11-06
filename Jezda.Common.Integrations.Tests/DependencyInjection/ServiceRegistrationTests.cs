@@ -69,6 +69,41 @@ public class ServiceRegistrationTests
         Assert.Equal(["Suppress"], client.DefaultRequestHeaders.GetValues("X-TFS-FedAuthRedirect"));
     }
 
+    [Fact]
+    public void AddJiraIntegration_TypedClient_SendsNonAsciiEmailAsUtf8()
+    {
+        var services = new ServiceCollection();
+        services.AddJiraIntegration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Integrations:Jira:BaseUrl"] = "https://test.atlassian.net/",
+            ["Integrations:Jira:Email"] = "\u017Eika@example.com",
+            ["Integrations:Jira:ApiToken"] = "token"
+        }).Build());
+
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IJiraClient));
+
+        var sent = Convert.FromBase64String(client.DefaultRequestHeaders.Authorization!.Parameter!);
+        Assert.Equal("\u017Eika@example.com:token", System.Text.Encoding.UTF8.GetString(sent));
+    }
+
+    [Fact]
+    public void AddAzureDevOpsIntegration_TypedClient_SendsNonAsciiTokenAsUtf8()
+    {
+        var services = new ServiceCollection();
+        services.AddAzureDevOpsIntegration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Integrations:AzureDevOps:BaseUrl"] = "https://dev.azure.com/testorg/",
+            ["Integrations:AzureDevOps:PersonalAccessToken"] = "pat\u201D"
+        }).Build());
+
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IAzureDevOpsClient));
+
+        var sent = Convert.FromBase64String(client.DefaultRequestHeaders.Authorization!.Parameter!);
+        Assert.Equal(":pat\u201D", System.Text.Encoding.UTF8.GetString(sent));
+    }
+
     [Theory]
     [InlineData(nameof(IAzureDevOpsClient))]
     [InlineData(AzureDevOpsTaskProvider.HttpClientName)]

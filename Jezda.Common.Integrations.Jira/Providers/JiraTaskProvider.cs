@@ -137,7 +137,8 @@ public sealed class JiraTaskProvider(
         var client = httpClientFactory.CreateClient(HttpClientName);
         client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
 
-        var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes(accessToken));
+        // ASCII would turn a character outside its range into '?', and a valid email would read as rejected.
+        var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes(accessToken));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
 
         return client;

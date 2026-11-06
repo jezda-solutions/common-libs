@@ -1,3 +1,4 @@
+using System.Text;
 using System.Net;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Jira.Providers;
@@ -42,6 +43,17 @@ public class JiraTaskProviderTests
         Assert.True(result);
         Assert.Single(_handler.SentRequests);
         Assert.Equal("Basic", _handler.SentRequests[0].Headers.Authorization?.Scheme);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NonAsciiEmail_SendsItAsUtf8()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { accountId = "123" });
+
+        await _provider.ValidateConnectionAsync("\u017Eika@example.com:token", "https://test.atlassian.net/");
+
+        var sent = Convert.FromBase64String(_handler.SentRequests[0].Headers.Authorization!.Parameter!);
+        Assert.Equal("\u017Eika@example.com:token", Encoding.UTF8.GetString(sent));
     }
 
     [Fact]

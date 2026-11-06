@@ -33,7 +33,7 @@ public static class IntegrationServiceCollectionExtensions
             if (!string.IsNullOrEmpty(options.Email) && !string.IsNullOrEmpty(options.ApiToken))
             {
                 var authString = $"{options.Email}:{options.ApiToken}";
-                var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes(authString));
+                var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes(authString));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
             }
 
