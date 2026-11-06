@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Jezda.Common.Integrations.AzureDevOps;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.Tests.Helpers;
@@ -195,6 +196,96 @@ public class AzureDevOpsClientTests
         var entry = Assert.Single(entries);
         Assert.Equal(1, entry.Hours);
         Assert.Equal(new DateTimeOffset(2026, 1, 10, 10, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_LatestUpdateWithSentinelRevisedDate_IsIncludedAtItsChangedDate()
+    {
+        // The newest revision has not been superseded, so Azure DevOps gives it revisedDate 9999-01-01.
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "9999-01-01T00:00:00Z",
+              "fields": {
+                "System.ChangedDate": { "oldValue": "2026-01-10T08:00:00Z", "newValue": "2026-01-15T10:00:00Z" },
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 1.0, "newValue": 3.0 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(2, entry.Hours);
+        Assert.Equal(new DateTimeOffset(2026, 1, 15, 10, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_FiltersByChangedDate_NotByRevisedDate()
+    {
+        // revisedDate is when the next change superseded the revision, so it is later than the change.
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "2026-01-05T09:00:00Z",
+              "fields": {
+                "System.ChangedDate": { "newValue": "2025-12-31T17:00:00Z" },
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 2.0 }
+              }
+            },
+            {
+              "id": 2,
+              "rev": 3,
+              "revisedDate": "2026-02-03T09:00:00Z",
+              "fields": {
+                "System.ChangedDate": { "oldValue": "2026-01-05T09:00:00Z", "newValue": "2026-01-31T20:00:00Z" },
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 2.0, "newValue": 6.0 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        // The December change is out even though its revisedDate is in January; the January 31
+        // change is in even though its revisedDate is in February.
+        var entry = Assert.Single(entries);
+        Assert.Equal(4, entry.Hours);
+        Assert.Equal(new DateTimeOffset(2026, 1, 31, 20, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_SentinelRevisedDateWithoutChangedDate_IsSkipped()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "9999-01-01T00:00:00Z",
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 1.0, "newValue": 3.0 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_QueryHasNoUpperBound()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs());
+
+        await _client.GetCompletedWorkLogsAsync(From, To);
+
+        // An item edited again after `to` can still hold work logged inside the range.
+        var body = await _handler.SentRequests[0].Content!.ReadAsStringAsync();
+        var query = JsonDocument.Parse(body).RootElement.GetProperty("query").GetString();
+        Assert.Contains("[System.ChangedDate] >= '2026-01-01T00:00:00", query);
+        Assert.DoesNotContain("<=", query);
     }
 
     // Queues the three calls GetCompletedWorkLogsAsync makes for a single work item (id 42):

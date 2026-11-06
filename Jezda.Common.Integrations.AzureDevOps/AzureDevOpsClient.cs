@@ -97,7 +97,10 @@ public sealed class AzureDevOpsClient(
 
     public async Task<IReadOnlyList<AdoWorkLogEntry>> GetCompletedWorkLogsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
-        var wiql = $"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '{from.UtcDateTime:O}' AND [System.ChangedDate] <= '{to.UtcDateTime:O}'";
+        // No upper bound: System.ChangedDate is the item's latest change, so an item with work
+        // logged inside the range and edited again after `to` must still be fetched. Each update
+        // is filtered by its own date below.
+        var wiql = $"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '{from.UtcDateTime:O}'";
         var workItems = await GetWorkItemsByQueryAsync(wiql, cancellationToken);
 
         if (workItems.Count == 0)
@@ -132,7 +135,7 @@ public sealed class AzureDevOpsClient(
 
         foreach (var update in updatesResponse.Value)
         {
-            if (update.RevisedDate < from || update.RevisedDate > to)
+            if (!TryGetChangedDate(update, out var changedAt) || changedAt < from || changedAt > to)
             {
                 continue;
             }
@@ -171,11 +174,49 @@ public sealed class AzureDevOpsClient(
                 UserUniqueName = update.RevisedBy?.UniqueName,
                 UserDisplayName = update.RevisedBy?.DisplayName,
                 Hours = delta,
-                LoggedAt = update.RevisedDate
+                LoggedAt = changedAt
             });
         }
 
         return entries;
+    }
+
+    // When an update was made. `revisedDate` on an update is when that revision was superseded
+    // by the next one (the time of the next change), and the latest revision carries the
+    // 9999-01-01 sentinel, so the update's own System.ChangedDate is read instead. `revisedDate`
+    // is only a fallback for an update without it, and never when it is the sentinel.
+    private static bool TryGetChangedDate(AdoWorkItemUpdate update, out DateTimeOffset changedAt)
+    {
+        if (update.Fields.TryGetValue("System.ChangedDate", out var change) && TryConvertToDateTimeOffset(change.NewValue, out changedAt))
+        {
+            return true;
+        }
+
+        changedAt = update.RevisedDate;
+        return changedAt != default && changedAt.Year < 9999;
+    }
+
+    private static bool TryConvertToDateTimeOffset(object? value, out DateTimeOffset result)
+    {
+        switch (value)
+        {
+            case DateTimeOffset dto:
+                result = dto;
+                return true;
+            case DateTime dt:
+                result = new DateTimeOffset(DateTime.SpecifyKind(dt, dt.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : dt.Kind));
+                return true;
+            case string s when DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed):
+                result = parsed;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.String } element
+                when DateTimeOffset.TryParse(element.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedElement):
+                result = parsedElement;
+                return true;
+            default:
+                result = default;
+                return false;
+        }
     }
 
     private static bool TryConvertToDouble(object? value, out double result)
