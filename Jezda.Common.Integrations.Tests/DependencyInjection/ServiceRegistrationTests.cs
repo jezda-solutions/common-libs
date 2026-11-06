@@ -52,6 +52,18 @@ public class ServiceRegistrationTests
     }
 
     [Fact]
+    public void AddAzureDevOpsIntegration_TypedClientAsksNotToRedirectToSignIn()
+    {
+        var services = new ServiceCollection();
+        services.AddAzureDevOpsIntegration(CreateConfiguration());
+
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IAzureDevOpsClient));
+
+        Assert.Equal(["Suppress"], client.DefaultRequestHeaders.GetValues("X-TFS-FedAuthRedirect"));
+    }
+
+    [Fact]
     public void AddJiraIntegration_RegistersBothClientAndTaskProvider()
     {
         var services = new ServiceCollection();

@@ -52,6 +52,18 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task EveryRequest_AsksAzureDevOpsNotToRedirectToSignIn()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+
+        await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
+
+        // Without it a bad PAT gets a sign-in page ending as 203, which reads as a valid connection.
+        var values = _handler.SentRequests[0].Headers.GetValues("X-TFS-FedAuthRedirect");
+        Assert.Equal(["Suppress"], values);
+    }
+
+    [Fact]
     public async Task ValidateConnectionAsync_WithoutBaseUrl_ThrowsArgumentException()
     {
         await Assert.ThrowsAnyAsync<ArgumentException>(() =>

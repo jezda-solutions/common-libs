@@ -35,6 +35,10 @@ public static class IntegrationServiceCollectionExtensions
             }
 
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            // Without it, a bad PAT is redirected to a sign-in page that ends as 203 with HTML,
+            // which IsSuccessStatusCode accepts. With it, Azure DevOps answers 401.
+            client.DefaultRequestHeaders.Add("X-TFS-FedAuthRedirect", "Suppress");
         });
 
         // Named HttpClient for IExternalTaskProvider (per-request auth + base URL)
