@@ -32,9 +32,7 @@ public sealed class GitHubTaskProvider(
 
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
-        // A real token is printable ASCII. Other characters mostly fail in the HTTP stack and read as an
-        // outage, non-ASCII ones after retries that count towards the circuit breaker every caller shares.
-        if (accessToken.AsSpan().ContainsAnyExceptInRange(' ', '~'))
+        if (!AccessTokenRules.CanGoInHeader(accessToken))
         {
             logger.LogWarning("GitHub token has characters that cannot go in a header, so it was not sent");
             return false;
