@@ -89,7 +89,8 @@ public abstract class BaseIntegrationClient
         {
             Logger.LogDebug("Sending DELETE request to {RequestUri}", requestUri);
             var response = await HttpClient.DeleteAsync(requestUri, cancellationToken);
-            
+            EnsureApiResponse(response);
+
             if (!response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -104,8 +105,24 @@ public abstract class BaseIntegrationClient
         }
     }
 
+    /// <summary>
+    /// Rejects a response that its status alone would misreport, before anything reads it. Called for
+    /// every response the helpers on this class receive, failed or not; the default accepts all.
+    /// </summary>
+    /// <remarks>
+    /// For an API that can answer a rejected token with a success status, such as a sign-in page
+    /// served as 203. Throw an <see cref="HttpRequestException"/> carrying the status callers should
+    /// branch on. A client that sends requests of its own, without these helpers, calls it itself.
+    /// </remarks>
+    /// <param name="response">The response just received.</param>
+    protected virtual void EnsureApiResponse(HttpResponseMessage response)
+    {
+    }
+
     private async Task<TResponse?> HandleResponseAsync<TResponse>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        EnsureApiResponse(response);
+
         if (response.IsSuccessStatusCode)
         {
             if (response.StatusCode == System.Net.HttpStatusCode.NoContent)

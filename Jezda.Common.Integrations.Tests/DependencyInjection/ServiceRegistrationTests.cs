@@ -2,6 +2,7 @@ using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.AzureDevOps;
 using Jezda.Common.Integrations.AzureDevOps.Extensions;
+using Jezda.Common.Integrations.AzureDevOps.Providers;
 using Jezda.Common.Integrations.ClickUp.Extensions;
 using Jezda.Common.Integrations.GitHub;
 using Jezda.Common.Integrations.GitHub.Extensions;
@@ -61,6 +62,32 @@ public class ServiceRegistrationTests
         using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IAzureDevOpsClient));
 
         Assert.Equal(["Suppress"], client.DefaultRequestHeaders.GetValues("X-TFS-FedAuthRedirect"));
+    }
+
+    [Theory]
+    [InlineData(nameof(IAzureDevOpsClient))]
+    [InlineData(AzureDevOpsTaskProvider.HttpClientName)]
+    public void AddAzureDevOpsIntegration_ClientsDoNotFollowRedirects(string clientName)
+    {
+        var services = new ServiceCollection();
+        services.AddAzureDevOpsIntegration(CreateConfiguration());
+
+        using var provider = services.BuildServiceProvider();
+        var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(clientName);
+
+        while (handler is DelegatingHandler delegating)
+        {
+            handler = delegating.InnerHandler!;
+        }
+
+        // .NET drops Authorization on a followed redirect, so a valid PAT would answer 401.
+        var allowAutoRedirect = handler switch
+        {
+            SocketsHttpHandler sockets => sockets.AllowAutoRedirect,
+            HttpClientHandler client => client.AllowAutoRedirect,
+            _ => throw new InvalidOperationException($"Unexpected primary handler {handler.GetType()}")
+        };
+        Assert.False(allowAutoRedirect);
     }
 
     [Fact]

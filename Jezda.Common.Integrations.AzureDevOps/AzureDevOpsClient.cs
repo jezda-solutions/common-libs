@@ -75,6 +75,7 @@ public sealed class AzureDevOpsClient(
 
             var content = JsonContent.Create(patchDocument, new System.Net.Http.Headers.MediaTypeHeaderValue("application/json-patch+json"), JsonSerializerOptions);
             var response = await HttpClient.PostAsync(url, content, cancellationToken);
+            EnsureApiResponse(response);
 
             if (response.IsSuccessStatusCode)
             {
@@ -205,4 +206,11 @@ public sealed class AzureDevOpsClient(
         var response = await GetAsync<AdoProjectListResponse>(url, cancellationToken);
         return response?.Value ?? new List<AdoProject>();
     }
+
+    /// <summary>
+    /// A sign-in page throws as 401, a redirect with its own status; see
+    /// <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
+    /// </summary>
+    protected override void EnsureApiResponse(HttpResponseMessage response) =>
+        AzureDevOpsHttp.ThrowIfNotApiResponse(response);
 }

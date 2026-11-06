@@ -82,6 +82,24 @@ public class MyService
 }
 ```
 
+## 🔐 Errors and authentication
+
+Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps report failures as
+`HttpRequestException` with `StatusCode` set, so a caller can tell a rejected token from anything else:
+
+| What happened | Result |
+|---|---|
+| Token rejected (401, 403) | `StatusCode` 401 / 403 |
+| Sign-in page instead of JSON (203, or HTML on a success status) | `StatusCode` 401 |
+| Base URL redirects (3xx, e.g. after an organisation rename) | `StatusCode` is the 3xx; the message names the target. Redirects are not followed, because .NET drops `Authorization` on the next hop and a valid PAT would read as expired. |
+| Any other failure | Its own status, or the original exception for timeouts and dropped connections |
+
+`ValidateConnectionAsync` returns `false` only for a rejected token (401, 403, sign-in page). Every other
+failure propagates, so an outage is not shown to the user as a bad PAT.
+
+Validation reads `_apis/projects`, so a PAT without the Work Items scope still validates and fails later,
+on the first work item call.
+
 ## 🛠️ Key Models
 
 - **`AdoWorkItem`**: Represents a simplified work item with generic `Fields` dictionary.
