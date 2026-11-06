@@ -55,6 +55,80 @@ public class JiraTaskProviderTests
     }
 
     [Fact]
+    public async Task ValidateConnectionAsync_Forbidden_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_FailedLoginHeader_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(() => WithLoginReason(HttpStatusCode.Unauthorized, "AUTHENTICATED_FAILED"));
+
+        var result = await _provider.ValidateConnectionAsync("bad:token", "https://test.atlassian.net/");
+
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    public async Task ValidateConnectionAsync_Captcha_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
+    {
+        // Jira refused without checking the credentials, so they may well be valid.
+        _handler.EnqueueResponse(() => WithLoginReason(status, "AUTHENTICATION_DENIED"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(status, ex.StatusCode);
+        Assert.Contains("CAPTCHA", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task ValidateConnectionAsync_OtherFailureStatus_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(status);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(status, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ConnectionFailure_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new HttpRequestException("Connection refused"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Timeout_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new TaskCanceledException("The request timed out"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+    }
+
+    private static HttpResponseMessage WithLoginReason(HttpStatusCode status, string reason)
+    {
+        var response = new HttpResponseMessage(status);
+        response.Headers.Add("X-Seraph-LoginReason", reason);
+        return response;
+    }
+
+    [Fact]
     public async Task ValidateConnectionAsync_WithoutBaseUrl_ThrowsArgumentException()
     {
         await Assert.ThrowsAnyAsync<ArgumentException>(() =>

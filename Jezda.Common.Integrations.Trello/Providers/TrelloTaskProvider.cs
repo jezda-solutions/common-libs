@@ -3,6 +3,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.Trello.Models;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -33,16 +34,17 @@ public sealed class TrelloTaskProvider(
         using var client = CreateClient();
         var (key, token) = ParseAccessToken(accessToken);
 
-        try
+        using var response = await client.GetAsync($"members/me?key={key}&token={token}", cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            var response = await client.GetAsync($"members/me?key={key}&token={token}", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Trello connection validation failed");
+            logger.LogWarning("Trello rejected the key or token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
+
+        response.EnsureSuccessStatusCode();
+
+        return true;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

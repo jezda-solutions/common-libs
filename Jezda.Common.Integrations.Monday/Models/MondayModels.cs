@@ -12,6 +12,24 @@ public sealed class MondayGraphQlResponse<T>
 {
     [JsonPropertyName("data")]
     public T? Data { get; set; }
+
+    [JsonPropertyName("errors")]
+    public List<MondayGraphQlError>? Errors { get; set; }
+}
+
+public sealed class MondayGraphQlError
+{
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("extensions")]
+    public MondayGraphQlErrorExtensions? Extensions { get; set; }
+}
+
+public sealed class MondayGraphQlErrorExtensions
+{
+    [JsonPropertyName("code")]
+    public string? Code { get; set; }
 }
 
 public sealed class MondayMeData

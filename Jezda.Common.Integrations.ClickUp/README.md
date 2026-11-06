@@ -19,3 +19,8 @@ services.AddClickUpIntegration();
 | `ValidateConnectionAsync` | `GET /team` | Validates token and workspace access |
 | `GetProjectsAsync` | `GET /team` | Returns teams as projects |
 | `GetTasksAsync` | `GET /team/{id}/task` | Returns tasks for a team |
+
+## Connection validation
+
+`ValidateConnectionAsync` returns `false` only for 401, which is what ClickUp answers a bad token with.
+Every other failure propagates, so an outage or a rate limit is not shown to the user as a bad token.

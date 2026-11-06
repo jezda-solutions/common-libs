@@ -28,17 +28,19 @@ public sealed class GitHubTaskProvider(
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(accessToken);
+        using var response = await client.GetAsync("user", cancellationToken);
 
-        try
+        // GitHub answers a bad token with 401. A 403 can refuse a valid one: a rate limit, a lockout
+        // after failed logins from the same address, an IP allow list.
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            var response = await client.GetAsync("user", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "GitHub connection validation failed");
+            logger.LogWarning("GitHub rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
+
+        response.EnsureSuccessStatusCode();
+
+        return true;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

@@ -7,6 +7,28 @@ public interface IExternalTaskProvider
 {
     ExternalProvider Provider { get; }
 
+    /// <summary>
+    /// Asks the provider whether it accepts the token.
+    /// </summary>
+    /// <remarks>
+    /// What counts as a rejected token differs per provider:
+    /// <list type="bullet">
+    /// <item><description>Azure DevOps: 401, 403 or a sign-in page.</description></item>
+    /// <item><description>GitHub: 401. A 403 can be a rate limit, a login-attempt lockout or an address block, so it is not a rejection.</description></item>
+    /// <item><description>Jira: 401, unless <c>X-Seraph-LoginReason</c> is <c>AUTHENTICATION_DENIED</c>: the CAPTCHA was triggered and needs a sign-in through the website. A 403 is not a rejection.</description></item>
+    /// <item><description>ClickUp: 401.</description></item>
+    /// <item><description>Monday.com: 401, or a rejection code in a GraphQL error on status 200 or 403. An IP restriction or a temporary API block is not a rejection.</description></item>
+    /// <item><description>Trello: 401, for a bad key as well as a bad token.</description></item>
+    /// </list>
+    /// Handle every exception as "could not check", not only the ones listed here, so an outage or a
+    /// rate limit does not read as a bad token. The resilience pipeline can also throw Polly's
+    /// <c>TimeoutRejectedException</c> or <c>BrokenCircuitException</c>, which derive from none of them.
+    /// </remarks>
+    /// <returns><c>true</c> if the token is accepted, <c>false</c> only if the provider rejected it.</returns>
+    /// <exception cref="HttpRequestException">The request failed, or the provider answered with any other failure.</exception>
+    /// <exception cref="OperationCanceledException">The request was cancelled or <c>HttpClient.Timeout</c> elapsed.</exception>
+    /// <exception cref="System.Text.Json.JsonException">Monday.com answered status 200 with a body that is not the expected JSON.</exception>
+    /// <exception cref="ArgumentException">The base URL is missing where the provider needs one, or the token has the wrong format.</exception>
     Task<bool> ValidateConnectionAsync(
         string accessToken,
         string? baseUrl = null,

@@ -3,6 +3,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.ClickUp.Models;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -26,17 +27,17 @@ public sealed class ClickUpTaskProvider(
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(accessToken);
+        using var response = await client.GetAsync("team", cancellationToken);
 
-        try
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            var response = await client.GetAsync("team", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "ClickUp connection validation failed");
+            logger.LogWarning("ClickUp rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
+
+        response.EnsureSuccessStatusCode();
+
+        return true;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

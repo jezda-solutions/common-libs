@@ -52,6 +52,47 @@ public class GitHubTaskProviderTests
         Assert.False(result);
     }
 
+    [Theory]
+    [InlineData("""{"message":"You have exceeded a secondary rate limit."}""")]
+    [InlineData("""{"message":"Maximum number of login attempts exceeded. Please try again later."}""")]
+    [InlineData("<html>Blocked by proxy</html>")]
+    public async Task ValidateConnectionAsync_Forbidden_ThrowsInsteadOfBlamingTheToken(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task ValidateConnectionAsync_OtherFailureStatus_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(status);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(status, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ConnectionFailure_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new HttpRequestException("Connection refused"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Timeout_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new TaskCanceledException("The request timed out"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
     [Fact]
     public async Task GetProjectsAsync_ReturnsExternalProjectDtos()
     {
