@@ -52,8 +52,10 @@ public sealed class AzureDevOpsTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
-        var response = await client.GetFromJsonAsync<AdoProjectListResponse>(
-            $"_apis/projects?api-version={_apiVersion}", JsonOptions, cancellationToken);
+        using var httpResponse = await client.GetAsync($"_apis/projects?api-version={_apiVersion}", cancellationToken);
+        await EnsureSuccessAsync(httpResponse, cancellationToken);
+
+        var response = await httpResponse.Content.ReadFromJsonAsync<AdoProjectListResponse>(JsonOptions, cancellationToken);
 
         return (response?.Value ?? []).Select(p => new ExternalProjectDto
         {
@@ -288,8 +290,15 @@ public sealed class AzureDevOpsTaskProvider(
     /// Hydrates work item ids into full work items.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Chunked at 200 because that is the maximum number of ids Azure DevOps accepts on a single
     /// <c>workitems?ids=</c> request; beyond it the call fails outright rather than truncating.
+    /// </para>
+    /// <para>
+    /// <c>errorPolicy=omit</c> because an id deleted or made unreadable after the WIQL ran would
+    /// otherwise fail the whole batch with 404. Azure DevOps answers such an id with a null slot,
+    /// which is dropped here, so the result can hold fewer items than ids were asked for.
+    /// </para>
     /// </remarks>
     private async Task<List<AdoWorkItem>> FetchWorkItemDetailsAsync(
         HttpClient client,
@@ -301,12 +310,15 @@ public sealed class AzureDevOpsTaskProvider(
         foreach (var batch in ids.Chunk(200))
         {
             var idsString = string.Join(",", batch);
-            var response = await client.GetFromJsonAsync<AdoWorkItemListResponse>(
-                $"_apis/wit/workitems?ids={idsString}&api-version={_apiVersion}", JsonOptions, cancellationToken);
+            using var httpResponse = await client.GetAsync(
+                $"_apis/wit/workitems?ids={idsString}&errorPolicy=omit&api-version={_apiVersion}", cancellationToken);
+            await EnsureSuccessAsync(httpResponse, cancellationToken);
+
+            var response = await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, cancellationToken);
 
             if (response?.Value is not null)
             {
-                workItems.AddRange(response.Value);
+                workItems.AddRange(response.Value.OfType<AdoWorkItem>());
             }
         }
 

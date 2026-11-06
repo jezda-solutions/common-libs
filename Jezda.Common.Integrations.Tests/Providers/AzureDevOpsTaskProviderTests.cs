@@ -140,6 +140,85 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task GetProjectsAsync_Rejected_CarriesTheAzureDevOpsReasonAndStatus()
+    {
+        _handler.EnqueueResponse(
+            HttpStatusCode.Forbidden,
+            """{"message":"TF400813: The user is not authorized to access this resource."}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Contains("TF400813", ex.Message);
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_AsksTheDetailsBatchToOmitUnreadableItems()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One"), (2, "Two")));
+
+        await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        // Without it, one id deleted between the WIQL and this call fails the whole batch with 404.
+        var detailsQuery = _handler.SentRequests[1].RequestUri!.Query;
+        Assert.Contains("errorPolicy=omit", detailsQuery);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_SkipsItemsTheDetailsBatchOmitted()
+    {
+        // With errorPolicy=omit, Azure DevOps answers an unreadable id with a null slot.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{"System.Title":"One","System.State":"Active"}},
+              null
+            ]}
+            """);
+
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["1"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_SkipsItemsTheDetailsBatchOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(9, 3));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              null,
+              {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}}
+            ]}
+            """);
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["3"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_RejectedDetailsBatch_CarriesTheAzureDevOpsReasonAndStatus()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(
+            HttpStatusCode.BadRequest,
+            """{"message":"VS403474: The request contains too many work item ids."}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/"));
+
+        Assert.Contains("VS403474", ex.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+    }
+
+    [Fact]
     public async Task GetTasksAsync_EmptyWiqlResult_ReturnsEmpty()
     {
         var wiqlResponse = new { queryType = "flat", workItems = Array.Empty<object>() };
