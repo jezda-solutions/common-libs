@@ -1,13 +1,12 @@
 # Jezda.Common.Integrations.AzureDevOps
 
 A strongly-typed .NET client for Azure DevOps REST API, built on top of `Jezda.Common.Integrations`. 
-This library simplifies interaction with Azure DevOps by providing easy-to-use methods for Work Items, WIQL queries, and Time Tracking data.
+This library simplifies interaction with Azure DevOps by providing easy-to-use methods for Work Items and WIQL queries.
 
 ## ✨ Features
 
 - **Work Item Management**: Create and retrieve work items.
 - **WIQL Support**: Execute raw WIQL queries and get typed results.
-- **Time Tracking**: Extract completed work logs from work item history (reconstructed from `CompletedWork` field changes).
 - **Project Management**: List all projects in the organization.
 - **Dependency Injection**: Ready-to-use `IServiceCollection` extension.
 
@@ -67,17 +66,6 @@ public class MyService
         // 2. Get work items via WIQL
         var workItems = await _adoClient.GetWorkItemsByQueryAsync(
             "SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'");
-
-        // 3. Get time logs for January
-        var logs = await _adoClient.GetCompletedWorkLogsAsync(
-            new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2025, 1, 31, 23, 59, 59, TimeSpan.Zero)
-        );
-        
-        foreach(var log in logs)
-        {
-            Console.WriteLine($"User {log.UserDisplayName} logged {log.Hours}h on {log.Project}");
-        }
     }
 }
 ```
@@ -105,4 +93,3 @@ on the first work item call.
 
 - **`AdoWorkItem`**: Represents a simplified work item with generic `Fields` dictionary.
 - **`AdoProject`**: Contains project details (Id, Name, Description, Url).
-- **`AdoWorkLogEntry`**: Calculated work log entry (User, Hours, Date, Project).

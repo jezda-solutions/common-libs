@@ -21,16 +21,6 @@ public interface IAzureDevOpsClient
     Task<AdoWorkItem?> CreateWorkItemAsync(string project, string type, Dictionary<string, object> fields, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves completed work log entries for work items modified within the specified date range.
-    /// </summary>
-    /// <remarks>
-    /// An entry is an increase of <c>Microsoft.VSTS.Scheduling.CompletedWork</c> in one update. The
-    /// range and <see cref="AdoWorkLogEntry.LoggedAt"/> use the update's own
-    /// <c>System.ChangedDate</c>, not its <c>revisedDate</c>, which is when the revision was superseded.
-    /// </remarks>
-    Task<IReadOnlyList<AdoWorkLogEntry>> GetCompletedWorkLogsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Gets all projects in the organization.
     /// </summary>
     Task<List<AdoProject>> GetProjectsAsync(CancellationToken cancellationToken = default);
