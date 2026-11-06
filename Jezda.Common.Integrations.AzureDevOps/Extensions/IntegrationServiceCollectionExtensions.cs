@@ -36,14 +36,15 @@ public static class IntegrationServiceCollectionExtensions
 
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
-        }).ConfigurePrimaryHttpMessageHandler((handler, _) => AzureDevOpsHttp.DisableAutoRedirect(handler));
+        }).ConfigurePrimaryHttpMessageHandler(AzureDevOpsHttp.DisableAutoRedirect);
 
         // Named HttpClient for IExternalTaskProvider (per-request auth + base URL)
         services.AddHttpClient(AzureDevOpsTaskProvider.HttpClientName, client =>
         {
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
         })
-        .ConfigurePrimaryHttpMessageHandler((handler, _) => AzureDevOpsHttp.DisableAutoRedirect(handler))
+        .ConfigurePrimaryHttpMessageHandler(AzureDevOpsHttp.DisableAutoRedirect)
         .AddIntegrationResilience();
 
         services.AddSingleton<IExternalTaskProvider, AzureDevOpsTaskProvider>();
