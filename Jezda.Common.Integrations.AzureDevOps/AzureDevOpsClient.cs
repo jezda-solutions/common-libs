@@ -153,7 +153,7 @@ public sealed class AzureDevOpsClient(
             // Azure DevOps omits `oldValue` the first time a field is set, so a missing old value
             // means the field went from empty to `newValue`. A present but unreadable one is skipped.
             var oldValue = 0d;
-            if (!IsMissing(change.OldValue) && !TryConvertToDouble(change.OldValue, out oldValue))
+            if (change.OldValue is not null && !TryConvertToDouble(change.OldValue, out oldValue))
             {
                 continue;
             }
@@ -187,36 +187,15 @@ public sealed class AzureDevOpsClient(
     // is only a fallback for an update without it, and never when it is the sentinel.
     private static bool TryGetChangedDate(AdoWorkItemUpdate update, out DateTimeOffset changedAt)
     {
-        if (update.Fields.TryGetValue("System.ChangedDate", out var change) && TryConvertToDateTimeOffset(change.NewValue, out changedAt))
+        if (update.Fields.TryGetValue("System.ChangedDate", out var change)
+            && change.NewValue is JsonElement { ValueKind: JsonValueKind.String } element
+            && DateTimeOffset.TryParse(element.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out changedAt))
         {
             return true;
         }
 
         changedAt = update.RevisedDate;
         return changedAt != default && changedAt.Year < 9999;
-    }
-
-    private static bool TryConvertToDateTimeOffset(object? value, out DateTimeOffset result)
-    {
-        switch (value)
-        {
-            case DateTimeOffset dto:
-                result = dto;
-                return true;
-            case DateTime dt:
-                result = new DateTimeOffset(DateTime.SpecifyKind(dt, dt.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : dt.Kind));
-                return true;
-            case string s when DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed):
-                result = parsed;
-                return true;
-            case JsonElement { ValueKind: JsonValueKind.String } element
-                when DateTimeOffset.TryParse(element.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedElement):
-                result = parsedElement;
-                return true;
-            default:
-                result = default;
-                return false;
-        }
     }
 
     private static bool TryConvertToDouble(object? value, out double result)
@@ -258,9 +237,6 @@ public sealed class AzureDevOpsClient(
                 return false;
         }
     }
-
-    private static bool IsMissing(object? value) =>
-        value is null or JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined };
 
     public async Task<List<AdoProject>> GetProjectsAsync(CancellationToken cancellationToken = default)
     {
