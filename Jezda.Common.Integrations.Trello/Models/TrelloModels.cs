@@ -18,6 +18,19 @@ public sealed class TrelloBoard
 
     [JsonPropertyName("url")]
     public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("dateLastActivity")]
+    public DateTimeOffset? DateLastActivity { get; set; }
+
+    [JsonPropertyName("prefs")]
+    public TrelloBoardPrefs? Prefs { get; set; }
+}
+
+public sealed class TrelloBoardPrefs
+{
+    /// <summary><c>private</c>, <c>org</c>, <c>enterprise</c> or <c>public</c>.</summary>
+    [JsonPropertyName("permissionLevel")]
+    public string? PermissionLevel { get; set; }
 }
 
 public sealed class TrelloCard

@@ -21,6 +21,15 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
         _responses.Enqueue(new MockResponse(statusCode, json));
     }
 
+    /// <summary>
+    /// Queues a JSON body with one response header, for the paging headers providers follow.
+    /// </summary>
+    public void EnqueueResponseWithHeader(object body, string headerName, string headerValue)
+    {
+        var json = JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        _responses.Enqueue(new MockResponse(HttpStatusCode.OK, json, (headerName, headerValue)));
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         SentRequests.Add(request);
@@ -35,11 +44,18 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
 
         var mock = _responses.Dequeue();
 
-        return Task.FromResult(new HttpResponseMessage(mock.StatusCode)
+        var response = new HttpResponseMessage(mock.StatusCode)
         {
             Content = new StringContent(mock.Body, Encoding.UTF8, "application/json")
-        });
+        };
+
+        if (mock.Header is { } header)
+        {
+            response.Headers.Add(header.Name, header.Value);
+        }
+
+        return Task.FromResult(response);
     }
 
-    private sealed record MockResponse(HttpStatusCode StatusCode, string Body);
+    private sealed record MockResponse(HttpStatusCode StatusCode, string Body, (string Name, string Value)? Header = null);
 }

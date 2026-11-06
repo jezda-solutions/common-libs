@@ -3,6 +3,8 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.GitHub.Models;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -43,36 +45,47 @@ public sealed class GitHubTaskProvider(
     {
         using var client = CreateClient(accessToken);
 
-        var repos = await client.GetFromJsonAsync<List<GitHubRepository>>("user/repos", JsonOptions, cancellationToken)
-                    ?? [];
+        var repos = await GetAllPagesAsync<GitHubRepository>(client, "user/repos?per_page=100", cancellationToken);
 
         return [.. repos.Select(r => new ExternalProjectDto
         {
-            Id = r.FullName,
+            Id = DurableId(r),
+            Path = r.FullName,
             Name = r.Name,
             Description = r.Description,
             Url = r.HtmlUrl,
-            Provider = ExternalProvider.GitHub
+            Provider = ExternalProvider.GitHub,
+            CreatedAt = r.CreatedAt,
+            UpdatedAt = LastChange(r),
+            IsArchived = r.Archived,
+            IsPrivate = r.Private
         })];
     }
 
+    /// <summary>
+    /// Lists a repository's issues.
+    /// </summary>
+    /// <remarks>
+    /// The repository is looked up first so every task carries the durable id whichever form of
+    /// <paramref name="projectId"/> was passed, because the issues payload has no repository id.
+    /// Looking it up by id also survives a rename: the old <c>owner/repo</c> answers with a redirect,
+    /// on which .NET drops the Authorization header, so a private repository would fail with 404.
+    /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
+        // Blank would otherwise address GitHub's listing of every public repository.
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
+
         using var client = CreateClient(accessToken);
 
-        var allIssues = new List<GitHubIssue>();
-        string? url = $"repos/{projectId}/issues?state=all&per_page=100";
+        // Only a path has a slash, so the two forms cannot be confused.
+        var repository = await GetRepositoryAsync(
+            client,
+            projectId.Contains('/') ? $"repos/{projectId}" : $"repositories/{Uri.EscapeDataString(projectId)}",
+            cancellationToken);
 
-        while (url is not null)
-        {
-            var response = await client.GetAsync(url, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var page = await response.Content.ReadFromJsonAsync<List<GitHubIssue>>(JsonOptions, cancellationToken) ?? [];
-            allIssues.AddRange(page);
-
-            url = GetNextPageUrl(response);
-        }
+        var allIssues = await GetAllPagesAsync<GitHubIssue>(
+            client, $"repos/{repository.FullName}/issues?state=all&per_page=100", cancellationToken);
 
         return [.. allIssues
             .Where(i => i.PullRequest is null) // GitHub's issues endpoint returns PRs too — keep only real issues
@@ -82,7 +95,7 @@ public sealed class GitHubTaskProvider(
             Title = i.Title,
             Status = i.State,
             Url = i.HtmlUrl,
-            ProjectId = projectId,
+            ProjectId = DurableId(repository),
             Provider = ExternalProvider.GitHub
         })];
     }
@@ -109,10 +122,13 @@ public sealed class GitHubTaskProvider(
     /// this from a text field must debounce.
     /// </para>
     /// <para>
-    /// <c>ProjectId</c> is derived from each item's <c>repository_url</c> rather than a parameter,
-    /// and must equal the <c>owner/repo</c> full name <see cref="GetProjectsAsync"/> reports as
-    /// <c>ExternalProjectDto.Id</c> — consumers key stored rows on that value, so a different
-    /// spelling here would store a second row for a task they already have.
+    /// <b>One extra request per distinct repository in the result.</b> A search item names its
+    /// repository only through <c>repository_url</c> and carries no repository id, but
+    /// <c>ProjectId</c> must equal what <see cref="GetProjectsAsync"/> reports as
+    /// <c>ExternalProjectDto.Id</c>: consumers key stored rows on that value, so anything else would
+    /// store a second row for a task they already have. These count against the core rate limit, not
+    /// the search one. An item whose repository answers 404 cannot be bound to a project, so it is
+    /// dropped.
     /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
@@ -142,22 +158,102 @@ public sealed class GitHubTaskProvider(
 
         var items = (response?.Items ?? [])
             .Where(i => i.PullRequest is null)
-            .Take(limit);
+            .Take(limit)
+            .Select(i => (Issue: i, FullName: ToFullName(i.RepositoryUrl)))
+            .ToList();
 
-        return [.. items.Select(i => new ExternalTaskDto
+        var repositories = await FindRepositoriesAsync(client, items.Select(i => i.FullName), cancellationToken);
+
+        return [.. items
+            .Where(i => repositories.ContainsKey(i.FullName))
+            .Select(i => new ExternalTaskDto
         {
-            Id = i.Number.ToString(),
-            Title = i.Title,
-            Status = i.State,
-            Url = i.HtmlUrl,
-            ProjectId = ToFullName(i.RepositoryUrl),
+            Id = i.Issue.Number.ToString(),
+            Title = i.Issue.Title,
+            Status = i.Issue.State,
+            Url = i.Issue.HtmlUrl,
+            ProjectId = DurableId(repositories[i.FullName]),
             Provider = ExternalProvider.GitHub
         })];
     }
 
     /// <summary>
-    /// Turns <c>https://api.github.com/repos/{owner}/{repo}</c> into <c>{owner}/{repo}</c>, the same
-    /// value <see cref="GetProjectsAsync"/> reports from <c>GitHubRepository.FullName</c>.
+    /// Looks up each named repository once, concurrently because a person is waiting on the search.
+    /// A repository that answers 404 is left out; any other failure propagates, so an expired token
+    /// still surfaces as one.
+    /// </summary>
+    private async Task<Dictionary<string, GitHubRepository>> FindRepositoriesAsync(
+        HttpClient client,
+        IEnumerable<string> fullNames,
+        CancellationToken cancellationToken)
+    {
+        var lookups = fullNames
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Select(async name =>
+            {
+                try
+                {
+                    return (Name: name, Repository: (GitHubRepository?)await GetRepositoryAsync(client, $"repos/{name}", cancellationToken));
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+                {
+                    logger.LogWarning("GitHub search returned an issue in {Repository}, which answers 404", name);
+                    return (Name: name, Repository: null);
+                }
+            });
+
+        var found = await Task.WhenAll(lookups);
+
+        return found
+            .Where(l => l.Repository is not null)
+            .ToDictionary(l => l.Name, l => l.Repository!, StringComparer.Ordinal);
+    }
+
+    private static async Task<GitHubRepository> GetRepositoryAsync(HttpClient client, string url, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GitHubRepository>(JsonOptions, cancellationToken)
+               ?? throw new HttpRequestException($"GitHub returned an empty repository for {url}");
+    }
+
+    private static string DurableId(GitHubRepository repository) =>
+        repository.Id.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The later of the last push and the last metadata change, since either alone misses the other
+    /// kind of activity. <c>pushed_at</c> is null on a repository nothing was ever pushed to.
+    /// </summary>
+    private static DateTimeOffset? LastChange(GitHubRepository repository) =>
+        repository.PushedAt > repository.UpdatedAt || repository.UpdatedAt is null
+            ? repository.PushedAt
+            : repository.UpdatedAt;
+
+    /// <summary>
+    /// Follows <c>Link: rel="next"</c> until the last page.
+    /// </summary>
+    private static async Task<List<T>> GetAllPagesAsync<T>(HttpClient client, string firstPageUrl, CancellationToken cancellationToken)
+    {
+        var all = new List<T>();
+        string? url = firstPageUrl;
+
+        while (url is not null)
+        {
+            using var response = await client.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            all.AddRange(await response.Content.ReadFromJsonAsync<List<T>>(JsonOptions, cancellationToken) ?? []);
+
+            url = GetNextPageUrl(response);
+        }
+
+        return all;
+    }
+
+    /// <summary>
+    /// Turns <c>https://api.github.com/repos/{owner}/{repo}</c> into <c>{owner}/{repo}</c>.
     /// </summary>
     private static string ToFullName(string repositoryUrl)
     {

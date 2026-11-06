@@ -68,6 +68,7 @@ public class ClickUpTaskProviderTests
 
         Assert.Equal(2, result.Count);
         Assert.Equal("team1", result[0].Id);
+        Assert.Equal("team1", result[0].Path);
         Assert.Equal("Engineering", result[0].Name);
         Assert.Equal(ExternalProvider.ClickUp, result[0].Provider);
     }

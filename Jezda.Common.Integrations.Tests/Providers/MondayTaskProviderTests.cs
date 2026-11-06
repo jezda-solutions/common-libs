@@ -71,6 +71,7 @@ public class MondayTaskProviderTests
 
         Assert.Equal(2, result.Count);
         Assert.Equal("123", result[0].Id);
+        Assert.Equal("123", result[0].Path);
         Assert.Equal("Sprint Board", result[0].Name);
         Assert.Equal("Sprint planning", result[0].Description);
         Assert.Equal(ExternalProvider.Monday, result[0].Provider);

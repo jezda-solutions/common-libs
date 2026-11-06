@@ -5,6 +5,7 @@ using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -18,6 +19,8 @@ public sealed class AzureDevOpsTaskProvider(
     IOptions<AzureDevOpsOptions> options) : IExternalTaskProvider
 {
     public const string HttpClientName = "ExternalTaskProvider.AzureDevOps";
+    private const int ProjectPageSize = 100;
+    private const string ContinuationTokenHeader = "x-ms-continuationtoken";
     private readonly string _apiVersion = options.Value.ApiVersion;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -52,39 +55,63 @@ public sealed class AzureDevOpsTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
-        using var httpResponse = await client.GetAsync($"_apis/projects?api-version={_apiVersion}", cancellationToken);
-        await EnsureSuccessAsync(httpResponse, cancellationToken);
+        var projects = new List<AdoProject>();
+        string? continuationToken = null;
 
-        var response = await httpResponse.Content.ReadFromJsonAsync<AdoProjectListResponse>(JsonOptions, cancellationToken);
-
-        return (response?.Value ?? []).Select(p => new ExternalProjectDto
+        do
         {
-            Id = p.Name,
-            Name = p.Name,
-            Description = p.Description,
-            Url = p.Url,
-            Provider = ExternalProvider.AzureDevOps
-        }).ToList();
+            var url = $"_apis/projects?$top={ProjectPageSize}&api-version={_apiVersion}";
+            if (continuationToken is not null)
+            {
+                url += $"&continuationToken={Uri.EscapeDataString(continuationToken)}";
+            }
+
+            using var httpResponse = await client.GetAsync(url, cancellationToken);
+            await EnsureSuccessAsync(httpResponse, cancellationToken);
+
+            var page = await httpResponse.Content.ReadFromJsonAsync<AdoProjectListResponse>(JsonOptions, cancellationToken);
+            projects.AddRange(page?.Value ?? []);
+
+            continuationToken = httpResponse.Headers.TryGetValues(ContinuationTokenHeader, out var values)
+                ? values.FirstOrDefault()
+                : null;
+        }
+        while (!string.IsNullOrEmpty(continuationToken));
+
+        return [.. projects.Select(p => ToExternalProject(p, client.BaseAddress!))];
     }
 
+    /// <summary>
+    /// Lists a project's work items.
+    /// </summary>
+    /// <remarks>
+    /// The project is looked up first because <c>[System.TeamProject]</c> in WIQL takes the name, and
+    /// a work item carries only the name while <c>ProjectId</c> must be the GUID.
+    /// <c>_apis/projects/{id}</c> accepts both the GUID and the name, and the lookup by GUID keeps
+    /// working after a rename.
+    /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(
         string accessToken,
         string projectId,
-        string? baseUrl = null, 
+        string? baseUrl = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
+        // Blank would otherwise address the project listing and parse as a nameless project.
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
 
         using var client = CreateClient(accessToken, baseUrl);
+
+        var project = await GetProjectAsync(client, projectId, cancellationToken);
 
         // Execute WIQL query to get work item IDs
         var wiqlRequest = new AdoWiqlRequest
         {
-            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{EscapeWiql(projectId)}' AND [System.State] <> 'Removed' ORDER BY [System.Id] DESC"
+            Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{EscapeWiql(project.Name)}' AND [System.State] <> 'Removed' ORDER BY [System.Id] DESC"
         };
 
         var references = await RunWiqlAsync(
-            client, wiqlRequest, $"{Uri.EscapeDataString(projectId)}/_apis/wit/wiql", cancellationToken);
+            client, wiqlRequest, $"{Uri.EscapeDataString(project.Name)}/_apis/wit/wiql", cancellationToken);
 
         if (references.Count == 0)
         {
@@ -94,7 +121,7 @@ public sealed class AzureDevOpsTaskProvider(
         var workItems = await FetchWorkItemDetailsAsync(
             client, references.Select(wi => wi.Id), cancellationToken);
 
-        return [.. workItems.Select(wi => ToExternalTask(wi, projectId, client.BaseAddress!))];
+        return [.. workItems.Select(wi => ToExternalTask(wi, project.Id, project.Name, client.BaseAddress!))];
     }
 
     /// <summary>
@@ -105,9 +132,11 @@ public sealed class AzureDevOpsTaskProvider(
     /// <para>
     /// The WIQL omits <c>[System.TeamProject]</c> and the URL omits the project segment, which is
     /// what makes this organisation-wide. Consequently the project cannot come from a parameter —
-    /// it is read back per work item from <c>System.TeamProject</c>, and matches the value
-    /// <see cref="GetProjectsAsync"/> reports as <c>ExternalProjectDto.Id</c> (the project
-    /// <i>name</i>, not its GUID). Consumers key stored rows on that, so the two must agree.
+    /// it is read back per work item from <c>System.TeamProject</c>. That field is the project's
+    /// <i>name</i>, while <c>ProjectId</c> must equal the GUID <see cref="GetProjectsAsync"/> reports
+    /// as <c>ExternalProjectDto.Id</c>, because consumers key stored rows on it. So each distinct
+    /// project in the result costs one more request, and an item whose project answers 404 cannot be
+    /// bound to one and is dropped.
     /// </para>
     /// <para>
     /// <c>CONTAINS</c> is a substring match on the title only, and is what Azure DevOps can index;
@@ -187,13 +216,87 @@ public sealed class AzureDevOpsTaskProvider(
         // and the WIQL's ORDER BY is the whole reason the newest-changed item should be first.
         // Re-key on the requested order; the lookup also drops anything deleted between the calls.
         var byId = workItems.ToDictionary(wi => wi.Id);
+        var ordered = ids.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+
+        var projects = await FindProjectsAsync(client, ordered.Select(wi => wi.TeamProject), cancellationToken);
 
         return
         [
-            .. ids.Where(byId.ContainsKey)
-                  .Select(id => ToExternalTask(byId[id], byId[id].TeamProject, client.BaseAddress!))
+            .. ordered
+                .Where(wi => wi.TeamProject.Length == 0 || projects.ContainsKey(wi.TeamProject))
+                .Select(wi => projects.TryGetValue(wi.TeamProject, out var project)
+                    ? ToExternalTask(wi, project.Id, project.Name, client.BaseAddress!)
+                    : ToExternalTask(wi, string.Empty, string.Empty, client.BaseAddress!))
         ];
     }
+
+    /// <summary>
+    /// Looks up each named project once, concurrently because a person is waiting on the search. A
+    /// project that answers 404 is left out; any other failure propagates, so an expired token still
+    /// surfaces as one.
+    /// </summary>
+    private async Task<Dictionary<string, AdoProject>> FindProjectsAsync(
+        HttpClient client,
+        IEnumerable<string> names,
+        CancellationToken cancellationToken)
+    {
+        var lookups = names
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Select(async name =>
+            {
+                try
+                {
+                    return (Name: name, Project: (AdoProject?)await GetProjectAsync(client, name, cancellationToken));
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+                {
+                    logger.LogWarning("Azure DevOps search returned a work item in {Project}, which answers 404", name);
+                    return (Name: name, Project: null);
+                }
+            });
+
+        var found = await Task.WhenAll(lookups);
+
+        return found
+            .Where(l => l.Project is not null)
+            .ToDictionary(l => l.Name, l => l.Project!, StringComparer.Ordinal);
+    }
+
+    /// <param name="client">The client created for the organisation.</param>
+    /// <param name="idOrName">The project's GUID or its name; Azure DevOps accepts both here.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    private async Task<AdoProject> GetProjectAsync(HttpClient client, string idOrName, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(
+            $"_apis/projects/{Uri.EscapeDataString(idOrName)}?api-version={_apiVersion}", cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await response.Content.ReadFromJsonAsync<AdoProject>(JsonOptions, cancellationToken)
+               ?? throw new HttpRequestException($"Azure DevOps returned an empty project for {idOrName}");
+    }
+
+    private static ExternalProjectDto ToExternalProject(AdoProject project, Uri organisationUrl) => new()
+    {
+        Id = project.Id,
+        Path = project.Name,
+        Name = project.Name,
+        Description = project.Description,
+        // The project's own `url` is the REST resource (`_apis/projects/{id}`), which answers with
+        // JSON, not the project page.
+        Url = new Uri(organisationUrl, Uri.EscapeDataString(project.Name)).AbsoluteUri,
+        Provider = ExternalProvider.AzureDevOps,
+        // The list does not report a creation date. `lastUpdateTime` absent parses to the default.
+        UpdatedAt = project.LastUpdateTime == default ? null : project.LastUpdateTime,
+        IsArchived = project.State is null
+            ? null
+            : project.State.Equals("deleting", StringComparison.OrdinalIgnoreCase)
+              || project.State.Equals("deleted", StringComparison.OrdinalIgnoreCase),
+        // Anything short of public is hidden from the public, the way GitHub reports `internal`.
+        IsPrivate = project.Visibility is null
+            ? null
+            : !project.Visibility.Equals("public", StringComparison.OrdinalIgnoreCase)
+    };
 
     /// <summary>
     /// Reads a search term as a work item id: digits only, optionally prefixed with <c>#</c>.
@@ -328,20 +431,20 @@ public sealed class AzureDevOpsTaskProvider(
     /// <summary>
     /// Projects a work item onto the shared DTO.
     /// </summary>
+    /// <param name="workItem">The work item to project.</param>
     /// <param name="projectId">
-    /// Must equal what <see cref="GetProjectsAsync"/> reports as <c>ExternalProjectDto.Id</c> — the
-    /// project <i>name</i>, not its GUID. Consumers key stored rows on it. A project-scoped read
-    /// passes the project it asked for; the organisation-wide search reads it back off the work
-    /// item, because it did not name one.
+    /// The project's GUID, equal to what <see cref="GetProjectsAsync"/> reports as
+    /// <c>ExternalProjectDto.Id</c>. Consumers key stored rows on it.
     /// </param>
+    /// <param name="projectPath">The project's current name, which the work item's page link needs.</param>
     /// <param name="organisationUrl">The organisation base address the client was created with.</param>
-    private static ExternalTaskDto ToExternalTask(AdoWorkItem workItem, string projectId, Uri organisationUrl) => new()
+    private static ExternalTaskDto ToExternalTask(AdoWorkItem workItem, string projectId, string projectPath, Uri organisationUrl) => new()
     {
         Id = workItem.Id.ToString(),
         Title = workItem.Title,
         Status = workItem.State,
         // Without a project there is no page to name; the REST link is still a real link to the item.
-        Url = string.IsNullOrEmpty(projectId) ? workItem.Url : WorkItemWebUrl(organisationUrl, projectId, workItem.Id),
+        Url = string.IsNullOrEmpty(projectPath) ? workItem.Url : WorkItemWebUrl(organisationUrl, projectPath, workItem.Id),
         ProjectId = projectId,
         Provider = ExternalProvider.AzureDevOps
     };
@@ -353,8 +456,8 @@ public sealed class AzureDevOpsTaskProvider(
     /// The work item's own <c>url</c> is the REST resource (<c>_apis/wit/workItems/{id}</c>), which
     /// answers with JSON, not the work item page.
     /// </remarks>
-    private static string WorkItemWebUrl(Uri organisationUrl, string projectId, int workItemId) =>
-        new Uri(organisationUrl, $"{Uri.EscapeDataString(projectId)}/_workitems/edit/{workItemId}").AbsoluteUri;
+    private static string WorkItemWebUrl(Uri organisationUrl, string projectName, int workItemId) =>
+        new Uri(organisationUrl, $"{Uri.EscapeDataString(projectName)}/_workitems/edit/{workItemId}").AbsoluteUri;
 
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {

@@ -114,7 +114,7 @@ public class FallbackSearchTests
             ProjectsRequested = true;
 
             return Task.FromResult<IReadOnlyList<ExternalProjectDto>>(
-                [.. projects.Select(p => new ExternalProjectDto { Id = p, Name = p, Provider = ExternalProvider.Jira })]);
+                [.. projects.Select(p => new ExternalProjectDto { Id = p, Path = p, Name = p, Provider = ExternalProvider.Jira })]);
         }
 
         public Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)

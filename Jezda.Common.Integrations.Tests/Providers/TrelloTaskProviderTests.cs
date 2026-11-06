@@ -66,6 +66,7 @@ public class TrelloTaskProviderTests
 
         Assert.Equal(2, result.Count);
         Assert.Equal("board1", result[0].Id);
+        Assert.Equal("board1", result[0].Path);
         Assert.Equal("Board One", result[0].Name);
         Assert.Equal("Description 1", result[0].Description);
         Assert.Equal("https://trello.com/b/board1", result[0].Url);
@@ -91,5 +92,37 @@ public class TrelloTaskProviderTests
         Assert.Equal("board1", result[0].ProjectId);
         Assert.Equal(ExternalProvider.Trello, result[0].Provider);
         Assert.Equal("closed", result[1].Status);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_MapsMetadata()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new object[]
+        {
+            new
+            {
+                id = "b1",
+                name = "Closed org board",
+                closed = true,
+                url = "https://trello.com/b/b1",
+                dateLastActivity = "2025-01-02T03:04:05.000Z",
+                prefs = new { permissionLevel = "org" }
+            },
+            new { id = "b2", name = "Public board", closed = false, url = "u", prefs = new { permissionLevel = "public" } },
+            new { id = "b3", name = "No prefs", closed = false, url = "u" }
+        });
+
+        var result = await _provider.GetProjectsAsync("key:token");
+
+        Assert.True(result[0].IsArchived);
+        Assert.True(result[0].IsPrivate);
+        Assert.Equal(DateTimeOffset.Parse("2025-01-02T03:04:05Z"), result[0].UpdatedAt);
+        Assert.Null(result[0].CreatedAt);
+
+        Assert.False(result[1].IsArchived);
+        Assert.False(result[1].IsPrivate);
+        Assert.Null(result[1].UpdatedAt);
+
+        Assert.Null(result[2].IsPrivate);
     }
 }

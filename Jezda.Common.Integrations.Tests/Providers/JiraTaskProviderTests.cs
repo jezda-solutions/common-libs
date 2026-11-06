@@ -74,7 +74,8 @@ public class JiraTaskProviderTests
         var result = await _provider.GetProjectsAsync("user@test.com:token", "https://test.atlassian.net/");
 
         Assert.Equal(2, result.Count);
-        Assert.Equal("PROJ", result[0].Id);
+        Assert.Equal("10001", result[0].Id);
+        Assert.Equal("PROJ", result[0].Path);
         Assert.Equal("Project One", result[0].Name);
         Assert.Equal("https://test.atlassian.net/browse/PROJ", result[0].Url);
         Assert.Equal(ExternalProvider.Jira, result[0].Provider);
@@ -105,5 +106,69 @@ public class JiraTaskProviderTests
         Assert.Equal("https://test.atlassian.net/browse/PROJ-1", result[0].Url);
         Assert.Equal("PROJ", result[0].ProjectId);
         Assert.Equal(ExternalProvider.Jira, result[0].Provider);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_MapsWhatTheListReports()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new object[]
+        {
+            new { id = "1", key = "A", name = "Reported", archived = true, isPrivate = false },
+            new { id = "2", key = "B", name = "Silent" }
+        });
+
+        var result = await _provider.GetProjectsAsync("user@test.com:token", "https://test.atlassian.net/");
+
+        Assert.True(result[0].IsArchived);
+        // Jira's isPrivate means the caller cannot see the project, which is not what the DTO says.
+        Assert.Null(result[0].IsPrivate);
+        Assert.Null(result[1].IsArchived);
+        Assert.Null(result[1].IsPrivate);
+        Assert.Null(result[0].CreatedAt);
+        Assert.Null(result[0].UpdatedAt);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task GetTasksAsync_BlankProject_ThrowsWithoutCallingJira(string projectId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _provider.GetTasksAsync("user@test.com:token", projectId, "https://test.atlassian.net/"));
+
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Theory]
+    [InlineData("10001", "project = 10001")]
+    [InlineData("PROJ", "project = \"PROJ\"")]
+    public async Task GetTasksAsync_ReadsTheProjectOffEachIssue(string projectId, string expectedJql)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[]
+            {
+                new
+                {
+                    id = "1",
+                    key = "PROJ-1",
+                    fields = new
+                    {
+                        summary = "Fix bug",
+                        status = new { name = "To Do" },
+                        project = new { id = "10001", key = "PROJ", name = "Project One" }
+                    }
+                }
+            }
+        });
+
+        var result = await _provider.GetTasksAsync("user@test.com:token", projectId, "https://test.atlassian.net/");
+
+        var task = Assert.Single(result);
+        Assert.Equal("10001", task.ProjectId);
+
+        using var body = System.Text.Json.JsonDocument.Parse(await _handler.SentRequests[0].Content!.ReadAsStringAsync());
+        Assert.Equal(expectedJql, body.RootElement.GetProperty("jql").GetString());
+        Assert.Contains("project", body.RootElement.GetProperty("fields").EnumerateArray().Select(f => f.GetString()));
     }
 }
