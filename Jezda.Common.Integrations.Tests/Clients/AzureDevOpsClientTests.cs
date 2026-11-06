@@ -292,10 +292,10 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
-    public async Task GetCompletedWorkLogsAsync_ItemCreatedWithHours_LogsThemToTheCreator()
+    public async Task GetCompletedWorkLogsAsync_ItemCreatedWithHours_LogsNothingForThem()
     {
-        // A copy or an import arrives as revision 1 with CompletedWork already set, which cannot be
-        // told apart from a first entry, so the hours go to whoever created the item.
+        // A copy or an import arrives as revision 1 with CompletedWork already set. Nobody worked
+        // those hours in this item, so the creator gets no entry.
         EnqueueWorkItemWithUpdates("""
             {
               "id": 1, "rev": 1, "revisedDate": "2026-01-10T10:00:00Z",
@@ -309,9 +309,32 @@ public class AzureDevOpsClientTests
 
         var entries = await _client.GetCompletedWorkLogsAsync(From, To);
 
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_ItemCreatedWithHours_CountsOnlyWhatIsAddedLater()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1, "rev": 1, "revisedDate": "2026-01-10T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 8.0 } }
+            },
+            {
+              "id": 2, "rev": 2, "revisedDate": "2026-01-11T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 8.0 } }
+            },
+            {
+              "id": 3, "rev": 3, "revisedDate": "2026-01-12T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 10.0 } }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        // Clearing and re-entering the copied 8h is not work; only the 2h above it is.
         var entry = Assert.Single(entries);
-        Assert.Equal(8, entry.Hours);
-        Assert.Equal("copier@example.com", entry.UserUniqueName);
+        Assert.Equal(2, entry.Hours);
     }
 
     [Fact]
