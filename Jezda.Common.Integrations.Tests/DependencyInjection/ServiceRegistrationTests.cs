@@ -8,6 +8,7 @@ using Jezda.Common.Integrations.GitHub;
 using Jezda.Common.Integrations.GitHub.Extensions;
 using Jezda.Common.Integrations.Jira;
 using Jezda.Common.Integrations.Jira.Extensions;
+using Jezda.Common.Integrations.Jira.Providers;
 using Jezda.Common.Integrations.Monday.Extensions;
 using Jezda.Common.Integrations.Trello.Extensions;
 using Microsoft.Extensions.Configuration;
@@ -160,6 +161,26 @@ public class ServiceRegistrationTests
         services.AddAzureDevOpsIntegration(CreateConfiguration());
 
         using var provider = services.BuildServiceProvider();
+
+        Assert.False(AllowsAutoRedirect(provider, clientName));
+    }
+
+    [Theory]
+    [InlineData(nameof(IJiraClient))]
+    [InlineData(JiraTaskProvider.HttpClientName)]
+    public void AddJiraIntegration_ClientsDoNotFollowRedirects(string clientName)
+    {
+        var services = new ServiceCollection();
+        services.AddJiraIntegration(CreateConfiguration());
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.False(AllowsAutoRedirect(provider, clientName));
+    }
+
+    // .NET drops Authorization on a followed redirect, so a valid token would answer 401.
+    private static bool AllowsAutoRedirect(IServiceProvider provider, string clientName)
+    {
         var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(clientName);
 
         while (handler is DelegatingHandler delegating)
@@ -167,14 +188,12 @@ public class ServiceRegistrationTests
             handler = delegating.InnerHandler!;
         }
 
-        // .NET drops Authorization on a followed redirect, so a valid PAT would answer 401.
-        var allowAutoRedirect = handler switch
+        return handler switch
         {
             SocketsHttpHandler sockets => sockets.AllowAutoRedirect,
             HttpClientHandler client => client.AllowAutoRedirect,
             _ => throw new InvalidOperationException($"Unexpected primary handler {handler.GetType()}")
         };
-        Assert.False(allowAutoRedirect);
     }
 
     [Fact]

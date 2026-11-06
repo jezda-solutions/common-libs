@@ -8,6 +8,7 @@ Shared abstractions for external task provider integrations, including the `IExt
 - **`ExternalProvider`** — enum identifying the provider
 - **`ExternalProjectDto`** / **`ExternalTaskDto`** — normalized DTOs returned by all providers
 - **`HttpResilienceDefaults.AddIntegrationResilience()`** — extension method for configuring standard resilience policies on `IHttpClientBuilder`
+- **`HttpRedirectDefaults.DisableAutoRedirect()`** — extension method that stops an `IHttpClientBuilder` from following redirects, which would drop the `Authorization` header and make a valid token read as expired
 
 ## Project identity
 
