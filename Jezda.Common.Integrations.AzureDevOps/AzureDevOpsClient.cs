@@ -16,42 +16,32 @@ public sealed class AzureDevOpsClient(
 {
     private readonly AzureDevOpsOptions _options = options.Value;
 
-    /// <summary>
-    /// Runs a WIQL query and hydrates the matching ids into full work items.
-    /// </summary>
-    /// <remarks>
-    /// The details batch asks for <c>errorPolicy=omit</c> because an id deleted or made
-    /// unreadable after the WIQL ran would otherwise fail the whole batch with 404. Azure DevOps
-    /// answers such an id with a null slot, which is dropped here, so the result can hold fewer
-    /// items than the query matched.
-    /// </remarks>
+    /// <inheritdoc />
     public async Task<List<AdoWorkItem>> GetWorkItemsByQueryAsync(string query, CancellationToken cancellationToken = default)
     {
         var wiqlRequest = new AdoWiqlRequest { Query = query };
         var wiqlUrl = $"_apis/wit/wiql?api-version={_options.ApiVersion}";
         var wiqlResponse = await PostAsync<AdoWiqlRequest, AdoWiqlResponse>(wiqlUrl, wiqlRequest, cancellationToken);
 
+        // A link query answers in `workItemRelations` and leaves `workItems` empty, which would
+        // read as "nothing matched". A list of work items also has no place for the links.
+        if (wiqlResponse?.QueryType is { } queryType && !queryType.Equals("flat", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException(
+                $"GetWorkItemsByQueryAsync supports only flat queries (FROM WorkItems), but Azure DevOps ran this one as '{queryType}'.");
+        }
+
         if (wiqlResponse == null || !wiqlResponse.WorkItems.Any())
         {
             return [];
         }
 
-        var workItemIds = wiqlResponse.WorkItems.Select(wi => wi.Id).ToList();
-        var allWorkItems = new List<AdoWorkItem>();
-
-        foreach (var batch in workItemIds.Chunk(200))
-        {
-            var idsString = string.Join(",", batch);
-            var detailsUrl = $"_apis/wit/workitems?ids={idsString}&errorPolicy=omit&api-version={_options.ApiVersion}";
-            var detailsResponse = await GetAsync<AdoWorkItemListResponse>(detailsUrl, cancellationToken);
-
-            if (detailsResponse?.Value != null)
-            {
-                allWorkItems.AddRange(detailsResponse.Value.OfType<AdoWorkItem>());
-            }
-        }
-
-        return allWorkItems;
+        return await AzureDevOpsWorkItemBatch.FetchAsync(
+            wiqlResponse.WorkItems.Select(wi => wi.Id),
+            _options.ApiVersion,
+            (url, ct) => GetAsync<AdoWorkItemListResponse>(url, ct),
+            Logger,
+            cancellationToken);
     }
 
     public async Task<AdoWorkItem?> GetWorkItemByIdAsync(int id, CancellationToken cancellationToken = default)

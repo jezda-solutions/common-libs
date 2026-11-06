@@ -620,6 +620,28 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task GetTasksAsync_ItemsOmitted_LogsAWarningWithTheCounts()
+    {
+        var logger = new RecordingLogger<AzureDevOpsTaskProvider>();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{"System.Title":"One","System.State":"Active"}},
+              null
+            ]}
+            """);
+
+        await provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("returned 1 of 2", warning);
+    }
+
+    [Fact]
     public async Task SearchTasksAsync_SkipsItemsTheDetailsBatchOmitted()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(9, 3));

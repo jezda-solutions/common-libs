@@ -455,43 +455,25 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     /// <summary>
-    /// Hydrates work item ids into full work items.
+    /// Hydrates work item ids into full work items. The result can hold fewer items than ids were
+    /// asked for; see <see cref="AzureDevOpsWorkItemBatch.FetchAsync"/>.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Chunked at 200 because that is the maximum number of ids Azure DevOps accepts on a single
-    /// <c>workitems?ids=</c> request; beyond it the call fails outright rather than truncating.
-    /// </para>
-    /// <para>
-    /// <c>errorPolicy=omit</c> because an id deleted or made unreadable after the WIQL ran would
-    /// otherwise fail the whole batch with 404. Azure DevOps answers such an id with a null slot,
-    /// which is dropped here, so the result can hold fewer items than ids were asked for.
-    /// </para>
-    /// </remarks>
-    private async Task<List<AdoWorkItem>> FetchWorkItemDetailsAsync(
+    private Task<List<AdoWorkItem>> FetchWorkItemDetailsAsync(
         HttpClient client,
         IEnumerable<int> ids,
-        CancellationToken cancellationToken)
-    {
-        var workItems = new List<AdoWorkItem>();
-
-        foreach (var batch in ids.Chunk(200))
-        {
-            var idsString = string.Join(",", batch);
-            using var httpResponse = await client.GetAsync(
-                $"_apis/wit/workitems?ids={idsString}&errorPolicy=omit&api-version={_apiVersion}", cancellationToken);
-            await EnsureSuccessAsync(httpResponse, cancellationToken);
-
-            var response = await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, cancellationToken);
-
-            if (response?.Value is not null)
+        CancellationToken cancellationToken) =>
+        AzureDevOpsWorkItemBatch.FetchAsync(
+            ids,
+            _apiVersion,
+            async (url, ct) =>
             {
-                workItems.AddRange(response.Value.OfType<AdoWorkItem>());
-            }
-        }
+                using var httpResponse = await client.GetAsync(url, ct);
+                await EnsureSuccessAsync(httpResponse, ct);
 
-        return workItems;
-    }
+                return await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
+            },
+            logger,
+            cancellationToken);
 
     /// <summary>
     /// Projects a work item onto the shared DTO.
