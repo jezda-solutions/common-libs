@@ -61,8 +61,15 @@ public sealed class AzureDevOpsTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
-        return await IsTokenAcceptedAsync(client, $"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken)
+        var accepted = await IsTokenAcceptedAsync(client, $"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken)
             && await IsTokenAcceptedAsync(client, $"_apis/wit/fields?api-version={_apiVersion}", cancellationToken);
+
+        if (accepted)
+        {
+            logger.LogInformation("Azure DevOps accepted the token for projects and work items");
+        }
+
+        return accepted;
     }
 
     private async Task<bool> IsTokenAcceptedAsync(HttpClient client, string url, CancellationToken cancellationToken)

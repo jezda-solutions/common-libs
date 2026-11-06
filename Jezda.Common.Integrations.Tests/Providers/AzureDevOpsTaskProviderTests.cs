@@ -5,6 +5,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -287,6 +288,59 @@ public class AzureDevOpsTaskProviderTests
             _provider.GetTasksAsync("bad-pat", "proj-1", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    // These two logs are what tells, from a real connection, whether _apis/wit/fields behaves as
+    // documented: a token refused on it, or accepted and then refused on the first sync.
+    [Fact]
+    public async Task ValidateConnectionAsync_WorkItemsRefused_LogsTheStatusAndWhichRequest()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden);
+
+        await provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Equal("Azure DevOps rejected the token with 403 on _apis/wit/fields", entry.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Accepted_LogsWithoutTheToken()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+
+        await provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Information, entry.Level);
+        Assert.Equal("Azure DevOps accepted the token for projects and work items", entry.Message);
+    }
+
+    private AzureDevOpsTaskProvider ProviderWith(ILogger<AzureDevOpsTaskProvider> logger) => new(
+        new MockHttpClientFactory(_handler, AzureDevOpsTaskProvider.HttpClientName),
+        logger,
+        Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }));
+
+    private sealed class RecordingLogger : ILogger<AzureDevOpsTaskProvider>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Add((logLevel, formatter(state, exception)));
     }
 
     private static HttpResponseMessage SignInPage(HttpStatusCode status) => new(status)
