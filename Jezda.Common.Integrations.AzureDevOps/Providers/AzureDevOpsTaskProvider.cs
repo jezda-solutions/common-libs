@@ -76,8 +76,7 @@ public sealed class AzureDevOpsTaskProvider(
 
     private async Task<bool> IsTokenAcceptedAsync(HttpClient client, string url, CancellationToken cancellationToken)
     {
-        // Headers are all this needs: _apis/wit/fields answers with the whole field catalog.
-        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await client.GetAsync(url, cancellationToken);
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
             || AzureDevOpsHttp.IsSignInPage(response))

@@ -335,17 +335,6 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_DoesNotReadTheBodyOfAnAcceptedResponse()
-    {
-        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
-        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new UnreadableContent() });
-
-        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
-
-        Assert.True(result);
-    }
-
-    [Fact]
     public async Task ValidateConnectionAsync_RedirectToSignInOnWorkItems_ReturnsFalse()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
@@ -366,18 +355,6 @@ public class AzureDevOpsTaskProviderTests
             _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/oldorg/"));
 
         Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
-    }
-
-    private sealed class UnreadableContent : HttpContent
-    {
-        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
-            throw new HttpRequestException("The connection dropped while reading the body");
-
-        protected override bool TryComputeLength(out long length)
-        {
-            length = 0;
-            return false;
-        }
     }
 
     private AzureDevOpsTaskProvider ProviderWith(ILogger<AzureDevOpsTaskProvider> logger) => new(
