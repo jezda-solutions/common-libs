@@ -529,7 +529,7 @@ public sealed class AzureDevOpsTaskProvider(
         var client = httpClientFactory.CreateClient(HttpClientName);
         client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
 
-        var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{accessToken}"));
+        var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
 
         return client;

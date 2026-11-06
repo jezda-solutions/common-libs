@@ -32,6 +32,12 @@ public sealed class GitHubTaskProvider(
 
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
+        if (!AccessTokenRules.CanGoInHeader(accessToken))
+        {
+            logger.LogWarning("GitHub token has characters that cannot go in a header, so it was not sent");
+            return false;
+        }
+
         using var client = CreateClient(accessToken);
         using var response = await client.GetAsync("user", cancellationToken);
 

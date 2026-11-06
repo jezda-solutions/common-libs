@@ -82,9 +82,12 @@ public class GitHubService
 
 ## Connection validation
 
-`ValidateConnectionAsync` returns `false` only for 401, which is what GitHub answers a bad token with. Every
+`ValidateConnectionAsync` returns `false` for 401, which is what GitHub answers a bad token with. Every
 other failure propagates, including every 403, which can be a rate limit, a lockout after failed logins or an
 address block, so none of them is shown to the user as a bad token.
+
+A token with a character outside printable ASCII, such as a pasted smart quote or line break, also returns
+`false`, without a request: it cannot go in a header, and the failure would otherwise read as an outage.
 
 ## Search failures
 

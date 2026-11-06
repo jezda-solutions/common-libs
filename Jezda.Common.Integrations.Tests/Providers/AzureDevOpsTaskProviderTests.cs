@@ -1,3 +1,4 @@
+using System.Text;
 using System.Net;
 using System.Text.Json;
 using Jezda.Common.Integrations.Abstractions;
@@ -91,6 +92,17 @@ public class AzureDevOpsTaskProviderTests
             _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NonAsciiToken_SendsItAsUtf8()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        await _provider.ValidateConnectionAsync("pat\u201D", "https://dev.azure.com/myorg/");
+
+        var sent = Convert.FromBase64String(_handler.SentRequests[0].Headers.Authorization!.Parameter!);
+        Assert.Equal(":pat\u201D", Encoding.UTF8.GetString(sent));
     }
 
     [Fact]

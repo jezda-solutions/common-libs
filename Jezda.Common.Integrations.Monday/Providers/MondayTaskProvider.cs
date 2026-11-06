@@ -37,6 +37,12 @@ public sealed class MondayTaskProvider(
 
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
+        if (!AccessTokenRules.CanGoInHeader(accessToken))
+        {
+            logger.LogWarning("Monday.com token has characters that cannot go in a header, so it was not sent");
+            return false;
+        }
+
         using var client = CreateClient(accessToken);
         using var response = await client.PostAsJsonAsync(
             "", new MondayGraphQlRequest { Query = "{ me { id } }" }, JsonOptions, cancellationToken);
