@@ -136,6 +136,45 @@ public class AzureDevOpsTaskProviderTests
         Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
     }
 
+    // The shape Azure DevOps answers a bad PAT with when the FedAuthRedirect header is missing.
+    private const string SignInRedirect =
+        "https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&reply_to=https%3A%2F%2Fdev.azure.com%2Fmyorg&redirect=1";
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectToSignIn_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_RedirectToSignIn_ThrowsUnauthorized()
+    {
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NonAuthoritativeJson_ReturnsTrue()
+    {
+        // A transforming proxy can answer 203 with the real response. Only a page counts as sign-in.
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = new StringContent("""{"count":0,"value":[]}""", System.Text.Encoding.UTF8, "application/json")
+        });
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.True(result);
+    }
+
     [Fact]
     public async Task ValidateConnectionAsync_DisposesTheResponse()
     {

@@ -19,17 +19,31 @@ internal static class AzureDevOpsHttp
     public const string FedAuthRedirectSuppress = "Suppress";
 
     /// <summary>
-    /// Whether a success status carries a sign-in page instead of an API answer.
+    /// Whether a response is a sign-in page, or a redirect to one, instead of an API answer.
     /// </summary>
     /// <remarks>
     /// <see cref="FedAuthRedirectHeader"/> is the first defence, but a proxy that drops the header,
-    /// or a server that ignores it, brings the sign-in page back. Azure DevOps answers its REST API
-    /// with JSON, so 203 or an HTML body on a success status means the token was not accepted.
+    /// or a server that ignores it, brings the sign-in flow back. Without the header Azure DevOps
+    /// answers a rejected token with 302 to <c>/_signin</c> on its identity host, which is the first
+    /// response seen here because redirects are not followed. It answers its REST API with JSON, so
+    /// HTML on a success status, or 203 with anything but JSON, also means the token was not accepted.
+    /// 203 with JSON stays an answer: a transforming proxy can return a valid response that way.
     /// </remarks>
-    public static bool IsSignInPage(HttpResponseMessage response) =>
-        response.IsSuccessStatusCode
-        && (response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
-            || string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase));
+    public static bool IsSignInPage(HttpResponseMessage response)
+    {
+        if ((int)response.StatusCode is >= 300 and < 400)
+        {
+            return response.Headers.Location?.OriginalString.Split('?', '#')[0]
+                .EndsWith("/_signin", StringComparison.OrdinalIgnoreCase) == true;
+        }
+
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+
+        return response.IsSuccessStatusCode
+            && (string.Equals(mediaType, "text/html", StringComparison.OrdinalIgnoreCase)
+                || (response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
+                    && mediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) != true));
+    }
 
     /// <summary>
     /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, or a redirect.

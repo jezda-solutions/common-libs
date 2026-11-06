@@ -76,6 +76,36 @@ public class AzureDevOpsClientAuthenticationTests
         Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
     }
 
+    [Theory]
+    [InlineData("https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&redirect=1")]
+    [InlineData("/_signin?realm=dev.azure.com")]
+    public async Task GetProjectsAsync_RedirectToSignIn_ThrowsUnauthorized(string location)
+    {
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Found);
+            response.Headers.Location = new Uri(location, UriKind.RelativeOrAbsolute);
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_NonAuthoritativeJson_IsAccepted()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = new StringContent("""{"count":1,"value":[{"id":"p1","name":"Project"}]}""", Encoding.UTF8, "application/json")
+        });
+
+        var projects = await _client.GetProjectsAsync();
+
+        Assert.Equal("Project", Assert.Single(projects).Name);
+    }
+
     [Fact]
     public async Task GetProjectsAsync_JsonOnOk_IsAccepted()
     {

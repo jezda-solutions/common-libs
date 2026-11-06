@@ -41,13 +41,15 @@ public sealed class AzureDevOpsTaskProvider(
     /// <remarks>
     /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
     /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
-    /// the resilience pipeline's own exceptions, such as an attempt timeout or an open circuit.
+    /// the resilience pipeline's own exceptions: Polly's <c>TimeoutRejectedException</c> for a timeout
+    /// and <c>BrokenCircuitException</c> for an open circuit, neither of which derives from
+    /// <see cref="HttpRequestException"/>.
     /// </remarks>
     /// <exception cref="HttpRequestException">
-    /// Any other failed status, such as 5xx, or a redirect: the base URL answers somewhere else. The
-    /// status code is on the exception.
+    /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page: the base URL
+    /// answers somewhere else. The status code is on the exception.
     /// </exception>
-    /// <exception cref="OperationCanceledException">The call was cancelled or timed out.</exception>
+    /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
