@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Jezda.Common.Integrations.Clients;
@@ -96,7 +98,10 @@ public sealed class AzureDevOpsClient(
 
     public async Task<IReadOnlyList<AdoWorkLogEntry>> GetCompletedWorkLogsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
-        var wiql = $"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '{from.UtcDateTime:O}' AND [System.ChangedDate] <= '{to.UtcDateTime:O}'";
+        // No upper bound: System.ChangedDate is the item's latest change, so an item with work
+        // logged inside the range and edited again after `to` must still be fetched. Each update
+        // is filtered by its own date below.
+        var wiql = $"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '{from.UtcDateTime:O}'";
         var workItems = await GetWorkItemsByQueryAsync(wiql, cancellationToken);
 
         if (workItems.Count == 0)
@@ -131,7 +136,7 @@ public sealed class AzureDevOpsClient(
 
         foreach (var update in updatesResponse.Value)
         {
-            if (update.RevisedDate < from || update.RevisedDate > to)
+            if (!TryGetChangedDate(update, out var changedAt) || changedAt < from || changedAt > to)
             {
                 continue;
             }
@@ -141,7 +146,15 @@ public sealed class AzureDevOpsClient(
                 continue;
             }
 
-            if (!TryConvertToDouble(change.OldValue, out var oldValue) || !TryConvertToDouble(change.NewValue, out var newValue))
+            if (!TryConvertToDouble(change.NewValue, out var newValue))
+            {
+                continue;
+            }
+
+            // Azure DevOps omits `oldValue` the first time a field is set, so a missing old value
+            // means the field went from empty to `newValue`. A present but unreadable one is skipped.
+            var oldValue = 0d;
+            if (change.OldValue is not null && !TryConvertToDouble(change.OldValue, out oldValue))
             {
                 continue;
             }
@@ -162,11 +175,28 @@ public sealed class AzureDevOpsClient(
                 UserUniqueName = update.RevisedBy?.UniqueName,
                 UserDisplayName = update.RevisedBy?.DisplayName,
                 Hours = delta,
-                LoggedAt = update.RevisedDate
+                LoggedAt = changedAt
             });
         }
 
         return entries;
+    }
+
+    // When an update was made. `revisedDate` on an update is when that revision was superseded
+    // by the next one (the time of the next change), and the latest revision carries the
+    // 9999-01-01 sentinel, so the update's own System.ChangedDate is read instead. `revisedDate`
+    // is only a fallback for an update without it, and never when it is the sentinel.
+    private static bool TryGetChangedDate(AdoWorkItemUpdate update, out DateTimeOffset changedAt)
+    {
+        if (update.Fields.TryGetValue("System.ChangedDate", out var change)
+            && change.NewValue is JsonElement { ValueKind: JsonValueKind.String } element
+            && DateTimeOffset.TryParse(element.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out changedAt))
+        {
+            return true;
+        }
+
+        changedAt = update.RevisedDate;
+        return changedAt != default && changedAt.Year < 9999;
     }
 
     private static bool TryConvertToDouble(object? value, out double result)
@@ -191,8 +221,17 @@ public sealed class AzureDevOpsClient(
             case long l:
                 result = l;
                 return true;
-            case string s when double.TryParse(s, out var parsed):
+            case string s when double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed):
                 result = parsed;
+                return true;
+            // `object?` properties deserialize as JsonElement with System.Text.Json, which is what
+            // real API responses produce.
+            case JsonElement { ValueKind: JsonValueKind.Number } element when element.TryGetDouble(out var number):
+                result = number;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.String } element
+                when double.TryParse(element.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedElement):
+                result = parsedElement;
                 return true;
             default:
                 result = 0;
