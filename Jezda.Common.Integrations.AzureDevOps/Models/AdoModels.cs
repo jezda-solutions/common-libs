@@ -59,7 +59,11 @@ public sealed class AdoWorkItemListResponse
     public int Count { get; set; }
 
     [JsonPropertyName("value")]
-    public List<AdoWorkItem> Value { get; set; } = new();
+    /// <summary>
+    /// The requested work items. With <c>errorPolicy=omit</c>, an item that was deleted or cannot be
+    /// read is a <see langword="null"/> slot.
+    /// </summary>
+    public List<AdoWorkItem?> Value { get; set; } = new();
 }
 
 public sealed class AdoWorkItemUpdatesResponse
