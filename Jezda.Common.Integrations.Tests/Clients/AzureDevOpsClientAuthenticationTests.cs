@@ -106,6 +106,23 @@ public class AzureDevOpsClientAuthenticationTests
         Assert.Equal("Project", Assert.Single(projects).Name);
     }
 
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData(null)]
+    public async Task GetProjectsAsync_NonAuthoritativeWithoutJson_ThrowsUnauthorized(string? mediaType)
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = mediaType is null
+                ? new ByteArrayContent([])
+                : new StringContent("Sign in", Encoding.UTF8, mediaType)
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
     [Fact]
     public async Task GetProjectsAsync_JsonOnOk_IsAccepted()
     {

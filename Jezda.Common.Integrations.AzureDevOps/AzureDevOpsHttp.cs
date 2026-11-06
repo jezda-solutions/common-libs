@@ -10,8 +10,7 @@ internal static class AzureDevOpsHttp
 {
     /// <summary>
     /// Asks Azure DevOps to answer a rejected token with 401 instead of redirecting it to a sign-in
-    /// page. Without it, the redirect chain ends as 203 with HTML, which
-    /// <see cref="HttpResponseMessage.IsSuccessStatusCode"/> accepts.
+    /// page.
     /// </summary>
     public const string FedAuthRedirectHeader = "X-TFS-FedAuthRedirect";
 
@@ -50,9 +49,9 @@ internal static class AzureDevOpsHttp
     /// Any other response, failed or not, is left to the caller.
     /// </summary>
     /// <exception cref="HttpRequestException">
-    /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page, so callers that treat 401 as an
-    /// expired token keep working. The redirect's own 3xx status for a redirect, which is not a token
-    /// problem: the base URL answers somewhere else.
+    /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page or a redirect to one, so callers
+    /// that treat 401 as an expired token keep working. The redirect's own 3xx status for any other
+    /// redirect, which is not a token problem: the base URL answers somewhere else.
     /// </exception>
     public static void ThrowIfNotApiResponse(HttpResponseMessage response)
     {

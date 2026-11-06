@@ -164,7 +164,7 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task ValidateConnectionAsync_NonAuthoritativeJson_ReturnsTrue()
     {
-        // A transforming proxy can answer 203 with the real response. Only a page counts as sign-in.
+        // A transforming proxy can answer 203 with the real response. Only JSON counts as an answer.
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
         {
             Content = new StringContent("""{"count":0,"value":[]}""", System.Text.Encoding.UTF8, "application/json")
@@ -173,6 +173,23 @@ public class AzureDevOpsTaskProviderTests
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
         Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData(null)]
+    public async Task ValidateConnectionAsync_NonAuthoritativeWithoutJson_ReturnsFalse(string? mediaType)
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = mediaType is null
+                ? new ByteArrayContent([])
+                : new StringContent("Sign in", System.Text.Encoding.UTF8, mediaType)
+        });
+
+        var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
     }
 
     [Fact]

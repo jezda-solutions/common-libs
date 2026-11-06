@@ -381,7 +381,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// treat 401/403 as an expired token keep working.
     /// </para>
     /// <para>
-    /// A sign-in page on a success status throws as 401, and a redirect throws with its own status;
+    /// A sign-in page or a redirect to one throws as 401, and any other redirect with its own status;
     /// see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
     /// </para>
     /// </remarks>

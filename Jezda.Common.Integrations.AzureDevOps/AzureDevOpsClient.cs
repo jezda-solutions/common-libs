@@ -208,7 +208,7 @@ public sealed class AzureDevOpsClient(
     }
 
     /// <summary>
-    /// A sign-in page throws as 401, a redirect with its own status; see
+    /// A sign-in page or a redirect to one throws as 401, any other redirect with its own status; see
     /// <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
     /// </summary>
     protected override void EnsureApiResponse(HttpResponseMessage response) =>
