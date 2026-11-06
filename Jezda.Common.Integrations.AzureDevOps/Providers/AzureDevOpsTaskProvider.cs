@@ -32,18 +32,29 @@ public sealed class AzureDevOpsTaskProvider(
     public ExternalProvider Provider => ExternalProvider.AzureDevOps;
 
     /// <summary>
-    /// Checks whether Azure DevOps accepts the token for the organisation.
+    /// Checks whether Azure DevOps accepts the token for the organisation, for both projects and
+    /// work items.
     /// </summary>
     /// <returns>
     /// <see langword="true"/> when the token is accepted; <see langword="false"/> when Azure DevOps
     /// rejects it: 401, 403, or a sign-in page in place of JSON.
     /// </returns>
     /// <remarks>
+    /// <para>
+    /// Two requests, both organisation-level and small. <c>_apis/projects</c> needs the
+    /// "Project and Team (Read)" scope (<c>vso.project</c>), which <see cref="GetProjectsAsync"/> and
+    /// every work item call need too. <c>_apis/wit/fields/System.Id</c> needs "Work Items (Read)"
+    /// (<c>vso.work</c>), which <see cref="GetTasksAsync"/> and <see cref="SearchTasksAsync"/> need:
+    /// without it a PAT with only the project scope would validate and then fail on the first sync.
+    /// The second request is not sent when the first already rejects the token.
+    /// </para>
+    /// <para>
     /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
     /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
     /// the resilience pipeline's own exceptions: Polly's <c>TimeoutRejectedException</c> for a timeout
     /// and <c>BrokenCircuitException</c> for an open circuit, neither of which derives from
     /// <see cref="HttpRequestException"/>.
+    /// </para>
     /// </remarks>
     /// <exception cref="HttpRequestException">
     /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page: the base URL
@@ -55,12 +66,26 @@ public sealed class AzureDevOpsTaskProvider(
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
-        using var response = await client.GetAsync($"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken);
+
+        return await IsAcceptedAsync(client, $"_apis/projects?$top=1&api-version={_apiVersion}", "Project and Team (Read)", cancellationToken)
+            && await IsAcceptedAsync(client, $"_apis/wit/fields/System.Id?api-version={_apiVersion}", "Work Items (Read)", cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends one validation request: <see langword="false"/> for a rejected token, an exception for
+    /// any other failure.
+    /// </summary>
+    private async Task<bool> IsAcceptedAsync(HttpClient client, string url, string scope, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(url, cancellationToken);
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
             || AzureDevOpsHttp.IsSignInPage(response))
         {
-            logger.LogWarning("Azure DevOps rejected the token with {StatusCode}", (int)response.StatusCode);
+            logger.LogWarning(
+                "Azure DevOps rejected the token with {StatusCode} on the {Scope} check",
+                (int)response.StatusCode,
+                scope);
             return false;
         }
 

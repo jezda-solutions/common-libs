@@ -98,8 +98,15 @@ Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps repor
 `ValidateConnectionAsync` returns `false` only for a rejected token (401, 403, sign-in page). Every other
 failure propagates, so an outage is not shown to the user as a bad PAT.
 
-Validation reads `_apis/projects`, so a PAT without the Work Items scope still validates and fails later,
-on the first work item call.
+Validation sends two small organisation-level requests, one per scope the provider needs, so a PAT
+missing either is rejected up front instead of on the first sync:
+
+| Request | Scope |
+|---|---|
+| `GET _apis/projects?$top=1` | Project and Team (Read), `vso.project` |
+| `GET _apis/wit/fields/System.Id` | Work Items (Read), `vso.work` |
+
+The second is not sent when the first already rejects the token.
 
 ## 🛠️ Key Models
 

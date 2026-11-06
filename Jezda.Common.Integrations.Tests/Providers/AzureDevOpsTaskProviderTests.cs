@@ -29,16 +29,88 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal(ExternalProvider.AzureDevOps, _provider.Provider);
     }
 
+    // What _apis/wit/fields/System.Id answers a token with the Work Items scope.
+    private static readonly object IdField = new { name = "ID", referenceName = "System.Id", type = "integer" };
+
+    private void EnqueueValidResponses()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "proj-1", name = "Project" } } });
+        _handler.EnqueueResponse(HttpStatusCode.OK, IdField);
+    }
+
     [Fact]
     public async Task ValidateConnectionAsync_WithValidToken_ReturnsTrue()
     {
-        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "proj-1", name = "Project" } } });
+        EnqueueValidResponses();
 
         var result = await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
 
         Assert.True(result);
+        Assert.Equal(2, _handler.SentRequests.Count);
+        Assert.All(_handler.SentRequests, r => Assert.Equal("Basic", r.Headers.Authorization?.Scheme));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ChecksProjectsThenWorkItems_AtOrganisationLevel()
+    {
+        EnqueueValidResponses();
+
+        await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
+
+        Assert.Equal(
+            "https://dev.azure.com/myorg/_apis/projects?$top=1&api-version=7.1",
+            _handler.SentRequests[0].RequestUri!.ToString());
+        Assert.Equal(
+            "https://dev.azure.com/myorg/_apis/wit/fields/System.Id?api-version=7.1",
+            _handler.SentRequests[1].RequestUri!.ToString());
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ValidateConnectionAsync_WithoutWorkItemsScope_ReturnsFalse(HttpStatusCode status)
+    {
+        // A PAT with "Project and Team (Read)" but not "Work Items (Read)": projects answer, work
+        // items do not. Accepting it would show a verified connection whose sync then fails.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "proj-1", name = "Project" } } });
+        _handler.EnqueueResponse(status);
+
+        var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_WorkItemsSignInPage_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_WorkItemsServerError_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(HttpStatusCode.ServiceUnavailable);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RejectedOnProjects_SkipsTheWorkItemsCheck()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
+
         Assert.Single(_handler.SentRequests);
-        Assert.Equal("Basic", _handler.SentRequests[0].Headers.Authorization?.Scheme);
     }
 
     [Fact]
@@ -54,13 +126,13 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task EveryRequest_AsksAzureDevOpsNotToRedirectToSignIn()
     {
-        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        EnqueueValidResponses();
 
         await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
 
         // Without it a bad PAT gets a sign-in page ending as 203, which reads as a valid connection.
-        var values = _handler.SentRequests[0].Headers.GetValues("X-TFS-FedAuthRedirect");
-        Assert.Equal(["Suppress"], values);
+        Assert.All(_handler.SentRequests, r =>
+            Assert.Equal(["Suppress"], r.Headers.GetValues("X-TFS-FedAuthRedirect")));
     }
 
     [Fact]
@@ -169,6 +241,7 @@ public class AzureDevOpsTaskProviderTests
         {
             Content = new StringContent("""{"count":0,"value":[]}""", System.Text.Encoding.UTF8, "application/json")
         });
+        _handler.EnqueueResponse(HttpStatusCode.OK, IdField);
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
@@ -195,12 +268,15 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task ValidateConnectionAsync_DisposesTheResponse()
     {
-        var content = new TrackingContent();
-        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        var projects = new TrackingContent();
+        var fields = new TrackingContent();
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = projects });
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = fields });
 
         await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
-        Assert.True(content.Disposed);
+        Assert.True(projects.Disposed);
+        Assert.True(fields.Disposed);
     }
 
     [Theory]
