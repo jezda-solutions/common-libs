@@ -70,6 +70,188 @@ public class AzureDevOpsTaskProviderTests
             _provider.ValidateConnectionAsync("pat", baseUrl: null));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
+    [InlineData(HttpStatusCode.OK)]
+    public async Task ValidateConnectionAsync_SignInPage_ReturnsFalse(HttpStatusCode status)
+    {
+        // What a bad PAT gets when the FedAuthRedirect header is dropped on the way or ignored.
+        _handler.EnqueueResponse(() => SignInPage(status));
+
+        var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden);
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ServerError_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.ServiceUnavailable);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ConnectionFailure_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new HttpRequestException("Connection refused"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Timeout_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new TaskCanceledException("The request timed out"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Redirect_ThrowsWithTheRedirectStatusAndTarget()
+    {
+        // A renamed organisation. Followed, the redirect would lose the Authorization header and
+        // answer 401 for a valid PAT.
+        _handler.EnqueueResponse(() => Redirect("https://dev.azure.com/neworg/_apis/projects"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/oldorg/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+        Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
+    }
+
+    // The shape Azure DevOps answers a bad PAT with when the FedAuthRedirect header is missing.
+    private const string SignInRedirect =
+        "https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&reply_to=https%3A%2F%2Fdev.azure.com%2Fmyorg&redirect=1";
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectToSignIn_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_RedirectToSignIn_ThrowsUnauthorized()
+    {
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NonAuthoritativeJson_ReturnsTrue()
+    {
+        // A transforming proxy can answer 203 with the real response. Only JSON counts as an answer.
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = new StringContent("""{"count":0,"value":[]}""", System.Text.Encoding.UTF8, "application/json")
+        });
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData(null)]
+    public async Task ValidateConnectionAsync_NonAuthoritativeWithoutJson_ReturnsFalse(string? mediaType)
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = mediaType is null
+                ? new ByteArrayContent([])
+                : new StringContent("Sign in", System.Text.Encoding.UTF8, mediaType)
+        });
+
+        var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_DisposesTheResponse()
+    {
+        var content = new TrackingContent();
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+
+        await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.True(content.Disposed);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
+    [InlineData(HttpStatusCode.OK)]
+    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(() => SignInPage(status));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
+
+        // 401, so a caller that treats it as an expired token asks the user for a new one.
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_SignInPageOnWiql_ThrowsUnauthorized()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { id = "proj-1", name = "Project" });
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("bad-pat", "proj-1", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    private static HttpResponseMessage SignInPage(HttpStatusCode status) => new(status)
+    {
+        Content = new StringContent("<html><body>Sign in to your account</body></html>", System.Text.Encoding.UTF8, "text/html")
+    };
+
+    private static HttpResponseMessage Redirect(string location)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Found);
+        response.Headers.Location = new Uri(location);
+        return response;
+    }
+
+    private sealed class TrackingContent() : StringContent("""{"count":0,"value":[]}""", System.Text.Encoding.UTF8, "application/json")
+    {
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
     [Fact]
     public async Task GetProjectsAsync_ReturnsExternalProjectDtos()
     {

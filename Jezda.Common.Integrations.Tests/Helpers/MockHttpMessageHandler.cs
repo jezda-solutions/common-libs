@@ -30,6 +30,23 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
         _responses.Enqueue(new MockResponse(HttpStatusCode.OK, json, (headerName, headerValue)));
     }
 
+    /// <summary>
+    /// Queues a response built by the test, for statuses, media types and headers the JSON helpers
+    /// do not cover: a sign-in page, a redirect.
+    /// </summary>
+    public void EnqueueResponse(Func<HttpResponseMessage> response)
+    {
+        _responses.Enqueue(new MockResponse(default, string.Empty, Build: response));
+    }
+
+    /// <summary>
+    /// Queues a failure to send, the way a dropped connection or a timeout surfaces.
+    /// </summary>
+    public void EnqueueException(Exception exception)
+    {
+        _responses.Enqueue(new MockResponse(default, string.Empty, Build: () => throw exception));
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         SentRequests.Add(request);
@@ -44,6 +61,13 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
 
         var mock = _responses.Dequeue();
 
+        if (mock.Build is not null)
+        {
+            var built = mock.Build();
+            built.RequestMessage ??= request;
+            return Task.FromResult(built);
+        }
+
         var response = new HttpResponseMessage(mock.StatusCode)
         {
             Content = new StringContent(mock.Body, Encoding.UTF8, "application/json")
@@ -57,5 +81,9 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
         return Task.FromResult(response);
     }
 
-    private sealed record MockResponse(HttpStatusCode StatusCode, string Body, (string Name, string Value)? Header = null);
+    private sealed record MockResponse(
+        HttpStatusCode StatusCode,
+        string Body,
+        (string Name, string Value)? Header = null,
+        Func<HttpResponseMessage>? Build = null);
 }

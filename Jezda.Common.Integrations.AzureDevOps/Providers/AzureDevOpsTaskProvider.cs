@@ -31,22 +31,42 @@ public sealed class AzureDevOpsTaskProvider(
 
     public ExternalProvider Provider => ExternalProvider.AzureDevOps;
 
+    /// <summary>
+    /// Checks whether Azure DevOps accepts the token for the organisation.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> when the token is accepted; <see langword="false"/> when Azure DevOps
+    /// rejects it: 401, 403, or a sign-in page in place of JSON.
+    /// </returns>
+    /// <remarks>
+    /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
+    /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
+    /// the resilience pipeline's own exceptions: Polly's <c>TimeoutRejectedException</c> for a timeout
+    /// and <c>BrokenCircuitException</c> for an open circuit, neither of which derives from
+    /// <see cref="HttpRequestException"/>.
+    /// </remarks>
+    /// <exception cref="HttpRequestException">
+    /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page: the base URL
+    /// answers somewhere else. The status code is on the exception.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
+        using var response = await client.GetAsync($"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken);
 
-        try
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+            || AzureDevOpsHttp.IsSignInPage(response))
         {
-            var response = await client.GetAsync($"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Azure DevOps connection validation failed");
+            logger.LogWarning("Azure DevOps rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
+
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return true;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
@@ -354,13 +374,21 @@ public sealed class AzureDevOpsTaskProvider(
     /// returned in the exception message.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A WIQL that Azure DevOps rejects comes back as 400 with the reason in the body
     /// (<c>TF51006: …</c>). The bare status says only "Bad Request", which hid a query bug in search
     /// until it was read off production. The status code stays on the exception, so callers that
     /// treat 401/403 as an expired token keep working.
+    /// </para>
+    /// <para>
+    /// A sign-in page or a redirect to one throws as 401, and any other redirect with its own status;
+    /// see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
+    /// </para>
     /// </remarks>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        AzureDevOpsHttp.ThrowIfNotApiResponse(response);
+
         if (response.IsSuccessStatusCode)
         {
             return;
@@ -467,9 +495,7 @@ public sealed class AzureDevOpsTaskProvider(
         var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
 
-        // Without it, a bad PAT is redirected to a sign-in page that ends as 203 with HTML, which
-        // IsSuccessStatusCode accepts. With it, Azure DevOps answers 401.
-        client.DefaultRequestHeaders.Add("X-TFS-FedAuthRedirect", "Suppress");
+        client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
 
         return client;
     }

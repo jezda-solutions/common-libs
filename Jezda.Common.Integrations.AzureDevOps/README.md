@@ -82,6 +82,25 @@ public class MyService
 }
 ```
 
+## 🔐 Errors and authentication
+
+Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps report failures as
+`HttpRequestException` with `StatusCode` set, so a caller can tell a rejected token from anything else:
+
+| What happened | Result |
+|---|---|
+| Token rejected (401, 403) | `StatusCode` 401 / 403 |
+| Sign-in page instead of JSON (a redirect to `/_signin`, HTML on a success status, or 203 without JSON) | `StatusCode` 401 |
+| Base URL redirects anywhere else (3xx, e.g. after an organisation rename) | `StatusCode` is the 3xx; the message names the target. Redirects are not followed, because .NET drops `Authorization` on the next hop and a valid PAT would read as expired. |
+| Any other failure | Its own status, or the original exception for dropped connections and cancellation. A timeout on `IAzureDevOpsClient` is `TaskCanceledException` from `HttpClient.Timeout`. |
+| Timeout or open circuit on the `IExternalTaskProvider` client | Polly's `TimeoutRejectedException` or `BrokenCircuitException` from the resilience pipeline. Neither derives from `HttpRequestException`, so catch them too. |
+
+`ValidateConnectionAsync` returns `false` only for a rejected token (401, 403, sign-in page). Every other
+failure propagates, so an outage is not shown to the user as a bad PAT.
+
+Validation reads `_apis/projects`, so a PAT without the Work Items scope still validates and fails later,
+on the first work item call.
+
 ## 🛠️ Key Models
 
 - **`AdoWorkItem`**: Represents a simplified work item with generic `Fields` dictionary.
