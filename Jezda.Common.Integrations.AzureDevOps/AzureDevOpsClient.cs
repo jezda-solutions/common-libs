@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Jezda.Common.Integrations.Clients;
@@ -140,7 +142,15 @@ public sealed class AzureDevOpsClient(
                 continue;
             }
 
-            if (!TryConvertToDouble(change.OldValue, out var oldValue) || !TryConvertToDouble(change.NewValue, out var newValue))
+            if (!TryConvertToDouble(change.NewValue, out var newValue))
+            {
+                continue;
+            }
+
+            // Azure DevOps omits `oldValue` the first time a field is set, so a missing old value
+            // means the field went from empty to `newValue`. A present but unreadable one is skipped.
+            var oldValue = 0d;
+            if (!IsMissing(change.OldValue) && !TryConvertToDouble(change.OldValue, out oldValue))
             {
                 continue;
             }
@@ -190,14 +200,26 @@ public sealed class AzureDevOpsClient(
             case long l:
                 result = l;
                 return true;
-            case string s when double.TryParse(s, out var parsed):
+            case string s when double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed):
                 result = parsed;
+                return true;
+            // `object?` properties deserialize as JsonElement with System.Text.Json, which is what
+            // real API responses produce.
+            case JsonElement { ValueKind: JsonValueKind.Number } element when element.TryGetDouble(out var number):
+                result = number;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.String } element
+                when double.TryParse(element.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedElement):
+                result = parsedElement;
                 return true;
             default:
                 result = 0;
                 return false;
         }
     }
+
+    private static bool IsMissing(object? value) =>
+        value is null or JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined };
 
     public async Task<List<AdoProject>> GetProjectsAsync(CancellationToken cancellationToken = default)
     {

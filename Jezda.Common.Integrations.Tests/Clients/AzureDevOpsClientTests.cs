@@ -10,6 +10,9 @@ namespace Jezda.Common.Integrations.Tests.Clients;
 
 public class AzureDevOpsClientTests
 {
+    private static readonly DateTimeOffset From = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset To = new(2026, 1, 31, 23, 59, 59, TimeSpan.Zero);
+
     private readonly MockHttpMessageHandler _handler = new();
     private readonly AzureDevOpsClient _client;
 
@@ -76,6 +79,142 @@ public class AzureDevOpsClientTests
         Assert.Contains("errorPolicy=omit", _handler.SentRequests[1].RequestUri!.Query);
         Assert.Equal(3, _handler.SentRequests.Count);
         Assert.EndsWith("/_apis/wit/workitems/8/updates", _handler.SentRequests[2].RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_PositiveDelta_ReturnsEntry()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "2026-01-15T10:00:00Z",
+              "revisedBy": { "uniqueName": "ana@example.com", "displayName": "Ana" },
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 1.0, "newValue": 3.5 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(42, entry.WorkItemId);
+        Assert.Equal(2.5, entry.Hours);
+        Assert.Equal("ana@example.com", entry.UserUniqueName);
+        Assert.Equal("Ana", entry.UserDisplayName);
+        Assert.Equal(new DateTimeOffset(2026, 1, 15, 10, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+        // System.TeamProject arrives as a JsonElement; ToString() must give the bare string.
+        Assert.Equal("MyProject", entry.Project);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_MissingOldValue_TreatsOldValueAsZero()
+    {
+        // The first time CompletedWork is set, Azure DevOps sends only newValue.
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "2026-01-15T10:00:00Z",
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 4 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(4, entry.Hours);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_StringValues_AreParsedInvariantly()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "2026-01-15T10:00:00Z",
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": "0.5", "newValue": "2.25" }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(1.75, entry.Hours);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_NegativeDelta_IsSkipped()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "2026-01-15T10:00:00Z",
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 5.0, "newValue": 3.0 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_UpdateOutsideDateRange_IsSkipped()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1,
+              "rev": 2,
+              "revisedDate": "2025-12-20T10:00:00Z",
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 1.0, "newValue": 3.0 }
+              }
+            },
+            {
+              "id": 2,
+              "rev": 3,
+              "revisedDate": "2026-01-10T10:00:00Z",
+              "fields": {
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 3.0, "newValue": 4.0 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(1, entry.Hours);
+        Assert.Equal(new DateTimeOffset(2026, 1, 10, 10, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+    }
+
+    // Queues the three calls GetCompletedWorkLogsAsync makes for a single work item (id 42):
+    // the WIQL query, the work item details batch, then that item's updates.
+    private void EnqueueWorkItemWithUpdates(string updatesJson)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """
+            { "queryType": "flat", "workItems": [ { "id": 42 } ] }
+            """);
+        _handler.EnqueueResponse(HttpStatusCode.OK, """
+            {
+              "count": 1,
+              "value": [
+                { "id": 42, "fields": { "System.TeamProject": "MyProject", "System.Title": "Task" } }
+              ]
+            }
+            """);
+        _handler.EnqueueResponse(HttpStatusCode.OK, $$"""
+            { "count": 1, "value": [ {{updatesJson}} ] }
+            """);
     }
 
     private static string Refs(params int[] ids) =>
