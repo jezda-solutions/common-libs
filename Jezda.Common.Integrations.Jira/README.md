@@ -78,7 +78,8 @@ public class JiraService
 
 ## Connection validation
 
-`ValidateConnectionAsync` returns `false` only when Jira rejects the token: 401 or 403. With
+`ValidateConnectionAsync` returns `false` only when Jira rejects the token: 401. With
 `X-Seraph-LoginReason: AUTHENTICATION_DENIED` it throws instead, because the CAPTCHA was triggered and the
-token was not checked; the user has to sign in through the Jira website. Every other failure propagates, so
-an outage is not shown to the user as a bad token.
+token was not checked; the user has to sign in through the Jira website. Every other failure propagates,
+including a 403, which can come from an IP allow list or a gateway, so an outage is not shown to the user as
+a bad token.

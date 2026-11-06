@@ -41,7 +41,7 @@ public sealed class MondayTaskProvider(
         using var response = await client.PostAsJsonAsync(
             "", new MondayGraphQlRequest { Query = "{ me { id } }" }, JsonOptions, cancellationToken);
 
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -53,6 +53,14 @@ public sealed class MondayTaskProvider(
                     response.StatusCode);
             }
 
+            logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
+            return false;
+        }
+
+        // A 403 can come from a gateway in front of Monday.com, so only a known code blames the token.
+        if (response.StatusCode == HttpStatusCode.Forbidden
+            && HasRejectedTokenCode(await response.Content.ReadAsStringAsync(cancellationToken)))
+        {
             logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
@@ -81,6 +89,20 @@ public sealed class MondayTaskProvider(
             $"Monday.com did not return the current user: {(reasons.Length > 0 ? reasons : "no error reported")}.",
             null,
             response.StatusCode);
+    }
+
+    private static bool HasRejectedTokenCode(string body)
+    {
+        try
+        {
+            var errors = JsonSerializer.Deserialize<MondayGraphQlResponse<MondayMeData>>(body, JsonOptions)?.Errors;
+
+            return errors?.Any(error => RejectedTokenCodes.Contains(error.Extensions?.Code)) == true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

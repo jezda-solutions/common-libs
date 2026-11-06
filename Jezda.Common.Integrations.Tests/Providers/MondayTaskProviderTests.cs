@@ -65,7 +65,7 @@ public class MondayTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    public async Task ValidateConnectionAsync_ForbiddenWithRejectionCode_ReturnsFalse()
     {
         _handler.EnqueueResponse(
             HttpStatusCode.Forbidden,
@@ -74,6 +74,19 @@ public class MondayTaskProviderTests
         var result = await _provider.ValidateConnectionAsync("token");
 
         Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData("<html>Blocked by gateway</html>")]
+    [InlineData("""{"errors":[{"message":"Your ip is restricted"}]}""")]
+    [InlineData("""{"errors":["Forbidden"]}""")]
+    public async Task ValidateConnectionAsync_ForbiddenWithoutRejectionCode_ThrowsInsteadOfBlamingTheToken(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
     }
 
     [Theory]

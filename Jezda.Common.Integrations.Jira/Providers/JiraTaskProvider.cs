@@ -48,7 +48,8 @@ public sealed class JiraTaskProvider(
                 response.StatusCode);
         }
 
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        // A 403 can come from an IP allow list or a gateway in front of Jira, with a valid token.
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("Jira rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;

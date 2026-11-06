@@ -55,13 +55,14 @@ public class JiraTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    public async Task ValidateConnectionAsync_Forbidden_ThrowsInsteadOfBlamingTheToken()
     {
         _handler.EnqueueResponse(HttpStatusCode.Forbidden);
 
-        var result = await _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/");
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
 
-        Assert.False(result);
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
     }
 
     [Fact]

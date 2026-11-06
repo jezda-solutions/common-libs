@@ -52,50 +52,13 @@ public class GitHubTaskProviderTests
         Assert.False(result);
     }
 
-    [Fact]
-    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    [Theory]
+    [InlineData("""{"message":"You have exceeded a secondary rate limit."}""")]
+    [InlineData("""{"message":"Maximum number of login attempts exceeded. Please try again later."}""")]
+    [InlineData("<html>Blocked by proxy</html>")]
+    public async Task ValidateConnectionAsync_Forbidden_ThrowsInsteadOfBlamingTheToken(string body)
     {
-        _handler.EnqueueResponse(HttpStatusCode.Forbidden, """{"message":"Resource not accessible by personal access token"}""");
-
-        var result = await _provider.ValidateConnectionAsync("token");
-
-        Assert.False(result);
-    }
-
-    [Fact]
-    public async Task ValidateConnectionAsync_PrimaryRateLimit_ThrowsInsteadOfBlamingTheToken()
-    {
-        _handler.EnqueueResponse(() =>
-        {
-            var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
-            response.Headers.Add("x-ratelimit-remaining", "0");
-            return response;
-        });
-
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
-
-        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
-    }
-
-    [Fact]
-    public async Task ValidateConnectionAsync_RetryAfter_ThrowsInsteadOfBlamingTheToken()
-    {
-        _handler.EnqueueResponse(() =>
-        {
-            var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
-            response.Headers.Add("retry-after", "60");
-            return response;
-        });
-
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
-
-        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
-    }
-
-    [Fact]
-    public async Task ValidateConnectionAsync_SecondaryRateLimitMessageOnly_ThrowsInsteadOfBlamingTheToken()
-    {
-        _handler.EnqueueResponse(HttpStatusCode.Forbidden, """{"message":"You have exceeded a secondary rate limit."}""");
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, body);
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
 

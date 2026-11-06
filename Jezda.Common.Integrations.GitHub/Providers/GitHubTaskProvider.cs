@@ -30,8 +30,9 @@ public sealed class GitHubTaskProvider(
         using var client = CreateClient(accessToken);
         using var response = await client.GetAsync("user", cancellationToken);
 
-        if (response.StatusCode == HttpStatusCode.Unauthorized
-            || (response.StatusCode == HttpStatusCode.Forbidden && !await IsRateLimitedAsync(response, cancellationToken)))
+        // GitHub answers a bad token with 401. A 403 can refuse a valid one: a rate limit, a lockout
+        // after failed logins from the same address, an IP allow list.
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("GitHub rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
@@ -40,21 +41,6 @@ public sealed class GitHubTaskProvider(
         response.EnsureSuccessStatusCode();
 
         return true;
-    }
-
-    // GitHub can answer a rate limit with 403, and the token is valid then. A secondary limit may
-    // carry neither header, which leaves only its message.
-    private static async Task<bool> IsRateLimitedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        if (response.Headers.RetryAfter is not null
-            || (response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) && remaining.FirstOrDefault() == "0"))
-        {
-            return true;
-        }
-
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        return body.Contains("rate limit", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
