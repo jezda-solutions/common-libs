@@ -24,9 +24,21 @@ public interface IAzureDevOpsClient
     /// Retrieves completed work log entries for work items modified within the specified date range.
     /// </summary>
     /// <remarks>
-    /// An entry is an increase of <c>Microsoft.VSTS.Scheduling.CompletedWork</c> in one update. The
-    /// range and <see cref="AdoWorkLogEntry.LoggedAt"/> use the update's own
+    /// <para>
+    /// An entry is an update that raises <c>Microsoft.VSTS.Scheduling.CompletedWork</c> above the
+    /// highest value the work item has held before it, and its hours are that rise. Lowering or
+    /// clearing the value logs nothing, and setting it back logs only what goes past the earlier
+    /// high, so <c>5 → 3 → 5</c> and <c>5 → cleared → 5</c> give 5 hours. Updates outside the
+    /// range still count toward the high, but give no entry.
+    /// </para>
+    /// <para>
+    /// A work item created with hours already set (a copy or an import) is not told apart from a
+    /// first entry: those hours are logged to whoever created it.
+    /// </para>
+    /// <para>
+    /// The range and <see cref="AdoWorkLogEntry.LoggedAt"/> use the update's own
     /// <c>System.ChangedDate</c>, not its <c>revisedDate</c>, which is when the revision was superseded.
+    /// </para>
     /// </remarks>
     Task<IReadOnlyList<AdoWorkLogEntry>> GetCompletedWorkLogsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
 

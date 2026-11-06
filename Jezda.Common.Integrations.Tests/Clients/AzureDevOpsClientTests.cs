@@ -170,6 +170,151 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
+    public async Task GetCompletedWorkLogsAsync_ClearedThenSetAgain_CountsTheHoursOnce()
+    {
+        // Clearing the field sends only oldValue; setting it again sends only newValue.
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1, "rev": 2, "revisedDate": "2026-01-10T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            },
+            {
+              "id": 2, "rev": 3, "revisedDate": "2026-01-11T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 5.0 } }
+            },
+            {
+              "id": 3, "rev": 4, "revisedDate": "2026-01-12T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(5, entry.Hours);
+        Assert.Equal(new DateTimeOffset(2026, 1, 10, 10, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_LoweredThenRaisedBack_CountsTheHoursOnce()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1, "rev": 2, "revisedDate": "2026-01-10T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            },
+            {
+              "id": 2, "rev": 3, "revisedDate": "2026-01-11T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 5.0, "newValue": 3.0 } }
+            },
+            {
+              "id": 3, "rev": 4, "revisedDate": "2026-01-12T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 3.0, "newValue": 5.0 } }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(5, entry.Hours);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_RaisedPastAnEarlierHigh_CountsOnlyTheRiseAboveIt()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1, "rev": 2, "revisedDate": "2026-01-10T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            },
+            {
+              "id": 2, "rev": 3, "revisedDate": "2026-01-11T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 5.0, "newValue": 3.0 } }
+            },
+            {
+              "id": 3, "rev": 4, "revisedDate": "2026-01-12T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 3.0, "newValue": 6.0 } }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        Assert.Equal([5d, 1d], entries.Select(e => e.Hours));
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_HighSetBeforeTheRange_StillAppliesInsideIt()
+    {
+        // The December value is outside the range, but setting it back in January is not new work.
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1, "rev": 2, "revisedDate": "2025-12-20T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            },
+            {
+              "id": 2, "rev": 3, "revisedDate": "2026-01-11T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 5.0 } }
+            },
+            {
+              "id": 3, "rev": 4, "revisedDate": "2026-01-12T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_UpdatesOutOfOrder_AreWalkedByRevision()
+    {
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 2, "rev": 3, "revisedDate": "2026-01-11T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 5.0, "newValue": 3.0 } }
+            },
+            {
+              "id": 3, "rev": 4, "revisedDate": "2026-01-12T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "oldValue": 3.0, "newValue": 5.0 } }
+            },
+            {
+              "id": 1, "rev": 2, "revisedDate": "2026-01-10T10:00:00Z",
+              "fields": { "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 5.0 } }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(5, entry.Hours);
+        Assert.Equal(new DateTimeOffset(2026, 1, 10, 10, 0, 0, TimeSpan.Zero), entry.LoggedAt);
+    }
+
+    [Fact]
+    public async Task GetCompletedWorkLogsAsync_ItemCreatedWithHours_LogsThemToTheCreator()
+    {
+        // A copy or an import arrives as revision 1 with CompletedWork already set, which cannot be
+        // told apart from a first entry, so the hours go to whoever created the item.
+        EnqueueWorkItemWithUpdates("""
+            {
+              "id": 1, "rev": 1, "revisedDate": "2026-01-10T10:00:00Z",
+              "revisedBy": { "uniqueName": "copier@example.com", "displayName": "Copier" },
+              "fields": {
+                "System.Title": { "newValue": "Task" },
+                "Microsoft.VSTS.Scheduling.CompletedWork": { "newValue": 8.0 }
+              }
+            }
+            """);
+
+        var entries = await _client.GetCompletedWorkLogsAsync(From, To);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(8, entry.Hours);
+        Assert.Equal("copier@example.com", entry.UserUniqueName);
+    }
+
+    [Fact]
     public async Task GetCompletedWorkLogsAsync_UpdateOutsideDateRange_IsSkipped()
     {
         EnqueueWorkItemWithUpdates("""

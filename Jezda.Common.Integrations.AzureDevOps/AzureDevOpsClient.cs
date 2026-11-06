@@ -133,40 +133,42 @@ public sealed class AzureDevOpsClient(
         }
 
         var entries = new List<AdoWorkLogEntry>();
+        workItem.Fields.TryGetValue("System.TeamProject", out var project);
 
-        foreach (var update in updatesResponse.Value)
+        // Highest CompletedWork the item has held so far. Only growth above it is logged work, so
+        // a value lowered or cleared and then set back (5 -> 3 -> 5, 5 -> cleared -> 5) is not
+        // counted twice. Every update feeds it, including ones outside the range, and the updates
+        // are walked in revision order.
+        var highest = 0d;
+
+        foreach (var update in updatesResponse.Value.OrderBy(u => u.Rev))
         {
-            if (!TryGetChangedDate(update, out var changedAt) || changedAt < from || changedAt > to)
-            {
-                continue;
-            }
-
             if (!update.Fields.TryGetValue("Microsoft.VSTS.Scheduling.CompletedWork", out var change))
             {
                 continue;
             }
 
-            if (!TryConvertToDouble(change.NewValue, out var newValue))
+            // An old value is one the item already held, so it raises the mark too: that covers
+            // history older than the updates returned. Azure DevOps omits `oldValue` when the field
+            // was empty, and an unreadable one is ignored.
+            if (TryConvertToDouble(change.OldValue, out var oldValue))
+            {
+                highest = Math.Max(highest, oldValue);
+            }
+
+            // A cleared field has no `newValue`; it lowers nothing and logs nothing.
+            if (!TryConvertToDouble(change.NewValue, out var newValue) || newValue <= highest)
             {
                 continue;
             }
 
-            // Azure DevOps omits `oldValue` the first time a field is set, so a missing old value
-            // means the field went from empty to `newValue`. A present but unreadable one is skipped.
-            var oldValue = 0d;
-            if (change.OldValue is not null && !TryConvertToDouble(change.OldValue, out oldValue))
+            var delta = newValue - highest;
+            highest = newValue;
+
+            if (!TryGetChangedDate(update, out var changedAt) || changedAt < from || changedAt > to)
             {
                 continue;
             }
-
-            var delta = newValue - oldValue;
-
-            if (delta <= 0)
-            {
-                continue;
-            }
-
-            workItem.Fields.TryGetValue("System.TeamProject", out var project);
 
             entries.Add(new AdoWorkLogEntry
             {
