@@ -23,3 +23,8 @@ services.AddTrelloIntegration();
 | `ValidateConnectionAsync` | `GET /1/members/me` | Validates API key and token |
 | `GetProjectsAsync` | `GET /1/members/me/boards` | Returns boards as projects |
 | `GetTasksAsync` | `GET /1/boards/{id}/cards` | Returns cards as tasks |
+
+## Connection validation
+
+`ValidateConnectionAsync` returns `false` only for 401, which Trello answers a bad key or token with. Every
+other failure propagates, so an outage or a rate limit is not shown to the user as a bad token.

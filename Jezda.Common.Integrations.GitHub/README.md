@@ -79,3 +79,9 @@ public class GitHubService
     }
 }
 ```
+
+## Connection validation
+
+`ValidateConnectionAsync` returns `false` only when GitHub rejects the token: 401, or 403 that is not a
+rate limit (`x-ratelimit-remaining: 0`, `retry-after`, or a rate limit message). Every other failure
+propagates, so an outage or a rate limit is not shown to the user as a bad token.

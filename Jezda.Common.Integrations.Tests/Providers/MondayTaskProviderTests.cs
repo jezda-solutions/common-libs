@@ -52,6 +52,119 @@ public class MondayTaskProviderTests
     }
 
     [Fact]
+    public async Task ValidateConnectionAsync_NotAuthenticatedBody_ReturnsFalse()
+    {
+        // What the live API answers a made-up token with.
+        _handler.EnqueueResponse(
+            HttpStatusCode.Unauthorized,
+            """{"errors":[{"message":"Not authenticated","extensions":{"code":"NOT_AUTHENTICATED"}}]}""");
+
+        var result = await _provider.ValidateConnectionAsync("bad-token");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(
+            HttpStatusCode.Forbidden,
+            """{"errors":[{"message":"Denied","extensions":{"code":"USER_ACCESS_DENIED"}}]}""");
+
+        var result = await _provider.ValidateConnectionAsync("token");
+
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData("NOT_AUTHENTICATED")]
+    [InlineData("Unauthorized")]
+    [InlineData("UserUnauthorizedException")]
+    [InlineData("USER_ACCESS_DENIED")]
+    [InlineData("missingRequiredPermissions")]
+    public async Task ValidateConnectionAsync_RejectionOnStatus200_ReturnsFalse(string code)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, ErrorBody(code));
+
+        var result = await _provider.ValidateConnectionAsync("token");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_IpRestriction_ThrowsInsteadOfBlamingTheToken()
+    {
+        // An admin limited API access by address: the token is fine, the caller's address is not.
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized, """{"errors":[{"message":"Your ip is restricted"}]}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ApiBlockedOnStatus200_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, ErrorBody("API_TEMPORARILY_BLOCKED"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Contains("API_TEMPORARILY_BLOCKED", ex.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NoUserAndNoErrors_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"me":null}}""");
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_UserAlongsideErrors_ReturnsTrue()
+    {
+        // GraphQL can answer partially, and the user being there proves the token works.
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"data":{"me":{"id":"1"}},"errors":[{"message":"Other","extensions":{"code":"USER_ACCESS_DENIED"}}]}""");
+
+        var result = await _provider.ValidateConnectionAsync("token");
+
+        Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task ValidateConnectionAsync_OtherFailureStatus_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(status);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(status, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ConnectionFailure_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new HttpRequestException("Connection refused"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Timeout_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new TaskCanceledException("The request timed out"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    private static string ErrorBody(string code) =>
+        $$$"""{"data":null,"errors":[{"message":"Refused","extensions":{"code":"{{{code}}}"}}]}""";
+
+    [Fact]
     public async Task GetProjectsAsync_ReturnsExternalProjectDtos()
     {
         var response = new

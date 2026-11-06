@@ -51,6 +51,35 @@ public class ClickUpTaskProviderTests
         Assert.False(result);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task ValidateConnectionAsync_OtherFailureStatus_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(status);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(status, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ConnectionFailure_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new HttpRequestException("Connection refused"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Timeout_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new TaskCanceledException("The request timed out"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
     [Fact]
     public async Task GetProjectsAsync_ReturnsExternalProjectDtos()
     {

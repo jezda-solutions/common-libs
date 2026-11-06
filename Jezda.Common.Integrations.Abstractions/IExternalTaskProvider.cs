@@ -7,6 +7,26 @@ public interface IExternalTaskProvider
 {
     ExternalProvider Provider { get; }
 
+    /// <summary>
+    /// Asks the provider whether it accepts the token.
+    /// </summary>
+    /// <remarks>
+    /// What counts as a rejected token differs per provider:
+    /// <list type="bullet">
+    /// <item><description>Azure DevOps: 401, 403 or a sign-in page.</description></item>
+    /// <item><description>GitHub: 401, or 403 that is not a rate limit (<c>x-ratelimit-remaining: 0</c>, <c>retry-after</c>, or a rate limit message).</description></item>
+    /// <item><description>Jira: 401 or 403, unless <c>X-Seraph-LoginReason</c> is <c>AUTHENTICATION_DENIED</c>: the CAPTCHA was triggered and needs a sign-in through the website.</description></item>
+    /// <item><description>ClickUp: 401.</description></item>
+    /// <item><description>Monday.com: 401 or 403, or a rejection code in a GraphQL error on status 200. An IP restriction or a temporary API block is not a rejection.</description></item>
+    /// <item><description>Trello: 401, for a bad key as well as a bad token.</description></item>
+    /// </list>
+    /// </remarks>
+    /// <returns><c>true</c> if the token is accepted, <c>false</c> only if the provider rejected it.</returns>
+    /// <exception cref="HttpRequestException">
+    /// Any other failure, so an outage or a rate limit does not read as a bad token. Handle it as
+    /// "could not check". The resilience pipeline can also throw Polly's
+    /// <c>TimeoutRejectedException</c> or <c>BrokenCircuitException</c>, which do not derive from it.
+    /// </exception>
     Task<bool> ValidateConnectionAsync(
         string accessToken,
         string? baseUrl = null,

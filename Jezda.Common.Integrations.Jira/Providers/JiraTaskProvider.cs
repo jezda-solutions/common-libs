@@ -3,6 +3,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.Jira.Models;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -35,17 +36,27 @@ public sealed class JiraTaskProvider(
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
+        using var response = await client.GetAsync("rest/api/3/myself", cancellationToken);
 
-        try
+        // Jira's CAPTCHA refuses the login without checking the credentials, so they may be valid.
+        if (response.Headers.TryGetValues("X-Seraph-LoginReason", out var reasons)
+            && reasons.Any(reason => reason.Contains("AUTHENTICATION_DENIED", StringComparison.OrdinalIgnoreCase)))
         {
-            var response = await client.GetAsync("rest/api/3/myself", cancellationToken);
-            return response.IsSuccessStatusCode;
+            throw new HttpRequestException(
+                "Jira refused the login because its CAPTCHA was triggered. Sign in through the Jira website, then retry.",
+                null,
+                response.StatusCode);
         }
-        catch (Exception ex)
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            logger.LogWarning(ex, "Jira connection validation failed");
+            logger.LogWarning("Jira rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
+
+        response.EnsureSuccessStatusCode();
+
+        return true;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

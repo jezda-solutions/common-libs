@@ -53,6 +53,84 @@ public class GitHubTaskProviderTests
     }
 
     [Fact]
+    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, """{"message":"Resource not accessible by personal access token"}""");
+
+        var result = await _provider.ValidateConnectionAsync("token");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_PrimaryRateLimit_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
+            response.Headers.Add("x-ratelimit-remaining", "0");
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RetryAfter_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
+            response.Headers.Add("retry-after", "60");
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_SecondaryRateLimitMessageOnly_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, """{"message":"You have exceeded a secondary rate limit."}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task ValidateConnectionAsync_OtherFailureStatus_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
+    {
+        _handler.EnqueueResponse(status);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(status, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ConnectionFailure_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new HttpRequestException("Connection refused"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Timeout_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueException(new TaskCanceledException("The request timed out"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _provider.ValidateConnectionAsync("token"));
+    }
+
+    [Fact]
     public async Task GetProjectsAsync_ReturnsExternalProjectDtos()
     {
         var repos = new object[]

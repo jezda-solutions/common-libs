@@ -3,6 +3,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.Monday.Models;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -21,24 +22,65 @@ public sealed class MondayTaskProvider(
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    private static readonly HashSet<string?> RejectedTokenCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "NOT_AUTHENTICATED",
+        "Unauthorized",
+        "UserUnauthorizedException",
+        "USER_ACCESS_DENIED",
+        "missingRequiredPermissions"
+    };
+
+    private static readonly string[] RefusalsNotAboutTheToken = ["ip is restricted", "API_TEMPORARILY_BLOCKED"];
+
     public ExternalProvider Provider => ExternalProvider.Monday;
 
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(accessToken);
+        using var response = await client.PostAsJsonAsync(
+            "", new MondayGraphQlRequest { Query = "{ me { id } }" }, JsonOptions, cancellationToken);
 
-        try
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            var response = await ExecuteGraphQlAsync<MondayMeData>(
-                client, "{ me { id } }", cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            return response?.Data?.Me is not null;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Monday.com connection validation failed");
+            if (RefusalsNotAboutTheToken.Any(refusal => body.Contains(refusal, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new HttpRequestException(
+                    "Monday.com refused the request for a reason other than the token: an IP restriction or a temporary API block.",
+                    null,
+                    response.StatusCode);
+            }
+
+            logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
         }
+
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<MondayMeData>>(JsonOptions, cancellationToken);
+
+        if (result?.Data?.Me is not null)
+        {
+            return true;
+        }
+
+        // Monday reports application errors with status 200, so only the code tells them apart.
+        var errors = result?.Errors ?? [];
+
+        if (errors.Any(error => RejectedTokenCodes.Contains(error.Extensions?.Code)))
+        {
+            logger.LogWarning("Monday.com rejected the token with a GraphQL error");
+            return false;
+        }
+
+        var reasons = string.Join(", ", errors.Select(error => error.Extensions?.Code ?? error.Message));
+
+        throw new HttpRequestException(
+            $"Monday.com did not return the current user: {(reasons.Length > 0 ? reasons : "no error reported")}.",
+            null,
+            response.StatusCode);
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
