@@ -14,6 +14,15 @@ public sealed class AzureDevOpsClient(
 {
     private readonly AzureDevOpsOptions _options = options.Value;
 
+    /// <summary>
+    /// Runs a WIQL query and hydrates the matching ids into full work items.
+    /// </summary>
+    /// <remarks>
+    /// The details batch asks for <c>errorPolicy=omit</c> because an id deleted or made
+    /// unreadable after the WIQL ran would otherwise fail the whole batch with 404. Azure DevOps
+    /// answers such an id with a null slot, which is dropped here, so the result can hold fewer
+    /// items than the query matched.
+    /// </remarks>
     public async Task<List<AdoWorkItem>> GetWorkItemsByQueryAsync(string query, CancellationToken cancellationToken = default)
     {
         var wiqlRequest = new AdoWiqlRequest { Query = query };
@@ -31,12 +40,12 @@ public sealed class AzureDevOpsClient(
         foreach (var batch in workItemIds.Chunk(200))
         {
             var idsString = string.Join(",", batch);
-            var detailsUrl = $"_apis/wit/workitems?ids={idsString}&api-version={_options.ApiVersion}";
+            var detailsUrl = $"_apis/wit/workitems?ids={idsString}&errorPolicy=omit&api-version={_options.ApiVersion}";
             var detailsResponse = await GetAsync<AdoWorkItemListResponse>(detailsUrl, cancellationToken);
 
             if (detailsResponse?.Value != null)
             {
-                allWorkItems.AddRange(detailsResponse.Value);
+                allWorkItems.AddRange(detailsResponse.Value.OfType<AdoWorkItem>());
             }
         }
 
