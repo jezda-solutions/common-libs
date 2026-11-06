@@ -434,8 +434,8 @@ public class GitHubTaskProviderTests
             total_count = 3,
             items = new[] { SearchItem(1, "owner/a"), SearchItem(2, "owner/b"), SearchItem(3, "owner/a") }
         });
-        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(10, "owner/a"));
-        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(20, "owner/b"));
+        _handler.RespondTo("/repos/owner/a", HttpStatusCode.OK, Repo(10, "owner/a"));
+        _handler.RespondTo("/repos/owner/b", HttpStatusCode.OK, Repo(20, "owner/b"));
 
         var result = await _provider.SearchTasksAsync("token", "bug");
 
@@ -453,8 +453,8 @@ public class GitHubTaskProviderTests
             total_count = 2,
             items = new[] { SearchItem(1, "owner/gone"), SearchItem(2, "owner/kept") }
         });
-        _handler.EnqueueResponse(HttpStatusCode.NotFound);
-        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(20, "owner/kept"));
+        _handler.RespondTo("/repos/owner/gone", HttpStatusCode.NotFound);
+        _handler.RespondTo("/repos/owner/kept", HttpStatusCode.OK, Repo(20, "owner/kept"));
 
         var result = await _provider.SearchTasksAsync("token", "bug");
 
@@ -471,6 +471,149 @@ public class GitHubTaskProviderTests
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.UnavailableForLegalReasons)]
+    public async Task SearchTasksAsync_RepositoryRefusedForItsOwnReasons_DropsOnlyItsItems(HttpStatusCode status)
+    {
+        // A SAML requirement, an IP allow list or a blocked repository says nothing about the token.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            total_count = 2,
+            items = new[] { SearchItem(1, "owner/refused"), SearchItem(2, "owner/kept") }
+        });
+        _handler.RespondTo("/repos/owner/refused", status, new { message = "Resource protected by organization SAML enforcement." });
+        _handler.RespondTo("/repos/owner/kept", HttpStatusCode.OK, Repo(20, "owner/kept"));
+
+        var result = await _provider.SearchTasksAsync("token", "bug");
+
+        Assert.Equal("2", Assert.Single(result).Id);
+    }
+
+    [Theory]
+    [MemberData(nameof(RateLimitResponses))]
+    public async Task SearchTasksAsync_RateLimitedLookup_ThrowsTooManyRequests(RateLimitResponse limited)
+    {
+        // Consumers read 403 as an expired token, and a rate limit is no reason to sign in again.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { total_count = 1, items = new[] { SearchItem(1, "owner/a") } });
+        _handler.EnqueueResponse(limited.Build);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(RateLimitResponses))]
+    public async Task SearchTasksAsync_RateLimitedSearch_ThrowsTooManyRequests(RateLimitResponse limited)
+    {
+        // The search API allows 30 requests a minute, so it runs out long before the lookups do.
+        _handler.EnqueueResponse(limited.Build);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_SearchForbiddenWithoutARateLimit_KeepsTheStatusCode()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, new { message = "Must have admin rights to Repository." });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_LimitsConcurrentLookups()
+    {
+        var names = Enumerable.Range(1, 12).Select(i => $"owner/r{i}").ToArray();
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            total_count = names.Length,
+            items = names.Select((name, i) => SearchItem(i + 1, name)).ToArray()
+        });
+
+        foreach (var (name, i) in names.Select((name, i) => (name, i)))
+        {
+            _handler.RespondTo($"/repos/{name}", HttpStatusCode.OK, Repo(i + 1, name), TimeSpan.FromMilliseconds(50));
+        }
+
+        var result = await _provider.SearchTasksAsync("token", "bug", limit: 20);
+
+        Assert.Equal(12, result.Count);
+        Assert.InRange(_handler.MaxInFlight, 2, 5);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_FailedLookup_SurfacesThatFailureNotTheCancelledRest()
+    {
+        // The failure cancels the lookups still running; their cancellation must not replace the
+        // status code consumers branch on.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            total_count = 2,
+            items = new[] { SearchItem(1, "owner/slow"), SearchItem(2, "owner/expired") }
+        });
+        _handler.RespondTo("/repos/owner/slow", HttpStatusCode.OK, Repo(1, "owner/slow"), TimeSpan.FromSeconds(30));
+        _handler.RespondTo("/repos/owner/expired", HttpStatusCode.Unauthorized);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_Cancelled_ThrowsOperationCanceled()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { total_count = 1, items = new[] { SearchItem(1, "owner/a") } });
+        _handler.RespondTo("/repos/owner/a", HttpStatusCode.OK, Repo(1, "owner/a"), TimeSpan.FromSeconds(30));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _provider.SearchTasksAsync("token", "bug", cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_RateLimitedLookup_KeepsTheForbiddenStatus()
+    {
+        // Only search translates a rate limit so far.
+        _handler.EnqueueResponse(RateLimited);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "owner/a"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    public sealed record RateLimitResponse(string Name, Func<HttpResponseMessage> Build)
+    {
+        public override string ToString() => Name;
+    }
+
+    public static TheoryData<RateLimitResponse> RateLimitResponses =>
+    [
+        new RateLimitResponse("primary limit: no requests remaining", RateLimited),
+        new RateLimitResponse("secondary limit: retry-after", () =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("{}") };
+            response.Headers.Add("Retry-After", "60");
+            return response;
+        }),
+        new RateLimitResponse("secondary limit: only the message says so", () => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("""{"message":"You have exceeded a secondary rate limit."}""")
+        }),
+        new RateLimitResponse("429", () => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("{}") })
+    ];
+
+    private static HttpResponseMessage RateLimited()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("{}") };
+        response.Headers.Add("x-ratelimit-remaining", "0");
+        return response;
     }
 
     private static object Repo(long id = 42, string fullName = "owner/repo") => new

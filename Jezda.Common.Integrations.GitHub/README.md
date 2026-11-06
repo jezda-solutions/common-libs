@@ -85,3 +85,14 @@ public class GitHubService
 `ValidateConnectionAsync` returns `false` only for 401, which is what GitHub answers a bad token with. Every
 other failure propagates, including every 403, which can be a rate limit, a lockout after failed logins or an
 address block, so none of them is shown to the user as a bad token.
+
+## Search failures
+
+`SearchTasksAsync` looks up each repository in its result, at most five at once:
+
+- A rate limit fails the search with `HttpRequestException` status 429, even where GitHub answered 403, so it
+  does not read as a rejected token. That covers the search request and the lookups; `GetProjectsAsync` and
+  `GetTasksAsync` still report what GitHub answered.
+- A lookup answering 404, 451 or any other 403 drops only that repository's issues and logs a warning. If every
+  repository is refused, the result is empty.
+- Any other failure, such as 401 or 5xx, fails the search with its status.

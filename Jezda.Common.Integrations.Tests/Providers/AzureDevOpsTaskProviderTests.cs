@@ -947,8 +947,8 @@ public class AzureDevOpsTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2, 3));
         _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn((1, "Alpha"), (2, "Beta"), (3, "Alpha")));
-        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Alpha"));
-        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Beta"));
+        _handler.RespondTo("/myorg/_apis/projects/Alpha", HttpStatusCode.OK, Project("Alpha"));
+        _handler.RespondTo("/myorg/_apis/projects/Beta", HttpStatusCode.OK, Project("Beta"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -961,8 +961,8 @@ public class AzureDevOpsTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn((1, "Gone"), (2, "Kept")));
-        _handler.EnqueueResponse(HttpStatusCode.NotFound);
-        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Kept"));
+        _handler.RespondTo("/myorg/_apis/projects/Gone", HttpStatusCode.NotFound);
+        _handler.RespondTo("/myorg/_apis/projects/Kept", HttpStatusCode.OK, Project("Kept"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -980,6 +980,39 @@ public class AzureDevOpsTaskProviderTests
             _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_ForbiddenProjectLookup_KeepsTheStatusCode()
+    {
+        // Unlike GitHub, a 403 here can mean a PAT without the scope, so hiding it would turn a
+        // misconfigured integration into results that silently go missing.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One")));
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, "");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_LimitsConcurrentLookups()
+    {
+        var items = Enumerable.Range(1, 12).Select(i => (Id: i, Project: $"P{i}")).ToArray();
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. items.Select(i => i.Id)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn(items));
+
+        foreach (var item in items)
+        {
+            _handler.RespondTo($"/myorg/_apis/projects/{item.Project}", HttpStatusCode.OK, Project(item.Project), TimeSpan.FromMilliseconds(50));
+        }
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(12, result.Count);
+        Assert.InRange(_handler.MaxInFlight, 2, 5);
     }
 
     private static object Project(string name, string? id = null) => new

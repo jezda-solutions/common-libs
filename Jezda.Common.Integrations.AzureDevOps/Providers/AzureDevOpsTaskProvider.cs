@@ -5,6 +5,7 @@ using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -20,6 +21,7 @@ public sealed class AzureDevOpsTaskProvider(
 {
     public const string HttpClientName = "ExternalTaskProvider.AzureDevOps";
     private const int ProjectPageSize = 100;
+    private const int MaxConcurrentLookups = 5;
     private const string ContinuationTokenHeader = "x-ms-continuationtoken";
     private readonly string _apiVersion = options.Value.ApiVersion;
 
@@ -155,8 +157,9 @@ public sealed class AzureDevOpsTaskProvider(
     /// it is read back per work item from <c>System.TeamProject</c>. That field is the project's
     /// <i>name</i>, while <c>ProjectId</c> must equal the GUID <see cref="GetProjectsAsync"/> reports
     /// as <c>ExternalProjectDto.Id</c>, because consumers key stored rows on it. So each distinct
-    /// project in the result costs one more request, and an item whose project answers 404 cannot be
-    /// bound to one and is dropped.
+    /// project in the result costs one more request, at most five at once, and an item whose project
+    /// answers 404 cannot be bound to one and is dropped. A 403 stays an error, because it can mean a
+    /// PAT without the scope, which should not look like results that silently went missing.
     /// </para>
     /// <para>
     /// <c>CONTAINS</c> is a substring match on the title only, and is what Azure DevOps can index;
@@ -251,36 +254,32 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     /// <summary>
-    /// Looks up each named project once, concurrently because a person is waiting on the search. A
-    /// project that answers 404 is left out; any other failure propagates, so an expired token still
-    /// surfaces as one.
+    /// Looks up each named project once, a few at a time because a person is waiting on the search. A
+    /// project that answers 404 is left out; any other failure propagates and cancels the lookups
+    /// still running, so an expired token still surfaces as one.
     /// </summary>
-    private async Task<Dictionary<string, AdoProject>> FindProjectsAsync(
+    private async Task<IReadOnlyDictionary<string, AdoProject>> FindProjectsAsync(
         HttpClient client,
         IEnumerable<string> names,
         CancellationToken cancellationToken)
     {
-        var lookups = names
-            .Where(name => name.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .Select(async name =>
+        var found = new ConcurrentDictionary<string, AdoProject>(StringComparer.Ordinal);
+        var distinct = names.Where(name => name.Length > 0).Distinct(StringComparer.Ordinal);
+        var options = new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentLookups, CancellationToken = cancellationToken };
+
+        await Parallel.ForEachAsync(distinct, options, async (name, token) =>
+        {
+            try
             {
-                try
-                {
-                    return (Name: name, Project: (AdoProject?)await GetProjectAsync(client, name, cancellationToken));
-                }
-                catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-                {
-                    logger.LogWarning("Azure DevOps search returned a work item in {Project}, which answers 404", name);
-                    return (Name: name, Project: null);
-                }
-            });
+                found[name] = await GetProjectAsync(client, name, token);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                logger.LogWarning("Azure DevOps search returned a work item in {Project}, which answers 404", name);
+            }
+        });
 
-        var found = await Task.WhenAll(lookups);
-
-        return found
-            .Where(l => l.Project is not null)
-            .ToDictionary(l => l.Name, l => l.Project!, StringComparer.Ordinal);
+        return found;
     }
 
     /// <param name="client">The client created for the organisation.</param>
