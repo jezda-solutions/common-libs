@@ -22,7 +22,7 @@ Shared abstractions for external task provider integrations, including the `IExt
 
 - Key stored rows on `Id`, and bind tasks to projects by `ExternalTaskDto.ProjectId`. A rename or transfer on the provider's side does not change it.
 - Treat `Path` as a value to refresh from `GetProjectsAsync`, not as a key.
-- `GetTasksAsync` accepts either `Id` or the current `Path`, so stored rows keep working while they are migrated. A row stored as a path stops working once the project is renamed: on the old path the provider can answer 404, and such a row can no longer be matched to a project in the list. Matching a stored row against `ExternalProjectDto.Id` does not work until it is migrated, so migrate before comparing.
+- `GetTasksAsync` accepts either `Id` or the current `Path`, so stored rows keep working while they are migrated. A row stored as a path can stop working once the project is renamed: the old path can fail with an error such as 404, and such a row can no longer be matched to a project in the list. Matching a stored row against `ExternalProjectDto.Id` does not work until it is migrated, so migrate before comparing.
 - On GitHub and Azure DevOps, resolving the project costs extra requests: one per `GetTasksAsync` call, and one per distinct project in a `SearchTasksAsync` result.
 
 ## Project metadata

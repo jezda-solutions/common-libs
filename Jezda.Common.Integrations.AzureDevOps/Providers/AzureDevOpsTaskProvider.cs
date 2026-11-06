@@ -86,7 +86,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// </summary>
     /// <remarks>
     /// The project is looked up first because <c>[System.TeamProject]</c> in WIQL takes the name, and
-    /// a work item carries only the name while each task must also carry the GUID.
+    /// a work item carries only the name while <c>ProjectId</c> must be the GUID.
     /// <c>_apis/projects/{id}</c> accepts both the GUID and the name, and the lookup by GUID keeps
     /// working after a rename.
     /// </remarks>
