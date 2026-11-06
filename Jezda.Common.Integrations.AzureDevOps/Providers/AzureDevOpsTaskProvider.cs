@@ -66,7 +66,9 @@ public sealed class AzureDevOpsTaskProvider(
 
         if (accepted)
         {
-            logger.LogInformation("Azure DevOps accepted the token for projects and work items");
+            logger.LogInformation(
+                "Azure DevOps accepted the token for projects and work items on {Organisation}",
+                OrganisationForLog(client));
         }
 
         return accepted;
@@ -74,15 +76,17 @@ public sealed class AzureDevOpsTaskProvider(
 
     private async Task<bool> IsTokenAcceptedAsync(HttpClient client, string url, CancellationToken cancellationToken)
     {
-        using var response = await client.GetAsync(url, cancellationToken);
+        // Headers are all this needs: _apis/wit/fields answers with the whole field catalog.
+        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
             || AzureDevOpsHttp.IsSignInPage(response))
         {
             logger.LogWarning(
-                "Azure DevOps rejected the token with {StatusCode} on {Path}",
+                "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}",
                 (int)response.StatusCode,
-                url.Split('?')[0]);
+                url.Split('?')[0],
+                OrganisationForLog(client));
             return false;
         }
 
@@ -90,6 +94,10 @@ public sealed class AzureDevOpsTaskProvider(
 
         return true;
     }
+
+    // The base URL comes from the user, so leave out any credentials written into it.
+    private static string? OrganisationForLog(HttpClient client) =>
+        client.BaseAddress?.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {

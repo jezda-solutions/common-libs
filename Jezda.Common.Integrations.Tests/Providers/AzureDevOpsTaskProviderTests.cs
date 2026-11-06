@@ -304,7 +304,7 @@ public class AzureDevOpsTaskProviderTests
 
         var entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Warning, entry.Level);
-        Assert.Equal("Azure DevOps rejected the token with 403 on _apis/wit/fields", entry.Message);
+        Assert.Equal("Azure DevOps rejected the token with 403 on _apis/wit/fields for https://dev.azure.com/myorg/", entry.Message);
     }
 
     [Fact]
@@ -319,7 +319,65 @@ public class AzureDevOpsTaskProviderTests
 
         var entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Information, entry.Level);
-        Assert.Equal("Azure DevOps accepted the token for projects and work items", entry.Message);
+        Assert.Equal("Azure DevOps accepted the token for projects and work items on https://dev.azure.com/myorg/", entry.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_BaseUrlWithCredentials_LeavesThemOutOfTheLog()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        await provider.ValidateConnectionAsync("pat", "https://user:hunter2@dev.azure.com/myorg/");
+
+        Assert.DoesNotContain("hunter2", Assert.Single(logger.Entries).Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_DoesNotReadTheBodyOfAnAcceptedResponse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new UnreadableContent() });
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectToSignInOnWorkItems_ReturnsFalse()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectOnWorkItems_ThrowsInsteadOfBlamingTheToken()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
+        _handler.EnqueueResponse(() => Redirect("https://dev.azure.com/neworg/_apis/wit/fields"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/oldorg/"));
+
+        Assert.Equal(HttpStatusCode.Found, ex.StatusCode);
+    }
+
+    private sealed class UnreadableContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
+            throw new HttpRequestException("The connection dropped while reading the body");
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 
     private AzureDevOpsTaskProvider ProviderWith(ILogger<AzureDevOpsTaskProvider> logger) => new(
