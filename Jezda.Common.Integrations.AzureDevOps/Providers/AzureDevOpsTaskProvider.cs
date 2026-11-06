@@ -364,6 +364,10 @@ public sealed class AzureDevOpsTaskProvider(
         var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
 
+        // Without it, a bad PAT is redirected to a sign-in page that ends as 203 with HTML, which
+        // IsSuccessStatusCode accepts. With it, Azure DevOps answers 401.
+        client.DefaultRequestHeaders.Add("X-TFS-FedAuthRedirect", "Suppress");
+
         return client;
     }
 }
