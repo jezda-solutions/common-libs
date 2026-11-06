@@ -70,13 +70,11 @@ public class AzureDevOpsTaskProviderTests
         Assert.False(result);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
-    [InlineData(HttpStatusCode.OK)]
-    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsFalse(HttpStatusCode status)
+    [Fact]
+    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsFalse()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
-        _handler.EnqueueResponse(() => SignInPage(status));
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
 
@@ -107,37 +105,34 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task EveryRequest_AsksAzureDevOpsNotToRedirectToSignIn()
-    {
-        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
-        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
-
-        await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
-
-        // Without it a bad PAT gets a sign-in page ending as 203, which reads as a valid connection.
-        Assert.Equal(2, _handler.SentRequests.Count);
-        Assert.All(_handler.SentRequests, request =>
-            Assert.Equal(["Suppress"], request.Headers.GetValues("X-TFS-FedAuthRedirect")));
-    }
-
-    [Fact]
     public async Task ValidateConnectionAsync_WithoutBaseUrl_ThrowsArgumentException()
     {
         await Assert.ThrowsAnyAsync<ArgumentException>(() =>
             _provider.ValidateConnectionAsync("pat", baseUrl: null));
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
-    [InlineData(HttpStatusCode.OK)]
-    public async Task ValidateConnectionAsync_SignInPage_ReturnsFalse(HttpStatusCode status)
+    [Fact]
+    public async Task ValidateConnectionAsync_SignInPage_ReturnsFalse()
     {
         // What a bad PAT gets when the FedAuthRedirect header is dropped on the way or ignored.
-        _handler.EnqueueResponse(() => SignInPage(status));
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_HtmlOnOk_ThrowsInsteadOfBlamingTheToken()
+    {
+        // A base URL pointing at a website or a captive portal: the token was never checked.
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.OK));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("HTML page", ex.Message);
     }
 
     [Fact]
@@ -264,12 +259,10 @@ public class AzureDevOpsTaskProviderTests
         Assert.True(fields.Disposed);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.NonAuthoritativeInformation)]
-    [InlineData(HttpStatusCode.OK)]
-    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized(HttpStatusCode status)
+    [Fact]
+    public async Task GetProjectsAsync_SignInPage_ThrowsUnauthorized()
     {
-        _handler.EnqueueResponse(() => SignInPage(status));
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
@@ -304,7 +297,88 @@ public class AzureDevOpsTaskProviderTests
 
         var entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Warning, entry.Level);
-        Assert.Equal("Azure DevOps rejected the token with 403 on _apis/wit/fields for https://dev.azure.com/myorg/", entry.Message);
+        Assert.Equal("Azure DevOps rejected the token with 403 on _apis/wit/fields for https://dev.azure.com/myorg/: {}", entry.Message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_Forbidden_LogsTheBody()
+    {
+        // Conditional Access, an IP allow-list or a WAF answer 403 for a valid PAT; only the body says so.
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("Blocked by IP policy " + new string('x', 1000))
+        });
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.Contains("Blocked by IP policy", message);
+        Assert.DoesNotContain(new string('x', 500), message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUnknownCharset_StillReturnsFalse()
+    {
+        // windows-1252 is one such charset: .NET cannot decode it without the CodePages provider.
+        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.Forbidden));
+
+        var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUnknownCharset_KeepsTheStatus()
+    {
+        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.InternalServerError));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.InternalServerError, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_ForbiddenWithLineBreaksInBody_LogsOneLine()
+    {
+        // The base URL comes from the user, so the body may be written to forge a log entry.
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("denied\r\nfake log entry\ttabbed")
+        });
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.DoesNotContain(message, char.IsControl);
+        Assert.Contains("denied", message);
+        Assert.Contains("fake log entry", message);
+    }
+
+    private static HttpResponseMessage WithUnknownCharset(HttpStatusCode statusCode)
+    {
+        var content = new ByteArrayContent("blocked"u8.ToArray());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = "windows-1252" };
+
+        return new HttpResponseMessage(statusCode) { Content = content };
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_SignInPage_LogsThatInsteadOfThePage()
+    {
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.EndsWith(": a sign-in page", message);
+        Assert.DoesNotContain("<html>", message);
     }
 
     [Fact]

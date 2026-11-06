@@ -90,17 +90,37 @@ Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps repor
 | What happened | Result |
 |---|---|
 | Token rejected (401, 403) | `StatusCode` 401 / 403 |
-| Sign-in page instead of JSON (a redirect to `/_signin`, HTML on a success status, or 203 without JSON) | `StatusCode` 401 |
+| Sign-in page instead of JSON (a redirect to `/_signin`, or 203 without JSON) | `StatusCode` 401; for a redirect, the message names the target's host and path. |
+| HTML page on any other success status (the base URL points at a website, a proxy or a captive portal answered) | `StatusCode` is the success status itself, e.g. 200. The token was not checked, so this is not 401. |
 | Base URL redirects anywhere else (3xx, e.g. after an organisation rename) | `StatusCode` is the 3xx; the message names the target. Redirects are not followed, because .NET drops `Authorization` on the next hop and a valid PAT would read as expired. |
 | Any other failure | Its own status, or the original exception for dropped connections and cancellation. A timeout on `IAzureDevOpsClient` is `TaskCanceledException` from `HttpClient.Timeout`. |
-| Timeout or open circuit on the `IExternalTaskProvider` client | Polly's `TimeoutRejectedException` or `BrokenCircuitException` from the resilience pipeline. Neither derives from `HttpRequestException`, so catch them too. |
+| Resilience pipeline on the `IExternalTaskProvider` client gave up | Polly's `TimeoutRejectedException`, `BrokenCircuitException` or `RateLimiterRejectedException`. None derives from `HttpRequestException`, so also catch their common base, `ExecutionRejectedException`. |
 
 `ValidateConnectionAsync` returns `false` only for a rejected token (401, 403, sign-in page). Every other
 failure propagates, so an outage is not shown to the user as a bad PAT.
 
+A 403 is not always about the token: Conditional Access, an IP allow-list or a WAF can answer it for a valid
+PAT. Validation still returns `false`, and logs a warning with the start of the response body, which tells these
+apart.
+
 Validation sends two requests: `_apis/projects`, which needs "Project and Team (Read)", and `_apis/wit/fields`,
 which needs "Work Items (Read)". A PAT missing either scope returns `false`, instead of validating and failing
 later on the first work item call.
+
+### Keeping redirects off
+
+`AddAzureDevOpsIntegration` turns off redirects on the default primary handler. Without that, a redirect drops
+`Authorization` and a valid PAT reads as expired. It also sets the `X-TFS-FedAuthRedirect: Suppress` header, which
+asks for 401 instead of a redirect to sign-in. Four setups need care:
+
+- **A custom primary handler registered before `AddAzureDevOpsIntegration`:** one that is not `SocketsHttpHandler`
+  or `HttpClientHandler` stays as it is, and a warning is logged. Make sure it does not follow redirects.
+- **`ConfigurePrimaryHttpMessageHandler` called after `AddAzureDevOpsIntegration`:** the handler replaces the
+  configured one and nothing warns, so set `AllowAutoRedirect = false` on it yourself.
+- **`AzureDevOpsClient` given an `HttpClient` made outside DI:** set `AllowAutoRedirect = false` on its handler,
+  and send the header yourself.
+- **`AzureDevOpsTaskProvider` built on your own `IHttpClientFactory`:** the same two apply to the client it creates
+  under `AzureDevOpsTaskProvider.HttpClientName`.
 
 ## 🛠️ Key Models
 

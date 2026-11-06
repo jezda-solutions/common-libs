@@ -46,13 +46,18 @@ public sealed class AzureDevOpsTaskProvider(
     /// <para />
     /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
     /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
-    /// the resilience pipeline's own exceptions: Polly's <c>TimeoutRejectedException</c> for a timeout
-    /// and <c>BrokenCircuitException</c> for an open circuit, neither of which derives from
-    /// <see cref="HttpRequestException"/>.
+    /// the resilience pipeline's own exceptions, all deriving from Polly's
+    /// <c>ExecutionRejectedException</c> and none from <see cref="HttpRequestException"/>:
+    /// <c>TimeoutRejectedException</c> for a timeout, <c>BrokenCircuitException</c> for an open circuit
+    /// and <c>RateLimiterRejectedException</c> for too many concurrent requests.
+    /// <para />
+    /// A 403 can also come from Conditional Access, an IP allow-list or a WAF, for a valid PAT. It still
+    /// answers <see langword="false"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">
-    /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page: the base URL
-    /// answers somewhere else. The status code is on the exception.
+    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or an HTML page
+    /// on a success status: the base URL answers somewhere else, or something other than Azure DevOps
+    /// answered. The status code is on the exception.
     /// </exception>
     /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
@@ -78,14 +83,16 @@ public sealed class AzureDevOpsTaskProvider(
     {
         using var response = await client.GetAsync(url, cancellationToken);
 
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-            || AzureDevOpsHttp.IsSignInPage(response))
+        var isSignInPage = AzureDevOpsHttp.IsSignInPage(response);
+
+        if (isSignInPage || response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             logger.LogWarning(
-                "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}",
+                "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}: {Answer}",
                 (int)response.StatusCode,
                 url.Split('?')[0],
-                OrganisationForLog(client));
+                OrganisationForLog(client),
+                isSignInPage ? "a sign-in page" : await ReadErrorBodyAsync(response, cancellationToken));
             return false;
         }
 
@@ -407,8 +414,8 @@ public sealed class AzureDevOpsTaskProvider(
     /// treat 401/403 as an expired token keep working.
     /// </para>
     /// <para>
-    /// A sign-in page or a redirect to one throws as 401, and any other redirect with its own status;
-    /// see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
+    /// A sign-in page or a redirect to one throws as 401, and any other redirect or an HTML page with
+    /// its own status; see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
     /// </para>
     /// </remarks>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -420,27 +427,31 @@ public sealed class AzureDevOpsTaskProvider(
             return;
         }
 
-        // Best effort: a body that cannot be read must not replace the status code, which is what
-        // callers branch on.
-        string body;
-        try
-        {
-            body = await response.Content.ReadAsStringAsync(cancellationToken);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or IOException)
-        {
-            body = string.Empty;
-        }
-
-        if (body.Length > 500)
-        {
-            body = body[..500];
-        }
+        var body = await ReadErrorBodyAsync(response, cancellationToken);
 
         throw new HttpRequestException(
             $"Azure DevOps returned {(int)response.StatusCode} ({response.ReasonPhrase}): {body}",
             inner: null,
             statusCode: response.StatusCode);
+    }
+
+    // Best effort: a body that cannot be read must not replace the status code, which is what callers
+    // branch on. InvalidOperationException is a charset .NET cannot decode.
+    // The base URL comes from the user, so the body can be anything: control characters go, because a
+    // line break in it would forge an entry in a plain-text log.
+    private static async Task<string> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        string body;
+        try
+        {
+            body = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException)
+        {
+            return string.Empty;
+        }
+
+        return string.Concat((body.Length > 500 ? body[..500] : body).Select(c => char.IsControl(c) ? ' ' : c));
     }
 
     /// <summary>
@@ -520,8 +531,6 @@ public sealed class AzureDevOpsTaskProvider(
 
         var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);
-
-        client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
 
         return client;
     }

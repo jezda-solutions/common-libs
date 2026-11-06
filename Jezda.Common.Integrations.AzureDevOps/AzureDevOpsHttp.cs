@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Net;
 
 namespace Jezda.Common.Integrations.AzureDevOps;
@@ -24,71 +26,82 @@ internal static class AzureDevOpsHttp
     /// <see cref="FedAuthRedirectHeader"/> is the first defence, but a proxy that drops the header,
     /// or a server that ignores it, brings the sign-in flow back. Without the header Azure DevOps
     /// answers a rejected token with 302 to <c>/_signin</c> on its identity host, which is the first
-    /// response seen here because redirects are not followed. It answers its REST API with JSON, so
-    /// HTML on a success status, or 203 with anything but JSON, also means the token was not accepted.
-    /// 203 with JSON stays an answer: a transforming proxy can return a valid response that way.
+    /// response seen here because redirects are not followed. The page behind that redirect is served
+    /// as 203 with HTML, so 203 with anything but JSON also means the token was not accepted. 203 with
+    /// JSON stays an answer: a transforming proxy can return a valid response that way.
+    /// <para />
+    /// HTML on any other success status is not a sign-in page: see <see cref="ThrowIfNotApiResponse"/>.
     /// </remarks>
     public static bool IsSignInPage(HttpResponseMessage response)
     {
-        if ((int)response.StatusCode is >= 300 and < 400)
+        if (IsRedirect(response))
         {
             return response.Headers.Location?.OriginalString.Split('?', '#')[0]
                 .EndsWith("/_signin", StringComparison.OrdinalIgnoreCase) == true;
         }
 
-        var mediaType = response.Content.Headers.ContentType?.MediaType;
-
-        return response.IsSuccessStatusCode
-            && (string.Equals(mediaType, "text/html", StringComparison.OrdinalIgnoreCase)
-                || (response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
-                    && mediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) != true));
+        return response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
+            && response.Content.Headers.ContentType?.MediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) != true;
     }
 
     /// <summary>
-    /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, or a redirect.
-    /// Any other response, failed or not, is left to the caller.
+    /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, a redirect, or
+    /// an HTML page. Any other response, failed or not, is left to the caller.
     /// </summary>
     /// <exception cref="HttpRequestException">
     /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page or a redirect to one, so callers
-    /// that treat 401 as an expired token keep working. The redirect's own 3xx status for any other
-    /// redirect, which is not a token problem: the base URL answers somewhere else.
+    /// that treat 401 as an expired token keep working. The response's own status for any other
+    /// redirect or an HTML page, neither of which says anything about the token: the base URL answers
+    /// somewhere else, or something other than Azure DevOps answered in its place.
     /// </exception>
     public static void ThrowIfNotApiResponse(HttpResponseMessage response)
     {
         if (IsSignInPage(response))
         {
+            var answer = IsRedirect(response)
+                ? $"redirected to the sign-in page at {SignInTarget(response)} with {(int)response.StatusCode}"
+                : $"answered {(int)response.StatusCode} with a sign-in page instead of JSON";
+
             throw new HttpRequestException(
-                $"Azure DevOps answered {(int)response.StatusCode} with a sign-in page instead of JSON: the token was not accepted.",
+                $"Azure DevOps {answer}: the token was not accepted.",
                 inner: null,
                 statusCode: HttpStatusCode.Unauthorized);
         }
 
-        if ((int)response.StatusCode is >= 300 and < 400)
+        if (IsRedirect(response))
         {
-            var location = response.Headers.Location;
-            if (location is not null && !location.IsAbsoluteUri && response.RequestMessage?.RequestUri is { } requestUri)
-            {
-                location = new Uri(requestUri, location);
-            }
-
             throw new HttpRequestException(
-                $"Azure DevOps redirected {response.RequestMessage?.RequestUri} to {location?.ToString() ?? "(no location)"} "
+                $"Azure DevOps redirected {response.RequestMessage?.RequestUri} to {RedirectTarget(response)?.ToString() ?? "(no location)"} "
                 + $"with {(int)response.StatusCode}. The base URL is likely out of date, for example after the organisation was renamed.",
+                inner: null,
+                statusCode: response.StatusCode);
+        }
+
+        if (response.IsSuccessStatusCode
+            && string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new HttpRequestException(
+                $"The server answered {(int)response.StatusCode} with an HTML page instead of JSON, so the token was not checked. "
+                + "The base URL likely points at a website, or a proxy or captive portal answered in place of Azure DevOps.",
                 inner: null,
                 statusCode: response.StatusCode);
         }
     }
 
     /// <summary>
-    /// Stops the primary handler from following redirects.
+    /// Stops the primary handler from following redirects, and warns when it cannot.
     /// </summary>
     /// <remarks>
     /// .NET drops the <c>Authorization</c> header when it follows a redirect, so a base URL that
     /// answers 302 (an organisation renamed, a stored URL in an old form) would answer the next hop
     /// with 401 even for a valid PAT, and read as an expired token. Not following it surfaces the
     /// redirect itself, through <see cref="ThrowIfNotApiResponse"/>.
+    /// <para />
+    /// A warning, not an exception: a custom handler may not follow redirects at all, and only its
+    /// author can tell. A primary handler replaced after this runs is not seen here; the package
+    /// README says so.
     /// </remarks>
-    public static void DisableAutoRedirect(HttpMessageHandler primaryHandler)
+    public static void DisableAutoRedirect(HttpMessageHandler primaryHandler, IServiceProvider services)
     {
         switch (primaryHandler)
         {
@@ -98,6 +111,30 @@ internal static class AzureDevOpsHttp
             case HttpClientHandler client:
                 client.AllowAutoRedirect = false;
                 break;
+            default:
+                services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AzureDevOpsHttp)).LogWarning(
+                    "Cannot turn off redirects on primary handler {HandlerType}. If it follows them, a valid PAT can read as expired after a redirect",
+                    primaryHandler.GetType().FullName);
+                break;
         }
     }
+
+    private static bool IsRedirect(HttpResponseMessage response) => (int)response.StatusCode is >= 300 and < 400;
+
+    private static Uri? RedirectTarget(HttpResponseMessage response)
+    {
+        var location = response.Headers.Location;
+
+        return location is { IsAbsoluteUri: false } && response.RequestMessage?.RequestUri is { } requestUri
+            ? new Uri(requestUri, location)
+            : location;
+    }
+
+    // Host and path only: enough to tell Azure DevOps from a gateway with its own /_signin. The query
+    // carries the reply URL and an opaque context, which only make the message harder to read.
+    private static string? SignInTarget(HttpResponseMessage response) => RedirectTarget(response) switch
+    {
+        { IsAbsoluteUri: true } target => target.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped),
+        var target => target?.OriginalString.Split('?', '#')[0]
+    };
 }
