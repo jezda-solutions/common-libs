@@ -32,9 +32,8 @@ public interface IAzureDevOpsClient
     /// range still count toward the high, but give no entry.
     /// </para>
     /// <para>
-    /// Hours already set when a work item is created (revision 1, as in a copy or an import) are
-    /// not logged, but they set the high. Hours entered while creating a new item are therefore not
-    /// counted either; only what is added after the item exists is.
+    /// A work item created with hours already set (a copy or an import) is not told apart from a
+    /// first entry: those hours are logged to whoever created it.
     /// </para>
     /// <para>
     /// The range and <see cref="AdoWorkLogEntry.LoggedAt"/> use the update's own

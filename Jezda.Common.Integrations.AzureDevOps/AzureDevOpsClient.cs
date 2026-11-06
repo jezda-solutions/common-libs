@@ -165,14 +165,6 @@ public sealed class AzureDevOpsClient(
             var delta = newValue - highest;
             highest = newValue;
 
-            // Hours already set when the item was created (revision 1) came with it, from a copy or
-            // an import, so they are not logged. They still set the high, so a later edit back to
-            // them logs nothing.
-            if (update.Rev == 1)
-            {
-                continue;
-            }
-
             if (!TryGetChangedDate(update, out var changedAt) || changedAt < from || changedAt > to)
             {
                 continue;
