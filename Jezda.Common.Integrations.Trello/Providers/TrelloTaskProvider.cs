@@ -57,10 +57,16 @@ public sealed class TrelloTaskProvider(
         return [.. boards.Select(b => new ExternalProjectDto
         {
             Id = b.Id,
+            Path = b.Id, // The API addresses a board by this id, and it does not change.
             Name = b.Name,
             Description = b.Desc,
             Url = b.Url,
-            Provider = ExternalProvider.Trello
+            Provider = ExternalProvider.Trello,
+            UpdatedAt = b.DateLastActivity,
+            IsArchived = b.Closed,
+            IsPrivate = b.Prefs?.PermissionLevel is { } level
+                ? !level.Equals("public", StringComparison.OrdinalIgnoreCase)
+                : null
         })];
     }
 
@@ -80,6 +86,7 @@ public sealed class TrelloTaskProvider(
             Status = c.Closed ? "closed" : "open",
             Url = c.Url,
             ProjectId = projectId,
+            ProjectPath = projectId,
             Provider = ExternalProvider.Trello
         })];
     }

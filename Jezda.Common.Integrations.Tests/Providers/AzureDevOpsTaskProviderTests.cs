@@ -87,7 +87,8 @@ public class AzureDevOpsTaskProviderTests
         var result = await _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg/");
 
         Assert.Equal(2, result.Count);
-        Assert.Equal("ProjectA", result[0].Id);
+        Assert.Equal("guid-1", result[0].Id);
+        Assert.Equal("ProjectA", result[0].Path);
         Assert.Equal("ProjectA", result[0].Name);
         Assert.Equal("First project", result[0].Description);
         Assert.Equal(ExternalProvider.AzureDevOps, result[0].Provider);
@@ -96,6 +97,8 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task GetTasksAsync_ReturnsExternalTaskDtos()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+
         // WIQL response with work item IDs
         var wiqlResponse = new
         {
@@ -144,7 +147,8 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal("1", result[0].Id);
         Assert.Equal("Task One", result[0].Title);
         Assert.Equal("Active", result[0].Status);
-        Assert.Equal("ProjectA", result[0].ProjectId);
+        Assert.Equal("guid-ProjectA", result[0].ProjectId);
+        Assert.Equal("ProjectA", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.AzureDevOps, result[0].Provider);
 
         // The page a person opens, not the REST resource the API returned as `url`.
@@ -168,19 +172,21 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task GetTasksAsync_AsksTheDetailsBatchToOmitUnreadableItems()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One"), (2, "Two")));
 
         await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
 
         // Without it, one id deleted between the WIQL and this call fails the whole batch with 404.
-        var detailsQuery = _handler.SentRequests[1].RequestUri!.Query;
+        var detailsQuery = _handler.SentRequests[2].RequestUri!.Query;
         Assert.Contains("errorPolicy=omit", detailsQuery);
     }
 
     [Fact]
     public async Task GetTasksAsync_SkipsItemsTheDetailsBatchOmitted()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
         // With errorPolicy=omit, Azure DevOps answers an unreadable id with a null slot.
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(
@@ -209,6 +215,7 @@ public class AzureDevOpsTaskProviderTests
               {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}}
             ]}
             """);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -218,6 +225,7 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task GetTasksAsync_RejectedDetailsBatch_CarriesTheAzureDevOpsReasonAndStatus()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
         _handler.EnqueueResponse(
             HttpStatusCode.BadRequest,
@@ -233,6 +241,7 @@ public class AzureDevOpsTaskProviderTests
     [Fact]
     public async Task GetTasksAsync_EmptyWiqlResult_ReturnsEmpty()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
         var wiqlResponse = new { queryType = "flat", workItems = Array.Empty<object>() };
         _handler.EnqueueResponse(HttpStatusCode.OK, wiqlResponse);
 
@@ -355,6 +364,7 @@ public class AzureDevOpsTaskProviderTests
                 }
             }
         });
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -387,6 +397,7 @@ public class AzureDevOpsTaskProviderTests
                 }
             }
         });
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -394,13 +405,15 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal("7", task.Id);
         Assert.Equal("Fix webhook retry", task.Title);
         Assert.Equal("Active", task.Status);
-        Assert.Equal("Platform", task.ProjectId);
+        Assert.Equal("guid-Platform", task.ProjectId);
+        Assert.Equal("Platform", task.ProjectPath);
         Assert.Equal(ExternalProvider.AzureDevOps, task.Provider);
     }
 
     [Fact]
     public async Task GetTasksAsync_KeepsTheCollectionSegmentOfAnOnPremisesServer()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
         _handler.EnqueueResponse(HttpStatusCode.OK, new
         {
             queryType = "flat",
@@ -450,7 +463,10 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.SearchTasksAsync("my-pat", "project", baseUrl: "https://dev.azure.com/myorg/");
 
-        Assert.Equal("https://dev.azure.com/myorg/_apis/wit/workItems/8", Assert.Single(result).Url);
+        var task = Assert.Single(result);
+        Assert.Equal("https://dev.azure.com/myorg/_apis/wit/workItems/8", task.Url);
+        Assert.Equal(string.Empty, task.ProjectId);
+        Assert.Equal(string.Empty, task.ProjectPath);
     }
 
     [Fact]
@@ -479,6 +495,7 @@ public class AzureDevOpsTaskProviderTests
                 }
             }
         });
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Mobile Team"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg");
 
@@ -575,6 +592,7 @@ public class AzureDevOpsTaskProviderTests
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1234));
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(5000, 1234));
         _handler.EnqueueResponse(HttpStatusCode.OK, Details((5000, "Follow-up to 1234"), (1234, "Login fails")));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "#1234", baseUrl: "https://dev.azure.com/myorg/");
 
@@ -589,11 +607,226 @@ public class AzureDevOpsTaskProviderTests
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(12));
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(9012, 8120));
         _handler.EnqueueResponse(HttpStatusCode.OK, Details((9012, "Release 2.12"), (12, "Old bug")));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
 
         var result = await _provider.SearchTasksAsync("my-pat", "12", limit: 2, baseUrl: "https://dev.azure.com/myorg/");
 
         Assert.Equal(["12", "9012"], result.Select(t => t.Id));
     }
+
+    [Fact]
+    public async Task GetProjectsAsync_FollowsTheContinuationTokenAcrossPages()
+    {
+        _handler.EnqueueResponseWithHeader(
+            new { count = 1, value = new[] { Project("First") } },
+            "x-ms-continuationtoken",
+            "token/1");
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { Project("Second") } });
+
+        var result = await _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["guid-First", "guid-Second"], result.Select(p => p.Id));
+        Assert.Equal(["First", "Second"], result.Select(p => p.Path));
+        Assert.Equal(2, _handler.SentRequests.Count);
+
+        var first = _handler.SentRequests[0].RequestUri!.Query;
+        Assert.Contains("$top=100", first);
+        Assert.DoesNotContain("continuationToken", first);
+
+        var second = _handler.SentRequests[1].RequestUri!.Query;
+        Assert.Contains("$top=100", second);
+        Assert.Contains("continuationToken=token%2F1", second);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_MapsMetadata_AndLinksToTheProjectPage()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            count = 1,
+            value = new[]
+            {
+                new
+                {
+                    id = "guid-1",
+                    name = "Mobile Team",
+                    url = "https://dev.azure.com/myorg/_apis/projects/guid-1",
+                    state = "wellFormed",
+                    visibility = "private",
+                    lastUpdateTime = "2025-01-02T03:04:05Z"
+                }
+            }
+        });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg"));
+
+        // The page a person opens, not the REST resource the API returned as `url`.
+        Assert.Equal("https://dev.azure.com/myorg/Mobile%20Team", project.Url);
+        Assert.Null(project.CreatedAt);
+        Assert.Equal(DateTimeOffset.Parse("2025-01-02T03:04:05Z"), project.UpdatedAt);
+        Assert.False(project.IsArchived);
+        Assert.True(project.IsPrivate);
+    }
+
+    [Theory]
+    [InlineData("wellFormed", false)]
+    [InlineData("deleting", true)]
+    [InlineData("deleted", true)]
+    public async Task GetProjectsAsync_ReadsIsArchivedFromState(string state, bool expected)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "g", name = "P", state } } });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg"));
+
+        Assert.Equal(expected, project.IsArchived);
+    }
+
+    [Theory]
+    [InlineData("private", true)]
+    [InlineData("organization", true)]
+    [InlineData("public", false)]
+    public async Task GetProjectsAsync_ReadsIsPrivateFromVisibility(string visibility, bool expected)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "g", name = "P", visibility } } });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg"));
+
+        Assert.Equal(expected, project.IsPrivate);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_WhatTheProviderOmits_StaysNull()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "g", name = "P" } } });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("my-pat", "https://dev.azure.com/myorg"));
+
+        Assert.Null(project.UpdatedAt);
+        Assert.Null(project.IsArchived);
+        Assert.Null(project.IsPrivate);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ByGuid_QueriesByTheCurrentName()
+    {
+        // WIQL's [System.TeamProject] takes the name, which is why the GUID is resolved first.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Bob's Team", "guid-1"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One")));
+
+        var result = await _provider.GetTasksAsync("my-pat", "guid-1", "https://dev.azure.com/myorg/");
+
+        Assert.Equal("/myorg/_apis/projects/guid-1", _handler.SentRequests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/myorg/Bob%27s%20Team/_apis/wit/wiql", _handler.SentRequests[1].RequestUri!.AbsolutePath);
+
+        var wiql = await ReadWiqlQueryAsync(_handler.SentRequests[1]);
+        Assert.Contains("[System.TeamProject] = 'Bob''s Team'", wiql);
+
+        var task = Assert.Single(result);
+        Assert.Equal("guid-1", task.ProjectId);
+        Assert.Equal("Bob's Team", task.ProjectPath);
+        Assert.Equal("https://dev.azure.com/myorg/Bob%27s%20Team/_workitems/edit/1", task.Url);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ByName_StillReturnsTheGuid()
+    {
+        // A row stored by an older version holds the name and must keep working until migrated.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Mobile Team", "guid-1"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One")));
+
+        var result = await _provider.GetTasksAsync("my-pat", "Mobile Team", "https://dev.azure.com/myorg/");
+
+        Assert.Equal("/myorg/_apis/projects/Mobile%20Team", _handler.SentRequests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("guid-1", Assert.Single(result).ProjectId);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_UnknownProject_CarriesTheStatusCode()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.NotFound, """{"message":"TF200016: The project does not exist."}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("my-pat", "guid-1", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task GetTasksAsync_BlankProject_ThrowsWithoutCallingAzureDevOps(string projectId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _provider.GetTasksAsync("my-pat", projectId, "https://dev.azure.com/myorg/"));
+
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_LooksUpEachProjectOnce()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2, 3));
+        _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn((1, "Alpha"), (2, "Beta"), (3, "Alpha")));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Alpha"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Beta"));
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(4, _handler.SentRequests.Count);
+        Assert.Equal(["guid-Alpha", "guid-Beta", "guid-Alpha"], result.Select(t => t.ProjectId));
+        Assert.Equal(["Alpha", "Beta", "Alpha"], result.Select(t => t.ProjectPath));
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_ProjectThatAnswers404_DropsOnlyItsItems()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, DetailsIn((1, "Gone"), (2, "Kept")));
+        _handler.EnqueueResponse(HttpStatusCode.NotFound);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Kept"));
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal("2", Assert.Single(result).Id);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_UnauthorizedProjectLookup_KeepsTheStatusCode()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One")));
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized, "");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    private static object Project(string name, string? id = null) => new
+    {
+        id = id ?? $"guid-{name}",
+        name
+    };
+
+    /// <summary>One work item per entry, each in the named project.</summary>
+    private static object DetailsIn(params (int Id, string Project)[] items) => new
+    {
+        count = items.Length,
+        value = items.Select(i => new
+        {
+            id = i.Id,
+            url = $"https://dev.azure.com/myorg/_apis/wit/workItems/{i.Id}",
+            fields = new Dictionary<string, object>
+            {
+                ["System.Title"] = $"Item {i.Id}",
+                ["System.State"] = "Active",
+                ["System.TeamProject"] = i.Project
+            }
+        }).ToArray()
+    };
 
     private static object Refs(params int[] ids) => new
     {

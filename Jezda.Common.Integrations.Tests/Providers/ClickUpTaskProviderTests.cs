@@ -68,6 +68,7 @@ public class ClickUpTaskProviderTests
 
         Assert.Equal(2, result.Count);
         Assert.Equal("team1", result[0].Id);
+        Assert.Equal("team1", result[0].Path);
         Assert.Equal("Engineering", result[0].Name);
         Assert.Equal(ExternalProvider.ClickUp, result[0].Provider);
     }
@@ -92,6 +93,7 @@ public class ClickUpTaskProviderTests
         Assert.Equal("Implement feature", result[0].Title);
         Assert.Equal("in progress", result[0].Status);
         Assert.Equal("team1", result[0].ProjectId);
+        Assert.Equal("team1", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.ClickUp, result[0].Provider);
     }
 }

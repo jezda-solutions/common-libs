@@ -9,6 +9,36 @@ Shared abstractions for external task provider integrations, including the `IExt
 - **`ExternalProjectDto`** / **`ExternalTaskDto`** — normalized DTOs returned by all providers
 - **`HttpResilienceDefaults.AddIntegrationResilience()`** — extension method for configuring standard resilience policies on `IHttpClientBuilder`
 
+## Project identity
+
+**Breaking change in meaning:** `ExternalProjectDto.Id` and `ExternalTaskDto.ProjectId` are now the provider's durable id, and they no longer hold the name a project goes by. Rows stored by an older version hold what is now `Path`.
+
+| Provider | `Id` / `ProjectId` | `Path` / `ProjectPath` | Previous `Id` |
+|---|---|---|---|
+| GitHub | repository id (`1009267206`) | `owner/repo` | `owner/repo` |
+| Azure DevOps | project GUID | project name | project name |
+| Jira | project id (`10001`) | project key (`PROJ`) | project key |
+| ClickUp, Monday, Trello | same as before | equal to `Id` | unchanged |
+
+- Key stored rows on `Id`, and bind tasks to projects by `ExternalTaskDto.ProjectId`. A rename or transfer on the provider's side does not change it.
+- Treat `Path` as a value to refresh from `GetProjectsAsync`, not as a key.
+- `GetTasksAsync` accepts either `Id` or `Path`, so stored rows keep working while they are migrated. Matching a stored row against `ExternalProjectDto.Id` does not work until it is migrated, so migrate before comparing.
+- On GitHub and Azure DevOps, resolving the project costs extra requests: one per `GetTasksAsync` call, and one per distinct project in a `SearchTasksAsync` result.
+
+## Project metadata
+
+`CreatedAt`, `UpdatedAt`, `IsArchived` and `IsPrivate` on `ExternalProjectDto` are nullable. Null means the provider does not report the value, not that the answer is no.
+
+| Provider | `CreatedAt` | `UpdatedAt` | `IsArchived` | `IsPrivate` |
+|---|---|---|---|---|
+| GitHub | `created_at` | later of `pushed_at`, `updated_at` | `archived` | `private` |
+| Azure DevOps | null | `lastUpdateTime` | `state` is `deleting` or `deleted` | `visibility` is not `public` |
+| Jira | null | null | `archived` | `isPrivate` |
+| Trello | null | `dateLastActivity` | `closed` | `prefs.permissionLevel` is not `public` |
+| ClickUp, Monday | null | null | null | null |
+
+Azure DevOps has no archive feature, and its project list returns only `wellFormed` projects by default, so `IsArchived` there is `false` in practice.
+
 ## Usage
 
 Implementations are provided by the provider-specific packages:

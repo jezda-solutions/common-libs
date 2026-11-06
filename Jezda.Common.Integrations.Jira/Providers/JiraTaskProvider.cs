@@ -59,26 +59,42 @@ public sealed class JiraTaskProvider(
 
         return [.. projects.Select(p => new ExternalProjectDto
         {
-            Id = p.Key,
+            // An admin can change a project's key, so only the numeric id is durable.
+            Id = p.Id,
+            Path = p.Key,
             Name = p.Name,
             Description = null,
             Url = $"{baseUrl.TrimEnd('/')}/browse/{p.Key}",
-            Provider = ExternalProvider.Jira
+            Provider = ExternalProvider.Jira,
+            IsArchived = p.Archived,
+            IsPrivate = p.IsPrivate
         })];
     }
 
+    /// <summary>
+    /// Lists a project's issues.
+    /// </summary>
+    /// <remarks>
+    /// Each issue is asked to carry its project, which supplies both the id and the key whichever of
+    /// them <paramref name="projectId"/> was. A bare number is the project id in JQL; a key is
+    /// quoted, and cannot be all digits.
+    /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
 
+        var projectClause = projectId.All(char.IsAsciiDigit)
+            ? projectId
+            : $"\"{projectId.Replace("\"", "\\\"")}\"";
+
         var searchRequest = new JiraSearchRequest
         {
-            Jql = $"project = \"{projectId.Replace("\"", "\\\"")}\"",
+            Jql = $"project = {projectClause}",
             StartAt = 0,
             MaxResults = 50,
-            Fields = ["summary", "status"]
+            Fields = ["summary", "status", "project"]
         };
 
         var response = await client.PostAsJsonAsync("rest/api/3/search", searchRequest, JsonOptions, cancellationToken);
@@ -92,7 +108,8 @@ public sealed class JiraTaskProvider(
             Title = i.Fields?.Summary ?? string.Empty,
             Status = i.Fields?.Status?.Name,
             Url = $"{baseUrl.TrimEnd('/')}/browse/{i.Key}",
-            ProjectId = projectId,
+            ProjectId = i.Fields?.Project?.Id ?? projectId,
+            ProjectPath = i.Fields?.Project?.Key ?? projectId,
             Provider = ExternalProvider.Jira
         })];
     }

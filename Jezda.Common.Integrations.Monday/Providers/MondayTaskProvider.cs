@@ -53,6 +53,7 @@ public sealed class MondayTaskProvider(
         return [.. boards.Select(b => new ExternalProjectDto
         {
             Id = b.Id,
+            Path = b.Id, // A board id is Monday's only identifier for it, and it does not change.
             Name = b.Name,
             Description = b.Description,
             Url = $"https://monday.com/boards/{b.Id}",
@@ -77,6 +78,7 @@ public sealed class MondayTaskProvider(
             Status = i.State,
             Url = $"https://monday.com/boards/{projectId}/pulses/{i.Id}",
             ProjectId = projectId,
+            ProjectPath = projectId,
             Provider = ExternalProvider.Monday
         })];
     }

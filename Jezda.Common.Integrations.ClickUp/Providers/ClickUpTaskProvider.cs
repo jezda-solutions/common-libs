@@ -51,6 +51,7 @@ public sealed class ClickUpTaskProvider(
         return [.. teams.Select(t => new ExternalProjectDto
         {
             Id = t.Id,
+            Path = t.Id, // A team id is ClickUp's only identifier for it, and it does not change.
             Name = t.Name,
             Description = null,
             Url = $"https://app.clickup.com/{t.Id}",
@@ -74,6 +75,7 @@ public sealed class ClickUpTaskProvider(
             Status = t.Status?.Status,
             Url = t.Url,
             ProjectId = projectId,
+            ProjectPath = projectId,
             Provider = ExternalProvider.ClickUp
         })];
     }

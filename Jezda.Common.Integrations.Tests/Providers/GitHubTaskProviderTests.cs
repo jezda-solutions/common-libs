@@ -65,7 +65,8 @@ public class GitHubTaskProviderTests
         var result = await _provider.GetProjectsAsync("token");
 
         Assert.Equal(2, result.Count);
-        Assert.Equal("owner/repo1", result[0].Id);
+        Assert.Equal("1", result[0].Id);
+        Assert.Equal("owner/repo1", result[0].Path);
         Assert.Equal("repo1", result[0].Name);
         Assert.Equal("Desc 1", result[0].Description);
         Assert.Equal("https://github.com/owner/repo1", result[0].Url);
@@ -81,6 +82,7 @@ public class GitHubTaskProviderTests
             new { id = 100L, number = 1, title = "Bug fix", state = "open", html_url = "https://github.com/owner/repo/issues/1" },
             new { id = 101L, number = 2, title = "Done feature", state = "closed", html_url = "https://github.com/owner/repo/issues/2" }
         };
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo());
         _handler.EnqueueResponse(HttpStatusCode.OK, issues);
 
         var result = await _provider.GetTasksAsync("token", "owner/repo");
@@ -89,7 +91,8 @@ public class GitHubTaskProviderTests
         Assert.Equal("1", result[0].Id);
         Assert.Equal("Bug fix", result[0].Title);
         Assert.Equal("open", result[0].Status);
-        Assert.Equal("owner/repo", result[0].ProjectId);
+        Assert.Equal("42", result[0].ProjectId);
+        Assert.Equal("owner/repo", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.GitHub, result[0].Provider);
         Assert.Equal("closed", result[1].Status);
     }
@@ -102,6 +105,7 @@ public class GitHubTaskProviderTests
             new { id = 100L, number = 1, title = "Real issue", state = "open", html_url = "https://github.com/owner/repo/issues/1" },
             new { id = 101L, number = 2, title = "A pull request", state = "open", html_url = "https://github.com/owner/repo/pull/2", pull_request = new { url = "https://api.github.com/repos/owner/repo/pulls/2" } }
         };
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo());
         _handler.EnqueueResponse(HttpStatusCode.OK, items);
 
         var result = await _provider.GetTasksAsync("token", "owner/repo");
@@ -114,11 +118,12 @@ public class GitHubTaskProviderTests
     [Fact]
     public async Task GetTasksAsync_RequestsAllStatesWithMaxPageSize()
     {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo());
         _handler.EnqueueResponse(HttpStatusCode.OK, Array.Empty<object>());
 
         await _provider.GetTasksAsync("token", "owner/repo");
 
-        var requestUri = _handler.SentRequests[0].RequestUri!;
+        var requestUri = _handler.SentRequests[1].RequestUri!;
         var queryParams = requestUri.Query.TrimStart('?').Split('&')
             .ToDictionary(s => s.Split('=')[0], s => s.Split('=')[1]);
         Assert.Equal("all", queryParams["state"]);
@@ -153,8 +158,8 @@ public class GitHubTaskProviderTests
     [Fact]
     public async Task SearchTasksAsync_DerivesProjectIdFromRepositoryUrl()
     {
-        // ProjectId must be the owner/repo full name GetProjectsAsync reports, because consumers
-        // key stored rows on that value.
+        // ProjectId must be the durable id GetProjectsAsync reports, because consumers key stored
+        // rows on that value, and a search item only names its repository.
         var response = new
         {
             total_count = 1,
@@ -171,6 +176,7 @@ public class GitHubTaskProviderTests
             }
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, response);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(77, "jezda-solutions/serp"));
 
         var result = await _provider.SearchTasksAsync("token", "webhook");
 
@@ -179,7 +185,9 @@ public class GitHubTaskProviderTests
         Assert.Equal("Fix webhook retry", task.Title);
         Assert.Equal("open", task.Status);
         Assert.Equal("https://github.com/jezda-solutions/serp/issues/412", task.Url);
-        Assert.Equal("jezda-solutions/serp", task.ProjectId);
+        Assert.Equal("77", task.ProjectId);
+        Assert.Equal("jezda-solutions/serp", task.ProjectPath);
+        Assert.Equal("/repos/jezda-solutions/serp", _handler.SentRequests[1].RequestUri!.AbsolutePath);
         Assert.Equal(ExternalProvider.GitHub, task.Provider);
     }
 
@@ -211,6 +219,7 @@ public class GitHubTaskProviderTests
             }
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, response);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo());
 
         var result = await _provider.SearchTasksAsync("token", "issue");
 
@@ -230,6 +239,7 @@ public class GitHubTaskProviderTests
             repository_url = "https://api.github.com/repos/owner/repo"
         }).ToArray();
         _handler.EnqueueResponse(HttpStatusCode.OK, new { total_count = 10, items });
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo());
 
         var result = await _provider.SearchTasksAsync("token", "issue", limit: 3);
 
@@ -247,4 +257,199 @@ public class GitHubTaskProviderTests
         Assert.Empty(result);
         Assert.Empty(_handler.SentRequests);
     }
+
+    [Fact]
+    public async Task GetProjectsAsync_FollowsLinkHeaderAcrossPages()
+    {
+        _handler.EnqueueResponseWithHeader(
+            new[] { Repo(1, "owner/first") },
+            "Link",
+            "<https://api.github.com/user/repos?per_page=100&page=2>; rel=\"next\", <https://api.github.com/user/repos?per_page=100&page=2>; rel=\"last\"");
+        _handler.EnqueueResponse(HttpStatusCode.OK, new[] { Repo(2, "owner/second") });
+
+        var result = await _provider.GetProjectsAsync("token");
+
+        Assert.Equal(["1", "2"], result.Select(p => p.Id));
+        Assert.Equal(["owner/first", "owner/second"], result.Select(p => p.Path));
+        Assert.Equal(2, _handler.SentRequests.Count);
+        Assert.Equal("?per_page=100", _handler.SentRequests[0].RequestUri!.Query);
+        Assert.Equal("?per_page=100&page=2", _handler.SentRequests[1].RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_MapsMetadata()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new object[]
+        {
+            new
+            {
+                id = 5L,
+                name = "repo",
+                full_name = "owner/repo",
+                html_url = "https://github.com/owner/repo",
+                @private = true,
+                archived = true,
+                created_at = "2020-01-02T03:04:05Z",
+                updated_at = "2024-01-01T00:00:00Z",
+                pushed_at = "2025-01-01T00:00:00Z"
+            }
+        });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(DateTimeOffset.Parse("2020-01-02T03:04:05Z"), project.CreatedAt);
+        Assert.Equal(DateTimeOffset.Parse("2025-01-01T00:00:00Z"), project.UpdatedAt);
+        Assert.True(project.IsArchived);
+        Assert.True(project.IsPrivate);
+    }
+
+    [Theory]
+    [InlineData("2024-06-01T00:00:00Z")] // metadata changed after the last push
+    [InlineData(null)] // nothing was ever pushed
+    public async Task GetProjectsAsync_UpdatedAtFallsBackToMetadataChange(string? pushedAt)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new object[]
+        {
+            new { id = 5L, name = "repo", full_name = "owner/repo", html_url = "u", updated_at = "2025-01-01T00:00:00Z", pushed_at = pushedAt }
+        });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(DateTimeOffset.Parse("2025-01-01T00:00:00Z"), project.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ByDurableId_ReadsTheRepositoryByIdAndItsIssuesByCurrentPath()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(42, "owner/renamed"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, new[]
+        {
+            new { id = 100L, number = 1, title = "Bug", state = "open", html_url = "https://github.com/owner/renamed/issues/1" }
+        });
+
+        var result = await _provider.GetTasksAsync("token", "42");
+
+        Assert.Equal("/repositories/42", _handler.SentRequests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/repos/owner/renamed/issues", _handler.SentRequests[1].RequestUri!.AbsolutePath);
+
+        var task = Assert.Single(result);
+        Assert.Equal("42", task.ProjectId);
+        Assert.Equal("owner/renamed", task.ProjectPath);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ByPath_StillReturnsTheDurableId()
+    {
+        // A row stored by an older version holds owner/repo and must keep working until migrated.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(42, "owner/repo"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, new[]
+        {
+            new { id = 100L, number = 1, title = "Bug", state = "open", html_url = "https://github.com/owner/repo/issues/1" }
+        });
+
+        var result = await _provider.GetTasksAsync("token", "owner/repo");
+
+        Assert.Equal("/repos/owner/repo", _handler.SentRequests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("42", Assert.Single(result).ProjectId);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_FollowsLinkHeaderAcrossPages()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo());
+        _handler.EnqueueResponseWithHeader(
+            new[] { new { id = 1L, number = 1, title = "One", state = "open", html_url = "u" } },
+            "Link",
+            "<https://api.github.com/repos/owner/repo/issues?page=2>; rel=\"next\"");
+        _handler.EnqueueResponse(HttpStatusCode.OK, new[] { new { id = 2L, number = 2, title = "Two", state = "open", html_url = "u" } });
+
+        var result = await _provider.GetTasksAsync("token", "owner/repo");
+
+        Assert.Equal(["1", "2"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_UnknownRepository_KeepsTheStatusCode()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.NotFound);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "42"));
+
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task GetTasksAsync_BlankProject_ThrowsWithoutCallingGitHub(string projectId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetTasksAsync("token", projectId));
+
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_LooksUpEachRepositoryOnce()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            total_count = 3,
+            items = new[] { SearchItem(1, "owner/a"), SearchItem(2, "owner/b"), SearchItem(3, "owner/a") }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(10, "owner/a"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(20, "owner/b"));
+
+        var result = await _provider.SearchTasksAsync("token", "bug");
+
+        Assert.Equal(3, _handler.SentRequests.Count);
+        Assert.Equal(["10", "20", "10"], result.Select(t => t.ProjectId));
+        Assert.Equal(["owner/a", "owner/b", "owner/a"], result.Select(t => t.ProjectPath));
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_RepositoryThatAnswers404_DropsOnlyItsItems()
+    {
+        // The search index can lag behind a deleted repository. Without a durable id the item cannot
+        // be bound, and one stale hit must not fail the whole picker.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            total_count = 2,
+            items = new[] { SearchItem(1, "owner/gone"), SearchItem(2, "owner/kept") }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.NotFound);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(20, "owner/kept"));
+
+        var result = await _provider.SearchTasksAsync("token", "bug");
+
+        Assert.Equal("2", Assert.Single(result).Id);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_UnauthorizedLookup_KeepsTheStatusCode()
+    {
+        // Consumers flag an integration for re-authentication by matching 401/403.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { total_count = 1, items = new[] { SearchItem(1, "owner/a") } });
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    private static object Repo(long id = 42, string fullName = "owner/repo") => new
+    {
+        id,
+        name = fullName.Split('/')[1],
+        full_name = fullName,
+        html_url = $"https://github.com/{fullName}"
+    };
+
+    private static object SearchItem(int number, string fullName) => new
+    {
+        number,
+        title = $"Issue {number}",
+        state = "open",
+        html_url = $"https://github.com/{fullName}/issues/{number}",
+        repository_url = $"https://api.github.com/repos/{fullName}"
+    };
 }

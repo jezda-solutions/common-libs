@@ -16,6 +16,9 @@ public sealed class GitHubRepository
     [JsonPropertyName("private")]
     public bool Private { get; set; }
 
+    [JsonPropertyName("archived")]
+    public bool Archived { get; set; }
+
     [JsonPropertyName("html_url")]
     public string HtmlUrl { get; set; } = string.Empty;
 
@@ -24,6 +27,16 @@ public sealed class GitHubRepository
 
     [JsonPropertyName("owner")]
     public GitHubUser? Owner { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset? CreatedAt { get; set; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset? UpdatedAt { get; set; }
+
+    /// <summary>The last push. Null on a repository nothing was ever pushed to.</summary>
+    [JsonPropertyName("pushed_at")]
+    public DateTimeOffset? PushedAt { get; set; }
 }
 
 public sealed class GitHubIssue

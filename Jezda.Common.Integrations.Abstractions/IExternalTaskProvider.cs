@@ -17,6 +17,18 @@ public interface IExternalTaskProvider
         string? baseUrl = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Lists the tasks of one project.
+    /// </summary>
+    /// <param name="accessToken">The provider token.</param>
+    /// <param name="projectId">
+    /// The project's <see cref="ExternalProjectDto.Id"/>, which keeps working after a rename. Its
+    /// <see cref="ExternalProjectDto.Path"/> is accepted too, so a row stored as a path keeps
+    /// working until it is migrated. Whichever was passed, each returned task carries both
+    /// <see cref="ExternalTaskDto.ProjectId"/> and <see cref="ExternalTaskDto.ProjectPath"/>.
+    /// </param>
+    /// <param name="baseUrl">The organisation or site address, for providers that need one.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
     Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(
         string accessToken,
         string projectId,

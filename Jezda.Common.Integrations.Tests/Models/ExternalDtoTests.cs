@@ -12,6 +12,7 @@ public class ExternalDtoTests
         var dto = new ExternalProjectDto
         {
             Id = "proj-1",
+            Path = "owner/proj",
             Name = "Test Project",
             Description = "A description",
             Url = "https://example.com/proj-1",
@@ -19,6 +20,7 @@ public class ExternalDtoTests
         };
 
         Assert.Equal("proj-1", dto.Id);
+        Assert.Equal("owner/proj", dto.Path);
         Assert.Equal("Test Project", dto.Name);
         Assert.Equal("A description", dto.Description);
         Assert.Equal("https://example.com/proj-1", dto.Url);
@@ -31,12 +33,17 @@ public class ExternalDtoTests
         var dto = new ExternalProjectDto
         {
             Id = "proj-1",
+            Path = "proj-1",
             Name = "Test",
             Provider = ExternalProvider.Jira
         };
 
         Assert.Null(dto.Description);
         Assert.Null(dto.Url);
+        Assert.Null(dto.CreatedAt);
+        Assert.Null(dto.UpdatedAt);
+        Assert.Null(dto.IsArchived);
+        Assert.Null(dto.IsPrivate);
     }
 
     [Fact]
@@ -49,6 +56,7 @@ public class ExternalDtoTests
             Status = "Open",
             Url = "https://example.com/task-1",
             ProjectId = "proj-1",
+            ProjectPath = "owner/proj",
             Provider = ExternalProvider.AzureDevOps
         };
 
@@ -57,6 +65,7 @@ public class ExternalDtoTests
         Assert.Equal("Open", dto.Status);
         Assert.Equal("https://example.com/task-1", dto.Url);
         Assert.Equal("proj-1", dto.ProjectId);
+        Assert.Equal("owner/proj", dto.ProjectPath);
         Assert.Equal(ExternalProvider.AzureDevOps, dto.Provider);
     }
 
