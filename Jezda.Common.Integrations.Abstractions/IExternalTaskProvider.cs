@@ -13,7 +13,7 @@ public interface IExternalTaskProvider
     /// <remarks>
     /// What counts as a rejected token differs per provider:
     /// <list type="bullet">
-    /// <item><description>Azure DevOps: 401, 403 or a sign-in page.</description></item>
+    /// <item><description>Azure DevOps: 401, 403 or a sign-in page, on the check for projects or for work items, so a token without the scope for either is rejected.</description></item>
     /// <item><description>GitHub: 401. A 403 can be a rate limit, a login-attempt lockout or an address block, so it is not a rejection.</description></item>
     /// <item><description>Jira: 401, unless <c>X-Seraph-LoginReason</c> is <c>AUTHENTICATION_DENIED</c>: the CAPTCHA was triggered and needs a sign-in through the website. A 403 is not a rejection.</description></item>
     /// <item><description>ClickUp: 401.</description></item>

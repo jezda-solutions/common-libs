@@ -34,13 +34,16 @@ public sealed class AzureDevOpsTaskProvider(
     public ExternalProvider Provider => ExternalProvider.AzureDevOps;
 
     /// <summary>
-    /// Checks whether Azure DevOps accepts the token for the organisation.
+    /// Checks whether Azure DevOps accepts the token for the organisation, for both projects and work items.
     /// </summary>
     /// <returns>
     /// <see langword="true"/> when the token is accepted; <see langword="false"/> when Azure DevOps
-    /// rejects it: 401, 403, or a sign-in page in place of JSON.
+    /// rejects it on either request: 401, 403, or a sign-in page in place of JSON.
     /// </returns>
     /// <remarks>
+    /// Listing projects needs "Project and Team (Read)", and listing work item fields needs
+    /// "Work Items (Read)". Checking only the first would confirm a PAT that fails on the first sync.
+    /// <para />
     /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
     /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
     /// the resilience pipeline's own exceptions: Polly's <c>TimeoutRejectedException</c> for a timeout
@@ -57,12 +60,22 @@ public sealed class AzureDevOpsTaskProvider(
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
-        using var response = await client.GetAsync($"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken);
+
+        return await IsTokenAcceptedAsync(client, $"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken)
+            && await IsTokenAcceptedAsync(client, $"_apis/wit/fields?api-version={_apiVersion}", cancellationToken);
+    }
+
+    private async Task<bool> IsTokenAcceptedAsync(HttpClient client, string url, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(url, cancellationToken);
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
             || AzureDevOpsHttp.IsSignInPage(response))
         {
-            logger.LogWarning("Azure DevOps rejected the token with {StatusCode}", (int)response.StatusCode);
+            logger.LogWarning(
+                "Azure DevOps rejected the token with {StatusCode} on {Path}",
+                (int)response.StatusCode,
+                url.Split('?')[0]);
             return false;
         }
 
