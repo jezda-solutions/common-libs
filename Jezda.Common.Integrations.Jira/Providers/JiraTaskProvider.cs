@@ -66,8 +66,7 @@ public sealed class JiraTaskProvider(
             Description = null,
             Url = $"{baseUrl.TrimEnd('/')}/browse/{p.Key}",
             Provider = ExternalProvider.Jira,
-            IsArchived = p.Archived,
-            IsPrivate = p.IsPrivate
+            IsArchived = p.Archived
         })];
     }
 
@@ -75,13 +74,15 @@ public sealed class JiraTaskProvider(
     /// Lists a project's issues.
     /// </summary>
     /// <remarks>
-    /// Each issue is asked to carry its project, which supplies both the id and the key whichever of
-    /// them <paramref name="projectId"/> was. A bare number is the project id in JQL; a key is
-    /// quoted, and cannot be all digits.
+    /// Each issue is asked to carry its project, which supplies the durable id whichever of id or key
+    /// <paramref name="projectId"/> was. A bare number is the project id in JQL; a key is quoted, and
+    /// cannot be all digits.
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
+        // Blank would otherwise pass the digit check and build a JQL Jira rejects.
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
 
         using var client = CreateClient(accessToken, baseUrl);
 
@@ -109,7 +110,6 @@ public sealed class JiraTaskProvider(
             Status = i.Fields?.Status?.Name,
             Url = $"{baseUrl.TrimEnd('/')}/browse/{i.Key}",
             ProjectId = i.Fields?.Project?.Id ?? projectId,
-            ProjectPath = i.Fields?.Project?.Key ?? projectId,
             Provider = ExternalProvider.Jira
         })];
     }

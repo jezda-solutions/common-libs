@@ -56,7 +56,6 @@ public class ExternalDtoTests
             Status = "Open",
             Url = "https://example.com/task-1",
             ProjectId = "proj-1",
-            ProjectPath = "owner/proj",
             Provider = ExternalProvider.AzureDevOps
         };
 
@@ -65,7 +64,6 @@ public class ExternalDtoTests
         Assert.Equal("Open", dto.Status);
         Assert.Equal("https://example.com/task-1", dto.Url);
         Assert.Equal("proj-1", dto.ProjectId);
-        Assert.Equal("owner/proj", dto.ProjectPath);
         Assert.Equal(ExternalProvider.AzureDevOps, dto.Provider);
     }
 

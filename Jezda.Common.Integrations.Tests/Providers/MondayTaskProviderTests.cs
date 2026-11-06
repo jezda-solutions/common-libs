@@ -110,7 +110,6 @@ public class MondayTaskProviderTests
         Assert.Equal("Design mockup", result[0].Title);
         Assert.Equal("active", result[0].Status);
         Assert.Equal("123", result[0].ProjectId);
-        Assert.Equal("123", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.Monday, result[0].Provider);
     }
 }

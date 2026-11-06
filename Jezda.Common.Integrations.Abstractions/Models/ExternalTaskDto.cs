@@ -18,10 +18,5 @@ public sealed class ExternalTaskDto
     /// </summary>
     public required string ProjectId { get; init; }
 
-    /// <summary>
-    /// The owning project's current <see cref="ExternalProjectDto.Path"/>.
-    /// </summary>
-    public required string ProjectPath { get; init; }
-
     public required ExternalProvider Provider { get; init; }
 }

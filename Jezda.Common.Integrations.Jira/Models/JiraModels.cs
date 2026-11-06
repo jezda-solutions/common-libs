@@ -18,9 +18,6 @@ public sealed class JiraProject
 
     [JsonPropertyName("archived")]
     public bool? Archived { get; set; }
-
-    [JsonPropertyName("isPrivate")]
-    public bool? IsPrivate { get; set; }
 }
 
 public sealed class JiraIssue

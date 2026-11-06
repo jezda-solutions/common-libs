@@ -92,7 +92,6 @@ public class GitHubTaskProviderTests
         Assert.Equal("Bug fix", result[0].Title);
         Assert.Equal("open", result[0].Status);
         Assert.Equal("42", result[0].ProjectId);
-        Assert.Equal("owner/repo", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.GitHub, result[0].Provider);
         Assert.Equal("closed", result[1].Status);
     }
@@ -186,7 +185,6 @@ public class GitHubTaskProviderTests
         Assert.Equal("open", task.Status);
         Assert.Equal("https://github.com/jezda-solutions/serp/issues/412", task.Url);
         Assert.Equal("77", task.ProjectId);
-        Assert.Equal("jezda-solutions/serp", task.ProjectPath);
         Assert.Equal("/repos/jezda-solutions/serp", _handler.SentRequests[1].RequestUri!.AbsolutePath);
         Assert.Equal(ExternalProvider.GitHub, task.Provider);
     }
@@ -334,7 +332,6 @@ public class GitHubTaskProviderTests
 
         var task = Assert.Single(result);
         Assert.Equal("42", task.ProjectId);
-        Assert.Equal("owner/renamed", task.ProjectPath);
     }
 
     [Fact]
@@ -403,7 +400,6 @@ public class GitHubTaskProviderTests
 
         Assert.Equal(3, _handler.SentRequests.Count);
         Assert.Equal(["10", "20", "10"], result.Select(t => t.ProjectId));
-        Assert.Equal(["owner/a", "owner/b", "owner/a"], result.Select(t => t.ProjectPath));
     }
 
     [Fact]

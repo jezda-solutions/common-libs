@@ -129,7 +129,6 @@ public class FallbackSearchTests
                     Id = x.Id,
                     Title = x.Title,
                     ProjectId = projectId,
-                    ProjectPath = projectId,
                     Provider = ExternalProvider.Jira
                 })]);
         }

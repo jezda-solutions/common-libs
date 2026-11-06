@@ -436,7 +436,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// The project's GUID, equal to what <see cref="GetProjectsAsync"/> reports as
     /// <c>ExternalProjectDto.Id</c>. Consumers key stored rows on it.
     /// </param>
-    /// <param name="projectPath">The project's current name.</param>
+    /// <param name="projectPath">The project's current name, which the work item's page link needs.</param>
     /// <param name="organisationUrl">The organisation base address the client was created with.</param>
     private static ExternalTaskDto ToExternalTask(AdoWorkItem workItem, string projectId, string projectPath, Uri organisationUrl) => new()
     {
@@ -446,7 +446,6 @@ public sealed class AzureDevOpsTaskProvider(
         // Without a project there is no page to name; the REST link is still a real link to the item.
         Url = string.IsNullOrEmpty(projectPath) ? workItem.Url : WorkItemWebUrl(organisationUrl, projectPath, workItem.Id),
         ProjectId = projectId,
-        ProjectPath = projectPath,
         Provider = ExternalProvider.AzureDevOps
     };
 

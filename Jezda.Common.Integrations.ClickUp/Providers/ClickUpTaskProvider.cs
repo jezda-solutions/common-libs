@@ -75,7 +75,6 @@ public sealed class ClickUpTaskProvider(
             Status = t.Status?.Status,
             Url = t.Url,
             ProjectId = projectId,
-            ProjectPath = projectId,
             Provider = ExternalProvider.ClickUp
         })];
     }

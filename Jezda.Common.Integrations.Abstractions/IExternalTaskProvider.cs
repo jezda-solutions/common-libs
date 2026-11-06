@@ -23,9 +23,9 @@ public interface IExternalTaskProvider
     /// <param name="accessToken">The provider token.</param>
     /// <param name="projectId">
     /// The project's <see cref="ExternalProjectDto.Id"/>, which keeps working after a rename. Its
-    /// <see cref="ExternalProjectDto.Path"/> is accepted too, so a row stored as a path keeps
-    /// working until it is migrated. Whichever was passed, each returned task carries both
-    /// <see cref="ExternalTaskDto.ProjectId"/> and <see cref="ExternalTaskDto.ProjectPath"/>.
+    /// current <see cref="ExternalProjectDto.Path"/> is accepted too, so a row stored as a path keeps
+    /// working until the project is renamed; after that it can fail with 404, so migrate such rows
+    /// to the id. Whichever was passed, <see cref="ExternalTaskDto.ProjectId"/> is the durable id.
     /// </param>
     /// <param name="baseUrl">The organisation or site address, for providers that need one.</param>
     /// <param name="cancellationToken">Cancels the request.</param>

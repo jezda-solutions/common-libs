@@ -105,7 +105,6 @@ public class JiraTaskProviderTests
         Assert.Equal("In Progress", result[0].Status);
         Assert.Equal("https://test.atlassian.net/browse/PROJ-1", result[0].Url);
         Assert.Equal("PROJ", result[0].ProjectId);
-        Assert.Equal("PROJ", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.Jira, result[0].Provider);
     }
 
@@ -121,11 +120,23 @@ public class JiraTaskProviderTests
         var result = await _provider.GetProjectsAsync("user@test.com:token", "https://test.atlassian.net/");
 
         Assert.True(result[0].IsArchived);
-        Assert.False(result[0].IsPrivate);
+        // Jira's isPrivate means the caller cannot see the project, which is not what the DTO says.
+        Assert.Null(result[0].IsPrivate);
         Assert.Null(result[1].IsArchived);
         Assert.Null(result[1].IsPrivate);
         Assert.Null(result[0].CreatedAt);
         Assert.Null(result[0].UpdatedAt);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task GetTasksAsync_BlankProject_ThrowsWithoutCallingJira(string projectId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _provider.GetTasksAsync("user@test.com:token", projectId, "https://test.atlassian.net/"));
+
+        Assert.Empty(_handler.SentRequests);
     }
 
     [Theory]
@@ -155,7 +166,6 @@ public class JiraTaskProviderTests
 
         var task = Assert.Single(result);
         Assert.Equal("10001", task.ProjectId);
-        Assert.Equal("PROJ", task.ProjectPath);
 
         using var body = System.Text.Json.JsonDocument.Parse(await _handler.SentRequests[0].Content!.ReadAsStringAsync());
         Assert.Equal(expectedJql, body.RootElement.GetProperty("jql").GetString());

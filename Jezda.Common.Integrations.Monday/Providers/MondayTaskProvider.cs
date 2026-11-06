@@ -78,7 +78,6 @@ public sealed class MondayTaskProvider(
             Status = i.State,
             Url = $"https://monday.com/boards/{projectId}/pulses/{i.Id}",
             ProjectId = projectId,
-            ProjectPath = projectId,
             Provider = ExternalProvider.Monday
         })];
     }

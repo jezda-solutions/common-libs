@@ -90,7 +90,6 @@ public class TrelloTaskProviderTests
         Assert.Equal("Fix bug", result[0].Title);
         Assert.Equal("open", result[0].Status);
         Assert.Equal("board1", result[0].ProjectId);
-        Assert.Equal("board1", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.Trello, result[0].Provider);
         Assert.Equal("closed", result[1].Status);
     }

@@ -86,7 +86,6 @@ public sealed class TrelloTaskProvider(
             Status = c.Closed ? "closed" : "open",
             Url = c.Url,
             ProjectId = projectId,
-            ProjectPath = projectId,
             Provider = ExternalProvider.Trello
         })];
     }

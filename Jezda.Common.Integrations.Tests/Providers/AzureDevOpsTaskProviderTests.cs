@@ -148,7 +148,6 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal("Task One", result[0].Title);
         Assert.Equal("Active", result[0].Status);
         Assert.Equal("guid-ProjectA", result[0].ProjectId);
-        Assert.Equal("ProjectA", result[0].ProjectPath);
         Assert.Equal(ExternalProvider.AzureDevOps, result[0].Provider);
 
         // The page a person opens, not the REST resource the API returned as `url`.
@@ -406,7 +405,6 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal("Fix webhook retry", task.Title);
         Assert.Equal("Active", task.Status);
         Assert.Equal("guid-Platform", task.ProjectId);
-        Assert.Equal("Platform", task.ProjectPath);
         Assert.Equal(ExternalProvider.AzureDevOps, task.Provider);
     }
 
@@ -466,7 +464,6 @@ public class AzureDevOpsTaskProviderTests
         var task = Assert.Single(result);
         Assert.Equal("https://dev.azure.com/myorg/_apis/wit/workItems/8", task.Url);
         Assert.Equal(string.Empty, task.ProjectId);
-        Assert.Equal(string.Empty, task.ProjectPath);
     }
 
     [Fact]
@@ -724,7 +721,6 @@ public class AzureDevOpsTaskProviderTests
 
         var task = Assert.Single(result);
         Assert.Equal("guid-1", task.ProjectId);
-        Assert.Equal("Bob's Team", task.ProjectPath);
         Assert.Equal("https://dev.azure.com/myorg/Bob%27s%20Team/_workitems/edit/1", task.Url);
     }
 
@@ -776,7 +772,6 @@ public class AzureDevOpsTaskProviderTests
 
         Assert.Equal(4, _handler.SentRequests.Count);
         Assert.Equal(["guid-Alpha", "guid-Beta", "guid-Alpha"], result.Select(t => t.ProjectId));
-        Assert.Equal(["Alpha", "Beta", "Alpha"], result.Select(t => t.ProjectPath));
     }
 
     [Fact]

@@ -13,7 +13,7 @@ Shared abstractions for external task provider integrations, including the `IExt
 
 **Breaking change in meaning:** `ExternalProjectDto.Id` and `ExternalTaskDto.ProjectId` are now the provider's durable id, and they no longer hold the name a project goes by. Rows stored by an older version hold what is now `Path`.
 
-| Provider | `Id` / `ProjectId` | `Path` / `ProjectPath` | Previous `Id` |
+| Provider | `Id` / `ProjectId` | `Path` | Previous `Id` |
 |---|---|---|---|
 | GitHub | repository id (`1009267206`) | `owner/repo` | `owner/repo` |
 | Azure DevOps | project GUID | project name | project name |
@@ -22,7 +22,7 @@ Shared abstractions for external task provider integrations, including the `IExt
 
 - Key stored rows on `Id`, and bind tasks to projects by `ExternalTaskDto.ProjectId`. A rename or transfer on the provider's side does not change it.
 - Treat `Path` as a value to refresh from `GetProjectsAsync`, not as a key.
-- `GetTasksAsync` accepts either `Id` or `Path`, so stored rows keep working while they are migrated. Matching a stored row against `ExternalProjectDto.Id` does not work until it is migrated, so migrate before comparing.
+- `GetTasksAsync` accepts either `Id` or the current `Path`, so stored rows keep working while they are migrated. A row stored as a path stops working once the project is renamed: on the old path the provider can answer 404, and such a row can no longer be matched to a project in the list. Matching a stored row against `ExternalProjectDto.Id` does not work until it is migrated, so migrate before comparing.
 - On GitHub and Azure DevOps, resolving the project costs extra requests: one per `GetTasksAsync` call, and one per distinct project in a `SearchTasksAsync` result.
 
 ## Project metadata
@@ -33,11 +33,11 @@ Shared abstractions for external task provider integrations, including the `IExt
 |---|---|---|---|---|
 | GitHub | `created_at` | later of `pushed_at`, `updated_at` | `archived` | `private` |
 | Azure DevOps | null | `lastUpdateTime` | `state` is `deleting` or `deleted` | `visibility` is not `public` |
-| Jira | null | null | `archived` | `isPrivate` |
+| Jira | null | null | `archived` | null |
 | Trello | null | `dateLastActivity` | `closed` | `prefs.permissionLevel` is not `public` |
 | ClickUp, Monday | null | null | null | null |
 
-Azure DevOps has no archive feature, and its project list returns only `wellFormed` projects by default, so `IsArchived` there is `false` in practice.
+Jira's `isPrivate` means the calling user cannot see the project, not that the project is closed to the public, so `IsPrivate` stays null there. Azure DevOps has no archive feature, and its project list returns only `wellFormed` projects by default, so `IsArchived` there is `false` in practice.
 
 ## Usage
 

@@ -66,10 +66,10 @@ public sealed class GitHubTaskProvider(
     /// Lists a repository's issues.
     /// </summary>
     /// <remarks>
-    /// The repository is looked up first because neither form of <paramref name="projectId"/> gives
-    /// both values each task must carry, and the issues payload has no repository id. Looking it up
-    /// by id also survives a rename: the old <c>owner/repo</c> answers with a redirect, on which
-    /// .NET drops the Authorization header, so a private repository would fail with 404.
+    /// The repository is looked up first so every task carries the durable id whichever form of
+    /// <paramref name="projectId"/> was passed, because the issues payload has no repository id.
+    /// Looking it up by id also survives a rename: the old <c>owner/repo</c> answers with a redirect,
+    /// on which .NET drops the Authorization header, so a private repository would fail with 404.
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
@@ -96,7 +96,6 @@ public sealed class GitHubTaskProvider(
             Status = i.State,
             Url = i.HtmlUrl,
             ProjectId = DurableId(repository),
-            ProjectPath = repository.FullName,
             Provider = ExternalProvider.GitHub
         })];
     }
@@ -174,7 +173,6 @@ public sealed class GitHubTaskProvider(
             Status = i.Issue.State,
             Url = i.Issue.HtmlUrl,
             ProjectId = DurableId(repositories[i.FullName]),
-            ProjectPath = repositories[i.FullName].FullName,
             Provider = ExternalProvider.GitHub
         })];
     }
