@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using System.Net;
 
 namespace Jezda.Common.Integrations.AzureDevOps;
@@ -85,37 +83,6 @@ internal static class AzureDevOpsHttp
                 + "The base URL likely points at a website, or a proxy or captive portal answered in place of Azure DevOps.",
                 inner: null,
                 statusCode: response.StatusCode);
-        }
-    }
-
-    /// <summary>
-    /// Stops the primary handler from following redirects, and warns when it cannot.
-    /// </summary>
-    /// <remarks>
-    /// .NET drops the <c>Authorization</c> header when it follows a redirect, so a base URL that
-    /// answers 302 (an organisation renamed, a stored URL in an old form) would answer the next hop
-    /// with 401 even for a valid PAT, and read as an expired token. Not following it surfaces the
-    /// redirect itself, through <see cref="ThrowIfNotApiResponse"/>.
-    /// <para />
-    /// A warning, not an exception: a custom handler may not follow redirects at all, and only its
-    /// author can tell. A primary handler replaced after this runs is not seen here; the package
-    /// README says so.
-    /// </remarks>
-    public static void DisableAutoRedirect(HttpMessageHandler primaryHandler, IServiceProvider services)
-    {
-        switch (primaryHandler)
-        {
-            case SocketsHttpHandler sockets:
-                sockets.AllowAutoRedirect = false;
-                break;
-            case HttpClientHandler client:
-                client.AllowAutoRedirect = false;
-                break;
-            default:
-                services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AzureDevOpsHttp)).LogWarning(
-                    "Cannot turn off redirects on primary handler {HandlerType}. If it follows them, a valid PAT can read as expired after a redirect",
-                    primaryHandler.GetType().FullName);
-                break;
         }
     }
 

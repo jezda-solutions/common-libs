@@ -38,13 +38,15 @@ public static class IntegrationServiceCollectionExtensions
             }
 
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        });
+        }).DisableAutoRedirect();
 
         // Named HttpClient for IExternalTaskProvider (per-request auth + base URL)
         services.AddHttpClient(JiraTaskProvider.HttpClientName, client =>
         {
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddIntegrationResilience();
+        })
+        .DisableAutoRedirect()
+        .AddIntegrationResilience();
 
         services.AddSingleton<IExternalTaskProvider, JiraTaskProvider>();
 

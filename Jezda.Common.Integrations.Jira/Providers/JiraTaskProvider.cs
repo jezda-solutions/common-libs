@@ -55,6 +55,7 @@ public sealed class JiraTaskProvider(
             return false;
         }
 
+        JiraHttp.ThrowIfNotApiResponse(response);
         response.EnsureSuccessStatusCode();
 
         return true;
@@ -66,7 +67,11 @@ public sealed class JiraTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
-        var projects = await client.GetFromJsonAsync<List<JiraProject>>("rest/api/3/project", JsonOptions, cancellationToken)
+        using var response = await client.GetAsync("rest/api/3/project", cancellationToken);
+        JiraHttp.ThrowIfNotApiResponse(response);
+        response.EnsureSuccessStatusCode();
+
+        var projects = await response.Content.ReadFromJsonAsync<List<JiraProject>>(JsonOptions, cancellationToken)
                        ?? [];
 
         return [.. projects.Select(p => new ExternalProjectDto
@@ -110,7 +115,8 @@ public sealed class JiraTaskProvider(
             Fields = ["summary", "status", "project"]
         };
 
-        var response = await client.PostAsJsonAsync("rest/api/3/search", searchRequest, JsonOptions, cancellationToken);
+        using var response = await client.PostAsJsonAsync("rest/api/3/search", searchRequest, JsonOptions, cancellationToken);
+        JiraHttp.ThrowIfNotApiResponse(response);
         response.EnsureSuccessStatusCode();
 
         var searchResponse = await response.Content.ReadFromJsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);

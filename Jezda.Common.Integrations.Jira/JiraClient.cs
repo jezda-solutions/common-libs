@@ -29,4 +29,6 @@ public sealed class JiraClient(
 
         return await PostAsync<JiraSearchRequest, JiraSearchResponse>("rest/api/3/search", request, cancellationToken);
     }
+
+    protected override void EnsureApiResponse(HttpResponseMessage response) => JiraHttp.ThrowIfNotApiResponse(response);
 }
