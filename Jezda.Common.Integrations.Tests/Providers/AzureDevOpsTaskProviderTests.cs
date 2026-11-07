@@ -330,21 +330,26 @@ public class AzureDevOpsTaskProviderTests
         Assert.DoesNotContain(new string('x', 500), message);
     }
 
-    [Fact]
-    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUnknownCharset_StillReturnsFalse()
+    // .NET cannot decode windows-1252 without the CodePages provider, and it knows utf-7 by name but
+    // has it disabled. The two fail with different exceptions.
+    [Theory]
+    [InlineData("windows-1252")]
+    [InlineData("utf-7")]
+    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUndecodableCharset_StillReturnsFalse(string charset)
     {
-        // windows-1252 is one such charset: .NET cannot decode it without the CodePages provider.
-        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.Forbidden));
+        _handler.EnqueueResponse(() => WithCharset(HttpStatusCode.Forbidden, charset));
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
         Assert.False(result);
     }
 
-    [Fact]
-    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUnknownCharset_KeepsTheStatus()
+    [Theory]
+    [InlineData("windows-1252")]
+    [InlineData("utf-7")]
+    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUndecodableCharset_KeepsTheStatus(string charset)
     {
-        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.InternalServerError));
+        _handler.EnqueueResponse(() => WithCharset(HttpStatusCode.InternalServerError, charset));
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
@@ -371,10 +376,10 @@ public class AzureDevOpsTaskProviderTests
         Assert.Contains("fake log entry", message);
     }
 
-    private static HttpResponseMessage WithUnknownCharset(HttpStatusCode statusCode)
+    private static HttpResponseMessage WithCharset(HttpStatusCode statusCode, string charset)
     {
         var content = new ByteArrayContent("blocked"u8.ToArray());
-        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = "windows-1252" };
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = charset };
 
         return new HttpResponseMessage(statusCode) { Content = content };
     }
