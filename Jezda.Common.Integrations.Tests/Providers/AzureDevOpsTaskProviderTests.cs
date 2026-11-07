@@ -134,6 +134,76 @@ public class AzureDevOpsTaskProviderTests
         Assert.False(result);
     }
 
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData("application/xhtml+xml")]
+    [InlineData("application/xml")]
+    [InlineData(null)]
+    public async Task ValidateConnectionAsync_SuccessWithoutJson_ThrowsInsteadOfAcceptingTheToken(string? mediaType)
+    {
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains(mediaType ?? "no content type", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_SuccessWithoutJson_ThrowsWithTheStatus()
+    {
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, "text/plain"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("application/json")]
+    [InlineData("application/problem+json")]
+    public async Task ValidateConnectionAsync_SuccessWithJsonType_AcceptsTheToken(string mediaType)
+    {
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
+
+        Assert.True(await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NoContent_ThrowsInsteadOfAcceptingTheToken()
+    {
+        // A proxy that answers 204 never checked the token.
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_OkWithEmptyBody_ThrowsInsteadOfAcceptingTheToken()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("no content type", ex.Message);
+    }
+
+    private static HttpResponseMessage WithBody(HttpStatusCode statusCode, string? mediaType)
+    {
+        var content = new ByteArrayContent("{}"u8.ToArray());
+        content.Headers.ContentType = mediaType is null ? null : new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
+
+        return new HttpResponseMessage(statusCode) { Content = content };
+    }
+
     [Fact]
     public async Task ValidateConnectionAsync_HtmlOnOk_ThrowsInsteadOfBlamingTheToken()
     {
@@ -144,7 +214,7 @@ public class AzureDevOpsTaskProviderTests
             _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
-        Assert.Contains("HTML page", ex.Message);
+        Assert.Contains("text/html", ex.Message);
     }
 
     [Fact]

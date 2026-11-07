@@ -28,7 +28,8 @@ internal static class AzureDevOpsHttp
     /// as 203 with HTML, so 203 with anything but JSON also means the token was not accepted. 203 with
     /// JSON stays an answer: a transforming proxy can return a valid response that way.
     /// <para />
-    /// HTML on any other success status is not a sign-in page: see <see cref="ThrowIfNotApiResponse"/>.
+    /// A body without JSON on any other success status is not a sign-in page: see
+    /// <see cref="ThrowIfNotApiResponse"/>.
     /// </remarks>
     public static bool IsSignInPage(HttpResponseMessage response)
     {
@@ -38,18 +39,18 @@ internal static class AzureDevOpsHttp
                 .EndsWith("/_signin", StringComparison.OrdinalIgnoreCase) == true;
         }
 
-        return response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
-            && response.Content.Headers.ContentType?.MediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) != true;
+        return response.StatusCode == HttpStatusCode.NonAuthoritativeInformation && !IsJson(response);
     }
 
     /// <summary>
     /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, a redirect, or
-    /// an HTML page. Any other response, failed or not, is left to the caller.
+    /// a success that is not JSON. 204 is left to the caller, since a call such as a delete can answer
+    /// it; token validation does not. Any other response, failed or not, is left to the caller.
     /// </summary>
     /// <exception cref="HttpRequestException">
     /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page or a redirect to one, so callers
     /// that treat 401 as an expired token keep working. The response's own status for any other
-    /// redirect or an HTML page, neither of which says anything about the token: the base URL answers
+    /// redirect or a success without JSON, neither of which says anything about the token: the base URL answers
     /// somewhere else, or something other than Azure DevOps answered in its place.
     /// </exception>
     public static void ThrowIfNotApiResponse(HttpResponseMessage response)
@@ -75,11 +76,12 @@ internal static class AzureDevOpsHttp
                 statusCode: response.StatusCode);
         }
 
-        if (response.IsSuccessStatusCode
-            && string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase))
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+
+        if (response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NoContent && !IsJson(response))
         {
             throw new HttpRequestException(
-                $"The server answered {(int)response.StatusCode} with an HTML page instead of JSON, so the token was not checked. "
+                $"The server answered {(int)response.StatusCode} with {mediaType ?? "no content type"} instead of JSON, so the token was not checked. "
                 + "The base URL likely points at a website, or a proxy or captive portal answered in place of Azure DevOps.",
                 inner: null,
                 statusCode: response.StatusCode);
@@ -87,6 +89,9 @@ internal static class AzureDevOpsHttp
     }
 
     private static bool IsRedirect(HttpResponseMessage response) => (int)response.StatusCode is >= 300 and < 400;
+
+    private static bool IsJson(HttpResponseMessage response) =>
+        response.Content.Headers.ContentType?.MediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) == true;
 
     private static Uri? RedirectTarget(HttpResponseMessage response)
     {

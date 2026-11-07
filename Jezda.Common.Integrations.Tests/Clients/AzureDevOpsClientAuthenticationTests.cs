@@ -45,7 +45,7 @@ public class AzureDevOpsClientAuthenticationTests
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
 
         Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
-        Assert.Contains("HTML page", ex.Message);
+        Assert.Contains("text/html", ex.Message);
     }
 
     [Fact]
