@@ -2,6 +2,7 @@ using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.GitHub.Models;
+using Jezda.Common.Integrations.Http;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Globalization;
@@ -176,7 +177,7 @@ public sealed class GitHubTaskProvider(
         await ThrowIfRateLimitedAsync(searchResponse, cancellationToken);
         searchResponse.EnsureSuccessStatusCode();
 
-        var response = await searchResponse.Content.ReadFromJsonAsync<GitHubIssueSearchResponse>(JsonOptions, cancellationToken);
+        var response = await searchResponse.Content.ReadFromUtf8JsonAsync<GitHubIssueSearchResponse>(JsonOptions, cancellationToken);
 
         var items = (response?.Items ?? [])
             .Where(i => i.PullRequest is null)
@@ -243,7 +244,7 @@ public sealed class GitHubTaskProvider(
     }
 
     private static async Task<GitHubRepository> ReadRepositoryAsync(HttpResponseMessage response, string url, CancellationToken cancellationToken) =>
-        await response.Content.ReadFromJsonAsync<GitHubRepository>(JsonOptions, cancellationToken)
+        await response.Content.ReadFromUtf8JsonAsync<GitHubRepository>(JsonOptions, cancellationToken)
         ?? throw new HttpRequestException($"GitHub returned an empty repository for {url}");
 
     /// <summary>
@@ -274,7 +275,7 @@ public sealed class GitHubTaskProvider(
             return true;
         }
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var body = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
 
         return body.Contains("rate limit", StringComparison.OrdinalIgnoreCase);
     }
@@ -304,7 +305,7 @@ public sealed class GitHubTaskProvider(
             using var response = await client.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            all.AddRange(await response.Content.ReadFromJsonAsync<List<T>>(JsonOptions, cancellationToken) ?? []);
+            all.AddRange(await response.Content.ReadFromUtf8JsonAsync<List<T>>(JsonOptions, cancellationToken) ?? []);
 
             url = GetNextPageUrl(response);
         }

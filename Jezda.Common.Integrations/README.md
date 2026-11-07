@@ -19,6 +19,13 @@ An abstract base class that encapsulates `HttpClient` operations.
   - Built-in logging for request/response flow.
   - Standardized error handling (throws exceptions on non-success status codes).
 
+### `HttpContentUtf8Extensions` (`Jezda.Common.Integrations.Http`)
+Reads response bodies as UTF-8 whatever charset the `Content-Type` header declares:
+`ReadAsUtf8StringAsync`, `ReadFromUtf8JsonAsync<T>` and `GetFromUtf8JsonAsync<T>`. The built-in
+`ReadAsStringAsync` / `ReadFromJsonAsync` throw `NotSupportedException` (`utf-7`) or
+`InvalidOperationException` (an unknown charset), which on a failed response replaces the
+`HttpRequestException` that carries the status. Use these in every provider instead.
+
 ## 🚀 How to Implement a New Integration
 
 1. Create a new project (e.g., `Jezda.Common.Integrations.Jira`).

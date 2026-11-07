@@ -2,10 +2,10 @@ using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.ClickUp.Models;
+using Jezda.Common.Integrations.Http;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Jezda.Common.Integrations.ClickUp.Providers;
@@ -50,7 +50,7 @@ public sealed class ClickUpTaskProvider(
     {
         using var client = CreateClient(accessToken);
 
-        var teamsResponse = await client.GetFromJsonAsync<ClickUpTeamsResponse>(
+        var teamsResponse = await client.GetFromUtf8JsonAsync<ClickUpTeamsResponse>(
             "team", JsonOptions, cancellationToken);
 
         var teams = teamsResponse?.Teams ?? [];
@@ -70,7 +70,7 @@ public sealed class ClickUpTaskProvider(
     {
         using var client = CreateClient(accessToken);
 
-        var tasksResponse = await client.GetFromJsonAsync<ClickUpTasksResponse>(
+        var tasksResponse = await client.GetFromUtf8JsonAsync<ClickUpTasksResponse>(
             $"team/{projectId}/task", JsonOptions, cancellationToken);
 
         var tasks = tasksResponse?.Tasks ?? [];

@@ -1,6 +1,7 @@
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
+using Jezda.Common.Integrations.Http;
 using Jezda.Common.Integrations.Monday.Models;
 using Microsoft.Extensions.Logging;
 using System.Net;
@@ -49,7 +50,7 @@ public sealed class MondayTaskProvider(
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var body = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
 
             if (RefusalsNotAboutTheToken.Any(refusal => body.Contains(refusal, StringComparison.OrdinalIgnoreCase)))
             {
@@ -65,7 +66,7 @@ public sealed class MondayTaskProvider(
 
         // A 403 can come from a gateway in front of Monday.com, so only a known code blames the token.
         if (response.StatusCode == HttpStatusCode.Forbidden
-            && HasRejectedTokenCode(await response.Content.ReadAsStringAsync(cancellationToken)))
+            && HasRejectedTokenCode(await response.Content.ReadAsUtf8StringAsync(cancellationToken)))
         {
             logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
             return false;
@@ -73,7 +74,7 @@ public sealed class MondayTaskProvider(
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
+        var result = await response.Content.ReadFromUtf8JsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
 
         if (ReadData<MondayMeData>(result)?.Me is not null)
         {
@@ -167,7 +168,7 @@ public sealed class MondayTaskProvider(
         using var response = await client.PostAsJsonAsync("", request, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
+        var result = await response.Content.ReadFromUtf8JsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
 
         // Monday reports application errors with status 200, and can send them next to partial data.
         // Callers read these lists as complete, so a list that may have gaps is a failure too.
