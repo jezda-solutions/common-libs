@@ -128,10 +128,6 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
             reason);
     }
 
-    /// <summary>The key <see cref="Select"/> gave a request, or null for a request it did not see.</summary>
-    public string? KeyOf(HttpRequestMessage? request) =>
-        request is not null && request.Options.TryGetValue(_requestKey, out var key) ? key : null;
-
     /// <summary>
     /// Records a successful answer to a request <see cref="Select"/> saw. An admitted key that had
     /// none yet gives its unproven place back, so working sites do not use up the places meant for

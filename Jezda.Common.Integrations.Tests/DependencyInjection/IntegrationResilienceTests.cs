@@ -164,6 +164,24 @@ public class IntegrationResilienceTests
     }
 
     [Fact]
+    public async Task HalfOpenProbe_AnsweredTooManyRequestsWithShortRetryAfter_ReachesTheCallerAsTheRateLimit()
+    {
+        // A short Retry-After is normally retried, but the probe's 429 has just reopened the breaker:
+        // a retry would meet it and the caller would get BrokenCircuitException instead of the 429.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: 1));
+        using var probe = await client.GetAsync("items");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, probe.StatusCode);
+        Assert.Equal(TimeSpan.FromSeconds(1), probe.Headers.RetryAfter?.Delta);
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
+    }
+
+    [Fact]
     public async Task HalfOpenProbe_AnsweredOk_ClosesTheBreaker_AndRateLimitsStayNeutral()
     {
         var time = new ShiftedTimeProvider();

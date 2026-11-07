@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -67,17 +66,15 @@ public static class HttpResilienceDefaults
 
         var budget = new PipelineKeyBudget(builder.Name, pipelineKey);
 
-        // Keys whose breaker is half-open. The options, and so these callbacks, are shared by every
-        // key's pipeline, which is why the state is kept per key here and not in a state provider.
-        var halfOpen = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-
         builder.AddStandardResilienceHandler(options =>
         {
             options.Retry.MaxRetryAttempts = 3;
             options.Retry.Delay = TimeSpan.FromMilliseconds(500);
+            // A probe's 429 has just reopened the breaker, so a retry would only meet the open
+            // breaker and hand the caller BrokenCircuitException instead of the 429.
             options.Retry.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests } response
-                    ? AsksForAShortPause(response)
+                    ? !IsProbe(args.Context) && AsksForAShortPause(response)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
 
@@ -86,23 +83,19 @@ public static class HttpResilienceDefaults
             // token's rate limit: counted, it would open the breaker for every other token there.
             // Recorded as a success instead, it would close a half-open breaker whose single probe
             // happened to carry a rate-limited token, while the site is still failing; so a 429 to
-            // that probe counts as a failure and the breaker stays open.
+            // that probe counts as a failure and the breaker stays open. Polly raises OnHalfOpened
+            // with the probe's own context before the probe runs, so the mark is on that one
+            // execution: a 429 to a request that started before the breaker opened stays neutral.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests }
-                    ? IsHalfOpen(args.Context)
+                    ? IsProbe(args.Context)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
             options.CircuitBreaker.OnHalfOpened = args =>
             {
-                if (KeyOf(args.Context) is { } key)
-                {
-                    halfOpen[key] = 0;
-                }
-
+                args.Context.Properties.Set(HalfOpenProbe, true);
                 return default;
             };
-            options.CircuitBreaker.OnOpened = args => Leave(args.Context);
-            options.CircuitBreaker.OnClosed = args => Leave(args.Context);
             options.CircuitBreaker.FailureRatio = 0.5;
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
 
@@ -119,21 +112,13 @@ public static class HttpResilienceDefaults
         builder.AddHttpMessageHandler(() => new PipelineKeyBudgetHandler(budget));
 
         return builder;
-
-        string? KeyOf(ResilienceContext context) => budget.KeyOf(context.GetRequestMessage());
-
-        bool IsHalfOpen(ResilienceContext context) => KeyOf(context) is { } key && halfOpen.ContainsKey(key);
-
-        ValueTask Leave(ResilienceContext context)
-        {
-            if (KeyOf(context) is { } key)
-            {
-                halfOpen.TryRemove(key, out _);
-            }
-
-            return default;
-        }
     }
+
+    /// <summary>Set on the execution that carries a half-open breaker's probe.</summary>
+    private static readonly ResiliencePropertyKey<bool> HalfOpenProbe = new("Jezda.Integrations.HalfOpenProbe");
+
+    private static bool IsProbe(ResilienceContext context) =>
+        context.Properties.TryGetValue(HalfOpenProbe, out var probe) && probe;
 
     /// <summary>
     /// The longest <c>Retry-After</c> a 429 is retried for. Kept short so a retry usually ends before
