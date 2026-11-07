@@ -1254,6 +1254,30 @@ public class AzureDevOpsTaskProviderTests
         Assert.True(project.IsPrivate);
     }
 
+    [Fact]
+    public async Task GetProjectsAsync_BaseUrlWithCredentials_LeavesThemOutOfTheLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 1, value = new[] { new { id = "g", name = "Mobile Team" } } });
+
+        var project = Assert.Single(await _provider.GetProjectsAsync("my-pat", "https://admin:base-secret@dev.azure.com/myorg/"));
+
+        Assert.Equal("https://dev.azure.com/myorg/Mobile%20Team", project.Url);
+        Assert.Equal(string.Empty, Assert.Single(_handler.SentRequests).RequestUri!.UserInfo);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_BaseUrlWithCredentials_LeavesThemOutOfTheLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Mobile Team", "guid-1"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((1, "One")));
+
+        var result = await _provider.GetTasksAsync("my-pat", "guid-1", "https://admin:base-secret@dev.azure.com/myorg/");
+
+        Assert.Equal("https://dev.azure.com/myorg/Mobile%20Team/_workitems/edit/1", Assert.Single(result).Url);
+        Assert.All(_handler.SentRequests, request => Assert.Equal(string.Empty, request.RequestUri!.UserInfo));
+    }
+
     [Theory]
     [InlineData("wellFormed", false)]
     [InlineData("deleting", true)]

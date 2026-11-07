@@ -73,6 +73,7 @@ public sealed class JiraTaskProvider(
 
         var projects = await response.Content.ReadFromJsonAsync<List<JiraProject>>(JsonOptions, cancellationToken)
                        ?? [];
+        var site = client.BaseAddress!;
 
         return [.. projects.Select(p => new ExternalProjectDto
         {
@@ -81,7 +82,7 @@ public sealed class JiraTaskProvider(
             Path = p.Key,
             Name = p.Name,
             Description = null,
-            Url = $"{baseUrl.TrimEnd('/')}/browse/{p.Key}",
+            Url = new Uri(site, $"browse/{p.Key}").AbsoluteUri,
             Provider = ExternalProvider.Jira,
             IsArchived = p.Archived
         })];
@@ -120,13 +121,14 @@ public sealed class JiraTaskProvider(
         response.EnsureSuccessStatusCode();
 
         var searchResponse = await response.Content.ReadFromJsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);
+        var site = client.BaseAddress!;
 
         return [.. (searchResponse?.Issues ?? []).Select(i => new ExternalTaskDto
         {
             Id = i.Key,
             Title = i.Fields?.Summary ?? string.Empty,
             Status = i.Fields?.Status?.Name,
-            Url = $"{baseUrl.TrimEnd('/')}/browse/{i.Key}",
+            Url = new Uri(site, $"browse/{i.Key}").AbsoluteUri,
             ProjectId = i.Fields?.Project?.Id ?? projectId,
             Provider = ExternalProvider.Jira
         })];
@@ -135,7 +137,9 @@ public sealed class JiraTaskProvider(
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
-        client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+        // Credentials written into the base URL would otherwise reach every request URI and every
+        // page link built from it. Authentication goes through the header below.
+        client.BaseAddress = new UriBuilder(new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/")) { UserName = "", Password = "" }.Uri;
 
         // ASCII would turn a character outside its range into '?', and a valid email would read as rejected.
         var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes(accessToken));
