@@ -17,11 +17,16 @@ public static class HttpResilienceDefaults
     /// end as a timeout instead of a 429, and calling again without being told when keeps calling a
     /// provider that asked for a pause, which GitHub warns can get an integration banned.
     /// <para />
-    /// Each address (scheme, host and port) gets its own pipeline and so its own circuit breaker.
-    /// Jira and Azure DevOps send every customer's site or organisation through the same named
-    /// client, so one site that is down or mistyped would otherwise open the breaker for all of them,
-    /// and they would get Polly's <c>BrokenCircuitException</c> instead of an answer. A pipeline is
-    /// kept for every address the client has called, which the configured sites bound.
+    /// Each address gets its own pipeline and so its own circuit breaker: scheme, host and port, plus
+    /// the organisation on <c>dev.azure.com</c>, where every organisation shares one host. Jira and
+    /// Azure DevOps send every customer's site or organisation through the same named client, so one
+    /// site that is down or mistyped would otherwise open the breaker for all of them, and they would
+    /// get Polly's <c>BrokenCircuitException</c> instead of an answer. The key never holds a username
+    /// or password typed into a base URL, because Polly writes it into logs and metrics.
+    /// <para />
+    /// Everything in the pipeline is per address, the concurrency limit (1000) included. A pipeline is
+    /// kept for every address the client has called, for the life of the process; base URLs a user
+    /// typed count too, not only the configured sites.
     /// <para />
     /// Tokens on the same address still share a breaker, so a 429 does not count towards it: one
     /// token's rate limit would otherwise open it for every other token. Polly has no neutral outcome,
@@ -52,10 +57,36 @@ public static class HttpResilienceDefaults
 
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-        }).SelectPipelineByAuthority();
+        }).SelectPipelineBy(_ => PipelineKey);
 
         return builder;
     }
+
+    /// <summary>
+    /// The address a request's breaker belongs to: scheme, host and port, plus the first path
+    /// segment on <c>dev.azure.com</c>. Built from components, not
+    /// <see cref="Uri.GetLeftPart(UriPartial)"/>, which keeps <c>user:pass@</c>.
+    /// </summary>
+    private static string PipelineKey(HttpRequestMessage request)
+    {
+        if (request.RequestUri is not { IsAbsoluteUri: true } uri)
+        {
+            return string.Empty;
+        }
+
+        var address = uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped);
+
+        if (!uri.Host.Equals(SharedAzureDevOpsHost, StringComparison.OrdinalIgnoreCase))
+        {
+            return address;
+        }
+
+        var organisation = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+
+        return organisation is null ? address : $"{address}/{organisation.ToLowerInvariant()}";
+    }
+
+    private const string SharedAzureDevOpsHost = "dev.azure.com";
 
     /// <summary>
     /// The longest <c>Retry-After</c> a 429 is retried for. Kept short so a retry usually ends before

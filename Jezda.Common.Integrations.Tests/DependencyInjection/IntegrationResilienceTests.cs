@@ -149,6 +149,46 @@ public class IntegrationResilienceTests
     }
 
     [Fact]
+    public async Task OneFailingAzureDevOpsOrganisation_DoesNotOpenTheBreakerForAnother()
+    {
+        // Every Azure DevOps Services organisation is on the same host, dev.azure.com.
+        var client = CreateClient();
+        _handler.RespondTo("/orgA/items", ServiceUnavailable);
+        _handler.RespondTo("/orgB/items", HttpStatusCode.OK);
+
+        for (var i = 0; i < 25; i++)
+        {
+            using var failed = await client.GetAsync("https://dev.azure.com/orgA/items");
+        }
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(
+            () => client.GetAsync("https://dev.azure.com/orgA/items"));
+
+        using var response = await client.GetAsync("https://dev.azure.com/orgB/items");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    // Credentials typed into a base URL stay out of the key: the same site, one breaker.
+    [InlineData("https://user:secret@down.example.test/down/items", "https://down.example.test/down/items")]
+    // Azure DevOps organisation names are case-insensitive.
+    [InlineData("https://dev.azure.com/OrgA/items", "https://dev.azure.com/orga/items")]
+    public async Task SameAddress_WrittenDifferently_SharesOneBreaker(string failingUrl, string sameAddressUrl)
+    {
+        var client = CreateClient();
+        _handler.RespondTo(new Uri(failingUrl).AbsolutePath, ServiceUnavailable);
+        // A 503 too, not an answer: with a key of its own this URL would get it instead of the exception.
+        _handler.RespondTo(new Uri(sameAddressUrl).AbsolutePath, ServiceUnavailable);
+
+        for (var i = 0; i < 25; i++)
+        {
+            using var failed = await client.GetAsync(failingUrl);
+        }
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync(sameAddressUrl));
+    }
+
+    [Fact]
     public async Task TooManyRequests_CountAsSuccesses_WhenMixedWithServerErrors()
     {
         // Polly has no neutral outcome, so 60 rate-limited calls are 60 successes: the breaker opens
