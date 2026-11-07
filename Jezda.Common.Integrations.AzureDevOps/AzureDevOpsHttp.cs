@@ -18,8 +18,8 @@ internal static class AzureDevOpsHttp
     public const string FedAuthRedirectSuppress = "Suppress";
 
     /// <summary>
-    /// The organisation a client talks to, for log messages. The base URL comes from the user, so this
-    /// leaves out any credentials written into it.
+    /// The organisation a client talks to, for log messages: host and path only, so a username and
+    /// password a person typed into the base URL by mistake stays out of the log.
     /// </summary>
     public static string? OrganisationForLog(HttpClient client) => Describe(client.BaseAddress);
 
@@ -114,8 +114,9 @@ internal static class AzureDevOpsHttp
             : location;
     }
 
-    // Host and path only: enough to tell Azure DevOps from a gateway with its own /_signin. A base URL
-    // can carry a password, which the exception would carry into logs, and a sign-in redirect's query
+    // Host and path only: enough to tell Azure DevOps from a gateway with its own /_signin. Credentials
+    // never go in a URL, but a person can type a username and password into a base URL by mistake, and
+    // the exception would carry them into logs. A sign-in redirect's query
     // holds the reply URL and an opaque context, which only make the message harder to read.
     private static string? Describe(Uri? uri) => uri switch
     {

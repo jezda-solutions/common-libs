@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Resilience;
+using Jezda.Common.Integrations.Http;
 using Jezda.Common.Integrations.Jira.Providers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,7 +29,7 @@ public static class IntegrationServiceCollectionExtensions
                 throw new InvalidOperationException("Jira BaseUrl is not configured.");
             }
 
-            client.BaseAddress = new Uri(options.BaseUrl);
+            client.BaseAddress = IntegrationBaseAddress.Create(options.BaseUrl);
 
             if (!string.IsNullOrEmpty(options.Email) && !string.IsNullOrEmpty(options.ApiToken))
             {

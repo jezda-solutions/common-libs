@@ -510,9 +510,9 @@ public sealed class AzureDevOpsTaskProvider(
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
-        // Credentials written into the base URL would otherwise reach every request URI and every
-        // page link built from it. Authentication goes through the header below.
-        client.BaseAddress = new UriBuilder(new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/")) { UserName = "", Password = "" }.Uri;
+        // Trailing slash added; query, fragment and any username/password typed into the URL by
+        // mistake dropped (the token goes only in the header below); see IntegrationBaseAddress.
+        client.BaseAddress = IntegrationBaseAddress.Create(baseUrl);
 
         var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);

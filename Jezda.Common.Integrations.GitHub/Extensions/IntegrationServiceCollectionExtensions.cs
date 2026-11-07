@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Resilience;
 using Jezda.Common.Integrations.GitHub.Providers;
+using Jezda.Common.Integrations.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -22,7 +23,7 @@ public static class IntegrationServiceCollectionExtensions
         {
             var options = serviceProvider.GetRequiredService<IOptions<GitHubOptions>>().Value;
 
-            client.BaseAddress = new Uri(options.BaseUrl);
+            client.BaseAddress = IntegrationBaseAddress.Create(options.BaseUrl);
 
             if (!string.IsNullOrEmpty(options.AccessToken))
             {

@@ -46,3 +46,12 @@ public class JiraClient : BaseIntegrationClient, IJiraClient
     }
 }
 ```
+
+4. Send the token or API key only in the `Authorization` header; no integration here puts
+   credentials in a URL. Build the base address from a URL that comes from a user or from
+   configuration with `IntegrationBaseAddress.Create(baseUrl)` (`Jezda.Common.Integrations.Http`)
+   rather than `new Uri(baseUrl)`. It ends the path with `/`, so a relative request path keeps the
+   last segment (`https://dev.azure.com/myorg` would otherwise lose `myorg`), and it drops a query
+   and a fragment. It also drops a username and password if someone typed them into the URL by
+   mistake (`https://user:pass@host/`), so that a mistake like that cannot leak into request
+   URIs, logs or the links returned to callers.
