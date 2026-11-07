@@ -15,7 +15,7 @@ public static class IntegrationServiceCollectionExtensions
         {
             client.BaseAddress = new Uri("https://api.clickup.com/api/v2/");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddIntegrationResilience();
+        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization);
 
         services.AddSingleton<IExternalTaskProvider, ClickUpTaskProvider>();
 

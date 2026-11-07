@@ -2,8 +2,14 @@ using System.Net;
 using Jezda.Common.Integrations.Abstractions.Resilience;
 using Jezda.Common.Integrations.AzureDevOps.Extensions;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
+using Jezda.Common.Integrations.ClickUp.Extensions;
+using Jezda.Common.Integrations.ClickUp.Providers;
 using Jezda.Common.Integrations.GitHub.Extensions;
 using Jezda.Common.Integrations.GitHub.Providers;
+using Jezda.Common.Integrations.Monday.Extensions;
+using Jezda.Common.Integrations.Monday.Providers;
+using Jezda.Common.Integrations.Trello.Extensions;
+using Jezda.Common.Integrations.Trello.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -179,6 +185,38 @@ public class IntegrationResilienceTests
         using var other = Request("search/issues", token: "token-b");
         using var response = await client.SendAsync(other);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Theory]
+    // One fixed host for every customer, the token in the Authorization header.
+    [InlineData(MondayTaskProvider.HttpClientName, "https://api.monday.com/v2")]
+    [InlineData(ClickUpTaskProvider.HttpClientName, "https://api.clickup.com/api/v2/team")]
+    public async Task OneFailingToken_DoesNotOpenTheBreakerForAnotherToken(string clientName, string url)
+    {
+        var client = CreateProviderClient(clientName);
+        _handler.RespondTo(new Uri(url).AbsolutePath, ServiceUnavailable);
+
+        await OpenBreakerAsync(client, url, token: "token-a");
+
+        using var other = Request(url, token: "token-b");
+        using var response = await client.SendAsync(other);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OneFailingTrelloToken_DoesNotOpenTheBreakerForAnotherToken()
+    {
+        // Trello takes the token in the query string, not a header.
+        var client = CreateProviderClient(TrelloTaskProvider.HttpClientName);
+        _handler.RespondTo("/1/members/me/boards", ServiceUnavailable);
+
+        await OpenBreakerAsync(client, "https://api.trello.com/1/members/me/boards?key=k&token=token-a");
+
+        using var response = await client.GetAsync("https://api.trello.com/1/members/me/boards?key=k&token=token-b");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(
+            () => client.GetAsync("https://api.trello.com/1/members/me/boards?key=k&token=token-a"));
     }
 
     [Fact]
@@ -369,6 +407,9 @@ public class IntegrationResilienceTests
         var services = new ServiceCollection();
         services.AddAzureDevOpsIntegration(configuration);
         services.AddGitHubIntegration(configuration);
+        services.AddMondayIntegration();
+        services.AddClickUpIntegration();
+        services.AddTrelloIntegration();
         services.AddHttpClient(clientName).ConfigurePrimaryHttpMessageHandler(() => _handler);
 
         return services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>().CreateClient(clientName);
