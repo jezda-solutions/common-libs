@@ -811,6 +811,44 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task GetTasksAsync_DetailsBatchReturnsAnItemNotRequested_LeavesItOut()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{"System.Title":"One","System.State":"Active"}},
+              {"id":99,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/99","fields":{"System.Title":"Foreign","System.State":"Active"}}
+            ]}
+            """);
+
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["1"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_DetailsBatchReturnsADuplicate_KeepsOne()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{"System.Title":"One","System.State":"Active"}},
+              {"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{"System.Title":"One","System.State":"Active"}}
+            ]}
+            """);
+
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["1"], result.Select(t => t.Id));
+    }
+
+    [Fact]
     public async Task GetTasksAsync_RejectedDetailsBatch_CarriesTheAzureDevOpsReasonAndStatus()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
