@@ -200,6 +200,21 @@ public class AzureDevOpsTaskProviderTests
         Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
     }
 
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectWithCredentialsInUrls_KeepsThemOutOfTheMessage()
+    {
+        // A consumer that logs the exception must not log a password typed into the base URL, or one
+        // handed back in the redirect.
+        _handler.EnqueueResponse(() => Redirect("https://admin:location-secret@dev.azure.com/neworg/_apis/projects"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://admin:base-secret@dev.azure.com/oldorg/"));
+
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Contains("https://dev.azure.com/oldorg/_apis/projects", ex.Message);
+        Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
+    }
+
     // The shape Azure DevOps answers a bad PAT with when the FedAuthRedirect header is missing.
     private const string SignInRedirect =
         "https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&reply_to=https%3A%2F%2Fdev.azure.com%2Fmyorg&redirect=1";
@@ -223,6 +238,20 @@ public class AzureDevOpsTaskProviderTests
             _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_RedirectToSignInWithCredentials_KeepsThemOutOfTheMessage()
+    {
+        _handler.EnqueueResponse(() =>
+            Redirect("https://admin:location-secret@spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("bad-pat", "https://admin:base-secret@dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Contains("https://spsprodwus24.vssps.visualstudio.com/_signin", ex.Message);
     }
 
     [Fact]
