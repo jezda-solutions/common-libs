@@ -89,7 +89,11 @@ block, so none of them is shown to the user as a bad token. A rate limit propaga
 A token with a character outside printable ASCII, such as a pasted smart quote or line break, returns
 `NotSendable`, without a request: it cannot go in a header, and the failure would otherwise read as an outage.
 The other calls throw `ArgumentException` for such a token, also without a request, so it is not
-retried and does not count towards the circuit breaker every caller of the provider shares.
+retried and does not count towards the circuit breaker.
+
+`IExternalTaskProvider` keeps one circuit breaker per token: every caller is on `api.github.com`, so
+one caller whose searches keep timing out does not cut off the others. The breaker key holds a hash
+of the token, never the token.
 
 ## Rate limits
 
