@@ -61,8 +61,8 @@ public static class HttpContentUtf8Extensions
     {
         ArgumentNullException.ThrowIfNull(client);
 
-        // Headers only, as GetFromJsonAsync does: the body is streamed into the deserializer, not buffered.
-        using var response = await client.GetAsync(requestUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        // Buffered: the body is read inside GetAsync, so HttpClient.Timeout covers it too.
+        using var response = await client.GetAsync(requestUri, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromUtf8JsonAsync<T>(options, cancellationToken);
