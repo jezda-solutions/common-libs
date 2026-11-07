@@ -52,8 +52,9 @@ internal static class JiraHttp
             : location;
     }
 
-    // Host and path only. A base URL can carry a password, which the exception would carry into logs,
-    // and a sign-in redirect's query is an opaque context that only makes the message harder to read.
+    // Host and path only. Credentials never go in a URL, but a person can type a username and password
+    // into a base URL by mistake, and the exception would carry them into logs. A sign-in redirect's
+    // query is an opaque context that only makes the message harder to read.
     private static string? Describe(Uri? uri) => uri switch
     {
         null => null,
