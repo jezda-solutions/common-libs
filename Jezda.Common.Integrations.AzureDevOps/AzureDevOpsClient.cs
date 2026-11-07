@@ -37,6 +37,7 @@ public sealed class AzureDevOpsClient(
         return await AzureDevOpsWorkItemBatch.FetchAsync(
             wiqlResponse.WorkItems.Select(wi => wi.Id),
             _options.ApiVersion,
+            AzureDevOpsHttp.OrganisationForLog(HttpClient),
             (url, ct) => GetAsync<AdoWorkItemListResponse>(url, ct),
             Logger,
             cancellationToken);

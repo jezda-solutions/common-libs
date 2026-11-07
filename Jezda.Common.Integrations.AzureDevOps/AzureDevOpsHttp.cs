@@ -18,6 +18,12 @@ internal static class AzureDevOpsHttp
     public const string FedAuthRedirectSuppress = "Suppress";
 
     /// <summary>
+    /// The organisation a client talks to, for log messages. The base URL comes from the user, so this
+    /// leaves out any credentials written into it.
+    /// </summary>
+    public static string? OrganisationForLog(HttpClient client) => Describe(client.BaseAddress);
+
+    /// <summary>
     /// Whether a response is a sign-in page, or a redirect to one, instead of an API answer.
     /// </summary>
     /// <remarks>

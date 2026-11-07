@@ -723,6 +723,31 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal(["1"], result.Select(t => t.Id));
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("""{"count":2}""")]
+    [InlineData("""{"count":2,"value":null}""")]
+    public async Task GetTasksAsync_BatchAnswersWithoutAList_ThrowsInsteadOfReadingAsOmitted(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/"));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_BatchAnswersNoContent_ThrowsInsteadOfReadingAsOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/"));
+    }
+
     [Fact]
     public async Task GetTasksAsync_ItemsOmitted_LogsAWarningWithTheCounts()
     {
@@ -743,6 +768,8 @@ public class AzureDevOpsTaskProviderTests
 
         var warning = Assert.Single(logger.Warnings);
         Assert.Contains("returned 1 of 2", warning);
+        Assert.Contains("https://dev.azure.com/myorg/", warning);
+        Assert.EndsWith("Missing ids: 2", warning);
     }
 
     [Fact]
@@ -754,6 +781,25 @@ public class AzureDevOpsTaskProviderTests
             """
             {"count":2,"value":[
               null,
+              {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}}
+            ]}
+            """);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["3"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_DetailsBatchReturnsADuplicate_KeepsOneInsteadOfFailing()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(9, 3));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}},
               {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}}
             ]}
             """);

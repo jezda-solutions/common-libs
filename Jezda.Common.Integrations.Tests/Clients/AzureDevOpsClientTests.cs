@@ -64,6 +64,42 @@ public class AzureDevOpsClientTests
 
         var warning = Assert.Single(logger.Warnings);
         Assert.Contains("returned 2 of 3", warning);
+        Assert.Contains("https://dev.azure.com/myorg/", warning);
+        Assert.EndsWith("Missing ids: 2", warning);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_ManyItemsOmitted_CapsTheIdsInTheWarning()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. Enumerable.Range(1, 25)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":0,"value":[]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("returned 0 of 25", warning);
+        Assert.EndsWith("Missing ids: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 and 5 more", warning);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_ItemsOmitted_KeepsBaseUrlCredentialsOutOfTheWarning()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://admin:base-secret@dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[null]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.DoesNotContain("secret", Assert.Single(logger.Warnings));
     }
 
     [Fact]
@@ -80,6 +116,63 @@ public class AzureDevOpsClientTests
         await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
 
         Assert.Empty(logger.Warnings);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("""{"count":2}""")]
+    [InlineData("""{"count":2,"value":null}""")]
+    public async Task GetWorkItemsByQueryAsync_BatchAnswersWithoutAList_ThrowsInsteadOfReadingAsOmitted(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+
+        Assert.Null(ex.StatusCode);
+        Assert.Contains("https://dev.azure.com/myorg/", ex.Message);
+        Assert.Contains("first id 1, last id 2", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_DuplicateReturnedInPlaceOfAMissingItem_StillWarns()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"id":1,"fields":{}}]}""");
+
+        var result = await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1], result.Select(w => w.Id));
+        Assert.Equal(
+            "Azure DevOps returned 1 of 2 requested work items on https://dev.azure.com/myorg/. The rest were deleted or the token cannot read them. Missing ids: 2",
+            Assert.Single(logger.Warnings));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_BatchAnswersNoContent_ThrowsInsteadOfReadingAsOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_BatchAnswersAnEmptyList_ReadsAsOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":0,"value":[]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Empty(result);
     }
 
     [Fact]
