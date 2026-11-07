@@ -1,10 +1,10 @@
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
+using Jezda.Common.Integrations.Http;
 using Jezda.Common.Integrations.Trello.Models;
 using Microsoft.Extensions.Logging;
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Jezda.Common.Integrations.Trello.Providers;
@@ -52,7 +52,7 @@ public sealed class TrelloTaskProvider(
         using var client = CreateClient();
         var (key, token) = ParseAccessToken(accessToken);
 
-        var boards = await client.GetFromJsonAsync<List<TrelloBoard>>(
+        var boards = await client.GetFromUtf8JsonAsync<List<TrelloBoard>>(
             $"members/me/boards?key={key}&token={token}", JsonOptions, cancellationToken)
             ?? [];
 
@@ -77,7 +77,7 @@ public sealed class TrelloTaskProvider(
         using var client = CreateClient();
         var (key, token) = ParseAccessToken(accessToken);
 
-        var cards = await client.GetFromJsonAsync<List<TrelloCard>>(
+        var cards = await client.GetFromUtf8JsonAsync<List<TrelloCard>>(
             $"boards/{projectId}/cards?key={key}&token={token}", JsonOptions, cancellationToken)
             ?? [];
 

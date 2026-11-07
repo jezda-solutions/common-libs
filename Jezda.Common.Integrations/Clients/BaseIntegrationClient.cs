@@ -1,3 +1,4 @@
+using Jezda.Common.Integrations.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -93,7 +94,7 @@ public abstract class BaseIntegrationClient
 
             if (!response.IsSuccessStatusCode)
             {
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                var content = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
                 Logger.LogError("Integration request failed. StatusCode: {StatusCode}, Content: {Content}", response.StatusCode, content);
                 response.EnsureSuccessStatusCode();
             }
@@ -130,10 +131,10 @@ public abstract class BaseIntegrationClient
                 return default;
             }
 
-            return await response.Content.ReadFromJsonAsync<TResponse>(JsonSerializerOptions, cancellationToken);
+            return await response.Content.ReadFromUtf8JsonAsync<TResponse>(JsonSerializerOptions, cancellationToken);
         }
 
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var content = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
         Logger.LogError("Integration request failed. StatusCode: {StatusCode}, Content: {Content}", response.StatusCode, content);
         
         // Throw exception to be handled by caller or global handler

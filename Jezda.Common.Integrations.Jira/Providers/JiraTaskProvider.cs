@@ -1,6 +1,7 @@
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
+using Jezda.Common.Integrations.Http;
 using Jezda.Common.Integrations.Jira.Models;
 using Microsoft.Extensions.Logging;
 using System.Net;
@@ -71,7 +72,7 @@ public sealed class JiraTaskProvider(
         JiraHttp.ThrowIfNotApiResponse(response);
         response.EnsureSuccessStatusCode();
 
-        var projects = await response.Content.ReadFromJsonAsync<List<JiraProject>>(JsonOptions, cancellationToken)
+        var projects = await response.Content.ReadFromUtf8JsonAsync<List<JiraProject>>(JsonOptions, cancellationToken)
                        ?? [];
         var site = client.BaseAddress!;
 
@@ -120,7 +121,7 @@ public sealed class JiraTaskProvider(
         JiraHttp.ThrowIfNotApiResponse(response);
         response.EnsureSuccessStatusCode();
 
-        var searchResponse = await response.Content.ReadFromJsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);
+        var searchResponse = await response.Content.ReadFromUtf8JsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);
         var site = client.BaseAddress!;
 
         return [.. (searchResponse?.Issues ?? []).Select(i => new ExternalTaskDto

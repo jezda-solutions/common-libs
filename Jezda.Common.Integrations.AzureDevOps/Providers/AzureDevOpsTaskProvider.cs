@@ -3,6 +3,7 @@ using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
+using Jezda.Common.Integrations.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -121,7 +122,7 @@ public sealed class AzureDevOpsTaskProvider(
             using var httpResponse = await client.GetAsync(url, cancellationToken);
             await EnsureSuccessAsync(httpResponse, cancellationToken);
 
-            var page = await httpResponse.Content.ReadFromJsonAsync<AdoProjectListResponse>(JsonOptions, cancellationToken);
+            var page = await httpResponse.Content.ReadFromUtf8JsonAsync<AdoProjectListResponse>(JsonOptions, cancellationToken);
             projects.AddRange(page?.Value ?? []);
 
             continuationToken = httpResponse.Headers.TryGetValues(ContinuationTokenHeader, out var values)
@@ -321,7 +322,7 @@ public sealed class AzureDevOpsTaskProvider(
             $"_apis/projects/{Uri.EscapeDataString(idOrName)}?api-version={_apiVersion}", cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
-        return await response.Content.ReadFromJsonAsync<AdoProject>(JsonOptions, cancellationToken)
+        return await response.Content.ReadFromUtf8JsonAsync<AdoProject>(JsonOptions, cancellationToken)
                ?? throw new HttpRequestException($"Azure DevOps returned an empty project for {idOrName}");
     }
 
@@ -393,7 +394,7 @@ public sealed class AzureDevOpsTaskProvider(
         using var response = await client.PostAsJsonAsync(url, wiqlRequest, JsonOptions, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
-        var result = await response.Content.ReadFromJsonAsync<AdoWiqlResponse>(JsonOptions, cancellationToken);
+        var result = await response.Content.ReadFromUtf8JsonAsync<AdoWiqlResponse>(JsonOptions, cancellationToken);
 
         return result?.WorkItems ?? [];
     }
@@ -432,9 +433,10 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     // Best effort: a body that cannot be read must not replace the status code, which is what callers
-    // branch on, so the filter deliberately catches every failure to read the content. A charset .NET
-    // does not know surfaces as InvalidOperationException, and one it knows but has disabled, such as
-    // utf-7, as NotSupportedException.
+    // branch on, so the filter catches a connection that drops mid-body and content already disposed
+    // (ObjectDisposedException is an InvalidOperationException), and content that cannot be
+    // buffered (NotSupportedException). The declared charset cannot fail it:
+    // the body is read as UTF-8 regardless; see HttpContentUtf8Extensions.
     // The base URL comes from the user, so the body can be anything: control characters go, because a
     // line break in it would forge an entry in a plain-text log.
     private static async Task<string> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -442,7 +444,7 @@ public sealed class AzureDevOpsTaskProvider(
         string body;
         try
         {
-            body = await response.Content.ReadAsStringAsync(cancellationToken);
+            body = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or NotSupportedException)
         {
@@ -469,7 +471,7 @@ public sealed class AzureDevOpsTaskProvider(
                 using var httpResponse = await client.GetAsync(url, ct);
                 await EnsureSuccessAsync(httpResponse, ct);
 
-                return await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
+                return await httpResponse.Content.ReadFromUtf8JsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
             },
             logger,
             cancellationToken);

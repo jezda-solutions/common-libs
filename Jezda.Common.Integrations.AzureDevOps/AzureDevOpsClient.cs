@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Models;
 using Jezda.Common.Integrations.Clients;
+using Jezda.Common.Integrations.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -70,10 +71,10 @@ public sealed class AzureDevOpsClient(
 
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<AdoWorkItem>(JsonSerializerOptions, cancellationToken);
+                return await response.Content.ReadFromUtf8JsonAsync<AdoWorkItem>(JsonSerializerOptions, cancellationToken);
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            var errorContent = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
             Logger.LogError("Failed to create work item. Status: {Status}, Content: {Content}", response.StatusCode, errorContent);
             response.EnsureSuccessStatusCode();
             return null; // Unreachable, EnsureSuccessStatusCode throws
