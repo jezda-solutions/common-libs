@@ -46,7 +46,7 @@ public sealed class AzureDevOpsClient(
 
     public async Task<AdoWorkItem?> GetWorkItemByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        var url = $"_apis/wit/workitems/{id}?api-version={_options.ApiVersion}";
+        var url = $"_apis/wit/workitems/{id}?$expand=links&api-version={_options.ApiVersion}";
         return await GetAsync<AdoWorkItem>(url, cancellationToken);
     }
 
@@ -59,7 +59,7 @@ public sealed class AzureDevOpsClient(
             Value = field.Value
         }).ToList();
 
-        var url = $"{Uri.EscapeDataString(project)}/_apis/wit/workitems/${Uri.EscapeDataString(type)}?api-version={_options.ApiVersion}";
+        var url = $"{Uri.EscapeDataString(project)}/_apis/wit/workitems/${Uri.EscapeDataString(type)}?$expand=links&api-version={_options.ApiVersion}";
 
         try
         {

@@ -25,6 +25,9 @@ internal static class AzureDevOpsWorkItemBatch
     /// applies its client's own error handling.
     /// </summary>
     /// <remarks>
+    /// <c>$expand=links</c> because the batch answers without <c>_links</c> otherwise, and
+    /// <c>_links.html</c> is the item's page in the browser.
+    /// <para />
     /// <c>errorPolicy=omit</c> because an id deleted or made unreadable after the WIQL ran would
     /// otherwise fail the whole batch with 404. Azure DevOps answers such an id with a null slot,
     /// which is dropped here, so the result can hold fewer items than ids were asked for. A warning
@@ -57,7 +60,7 @@ internal static class AzureDevOpsWorkItemBatch
 
         foreach (var batch in requested.Chunk(MaxIdsPerRequest))
         {
-            var url = $"_apis/wit/workitems?ids={string.Join(",", batch)}&errorPolicy=omit&api-version={apiVersion}";
+            var url = $"_apis/wit/workitems?ids={string.Join(",", batch)}&$expand=links&errorPolicy=omit&api-version={apiVersion}";
             var response = await getBatch(url, cancellationToken);
 
             if (response?.Value is null)

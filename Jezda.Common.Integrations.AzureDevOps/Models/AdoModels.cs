@@ -7,11 +7,28 @@ public sealed class AdoWorkItem
     [JsonPropertyName("id")]
     public int Id { get; set; }
 
+    /// <summary>
+    /// The REST resource (<c>_apis/wit/workItems/{id}</c>), which answers with JSON. For the page a
+    /// person opens, use <see cref="HtmlUrl"/>.
+    /// </summary>
     [JsonPropertyName("url")]
     public string? Url { get; set; }
 
     [JsonPropertyName("fields")]
     public Dictionary<string, object> Fields { get; set; } = new();
+
+    /// <summary>
+    /// The links Azure DevOps reports for the item. The clients in this package ask for them with
+    /// <c>$expand=links</c>.
+    /// </summary>
+    [JsonPropertyName("_links")]
+    public AdoWorkItemLinks? Links { get; set; }
+
+    /// <summary>
+    /// The work item's page in the browser (<c>_links.html.href</c>), or null when the answer had no
+    /// links.
+    /// </summary>
+    public string? HtmlUrl => Links?.Html?.Href;
 
     public string Title => Field("System.Title");
 
@@ -27,6 +44,18 @@ public sealed class AdoWorkItem
     // therefore "absent and null both mean empty".
     private string Field(string name) =>
         Fields.TryGetValue(name, out var value) ? value?.ToString() ?? string.Empty : string.Empty;
+}
+
+public sealed class AdoWorkItemLinks
+{
+    [JsonPropertyName("html")]
+    public AdoLink? Html { get; set; }
+}
+
+public sealed class AdoLink
+{
+    [JsonPropertyName("href")]
+    public string? Href { get; set; }
 }
 
 public sealed class AdoWiqlRequest

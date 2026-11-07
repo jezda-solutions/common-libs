@@ -1104,7 +1104,7 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task SearchTasksAsync_WithoutAProject_KeepsTheItemsOwnLink()
+    public async Task SearchTasksAsync_WithoutAProjectOrLinks_LinksTheOrganisationLevelPage()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new
         {
@@ -1127,9 +1127,51 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.SearchTasksAsync("my-pat", "project", baseUrl: "https://dev.azure.com/myorg/");
 
+        // The REST link would open JSON; Azure DevOps opens the item from the organisation level too.
         var task = Assert.Single(result);
-        Assert.Equal("https://dev.azure.com/myorg/_apis/wit/workItems/8", task.Url);
+        Assert.Equal("https://dev.azure.com/myorg/_workitems/edit/8", task.Url);
         Assert.Equal(string.Empty, task.ProjectId);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_PrefersTheItemsHtmlLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[] { new { id = 5, url = "https://dev.azure.com/myorg/_apis/wit/workItems/5" } }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, """
+            {"count":1,"value":[{"id":5,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/5",
+              "fields":{"System.Title":"Linked","System.State":"New"},
+              "_links":{"html":{"href":"https://dev.azure.com/myorg/guid-ProjectA/_workitems/edit/5"}}}]}
+            """);
+
+        var result = await _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/");
+
+        Assert.Equal("https://dev.azure.com/myorg/guid-ProjectA/_workitems/edit/5", Assert.Single(result).Url);
+        // The batch answers without _links unless asked.
+        Assert.Contains("$expand=links", _handler.SentRequests[^1].RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_WithoutAProject_UsesTheItemsHtmlLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            queryType = "flat",
+            workItems = new object[] { new { id = 8, url = "https://dev.azure.com/myorg/_apis/wit/workItems/8" } }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, """
+            {"count":1,"value":[{"id":8,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/8",
+              "fields":{"System.Title":"No project","System.State":"New"},
+              "_links":{"html":{"href":"https://dev.azure.com/myorg/_workitems/edit/8"}}}]}
+            """);
+
+        var result = await _provider.SearchTasksAsync("my-pat", "project", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal("https://dev.azure.com/myorg/_workitems/edit/8", Assert.Single(result).Url);
     }
 
     [Fact]
