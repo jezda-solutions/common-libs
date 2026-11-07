@@ -17,10 +17,16 @@ public static class HttpResilienceDefaults
     /// end as a timeout instead of a 429, and calling again without being told when keeps calling a
     /// provider that asked for a pause, which GitHub warns can get an integration banned.
     /// <para />
-    /// The circuit breaker is shared by everyone using the same named client, so a 429 does not count
-    /// towards it: one token's rate limit would otherwise open it for every other token, and they
-    /// would get Polly's <c>BrokenCircuitException</c> instead of an answer. Polly has no neutral outcome, so the breaker
-    /// records a 429 as a success: the provider did answer, which is what the breaker measures.
+    /// Each address (scheme, host and port) gets its own pipeline and so its own circuit breaker.
+    /// Jira and Azure DevOps send every customer's site or organisation through the same named
+    /// client, so one site that is down or mistyped would otherwise open the breaker for all of them,
+    /// and they would get Polly's <c>BrokenCircuitException</c> instead of an answer. A pipeline is
+    /// kept for every address the client has called, which the configured sites bound.
+    /// <para />
+    /// Tokens on the same address still share a breaker, so a 429 does not count towards it: one
+    /// token's rate limit would otherwise open it for every other token. Polly has no neutral outcome,
+    /// so the breaker records a 429 as a success: the provider did answer, which is what the breaker
+    /// measures.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder)
     {
@@ -34,9 +40,9 @@ public static class HttpResilienceDefaults
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
 
-            // The breaker is shared by every caller of the named client, whatever their token, so it
+            // The breaker is shared by every caller of the same address, whatever their token, so it
             // counts only what says the provider itself is failing. A 429 is one token's rate limit:
-            // counted, it would open the breaker for every other token on the same provider.
+            // counted, it would open the breaker for every other token on the same address.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is not { StatusCode: HttpStatusCode.TooManyRequests }
                 && (HttpClientResiliencePredicates.IsTransient(args.Outcome)
@@ -46,7 +52,7 @@ public static class HttpResilienceDefaults
 
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-        });
+        }).SelectPipelineByAuthority();
 
         return builder;
     }
