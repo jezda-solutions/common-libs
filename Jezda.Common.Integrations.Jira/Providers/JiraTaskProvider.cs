@@ -138,9 +138,8 @@ public sealed class JiraTaskProvider(
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
-        // Credentials written into the base URL would otherwise reach every request URI and every
-        // page link built from it. Authentication goes through the header below.
-        client.BaseAddress = new UriBuilder(new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/")) { UserName = "", Password = "" }.Uri;
+        // Without credentials, query or fragment, and with a trailing slash; see IntegrationBaseAddress.
+        client.BaseAddress = IntegrationBaseAddress.Create(baseUrl);
 
         // ASCII would turn a character outside its range into '?', and a valid email would read as rejected.
         var base64Auth = Convert.ToBase64String(Encoding.UTF8.GetBytes(accessToken));

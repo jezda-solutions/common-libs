@@ -46,3 +46,9 @@ public class JiraClient : BaseIntegrationClient, IJiraClient
     }
 }
 ```
+
+4. Set a base address that comes from a user or from configuration with
+   `IntegrationBaseAddress.Create(baseUrl)` (`Jezda.Common.Integrations.Http`), never
+   `new Uri(baseUrl)`. It drops credentials, query and fragment, and ends the path with `/`, so a
+   relative request path keeps the last segment (`https://dev.azure.com/myorg` would otherwise lose
+   `myorg`).

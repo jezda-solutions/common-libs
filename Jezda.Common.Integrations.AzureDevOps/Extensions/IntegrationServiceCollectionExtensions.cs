@@ -2,6 +2,7 @@ using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Resilience;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
+using Jezda.Common.Integrations.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -26,7 +27,7 @@ public static class IntegrationServiceCollectionExtensions
                 throw new InvalidOperationException("Azure DevOps BaseUrl is not configured.");
             }
 
-            client.BaseAddress = new Uri(options.BaseUrl);
+            client.BaseAddress = IntegrationBaseAddress.Create(options.BaseUrl);
 
             if (!string.IsNullOrEmpty(options.PersonalAccessToken))
             {
