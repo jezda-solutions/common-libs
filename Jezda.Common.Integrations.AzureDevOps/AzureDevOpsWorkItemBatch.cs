@@ -16,7 +16,7 @@ internal static class AzureDevOpsWorkItemBatch
     private const int MaxIdsPerRequest = 200;
 
     /// <summary>
-    /// The most missing ids a warning names, so a lost project does not write thousands into one line.
+    /// The most ids a warning names, so a lost project does not write thousands into one line.
     /// </summary>
     private const int MaxIdsInWarning = 20;
 
@@ -31,7 +31,8 @@ internal static class AzureDevOpsWorkItemBatch
     /// records the difference, because a token that lost access to some items looks the same as
     /// those items being gone. It names the organisation, since one host can serve several, and the
     /// missing ids, which are what lets someone check whether those items still exist. The result
-    /// holds each requested id at most once and never an id that was not requested.
+    /// holds each requested id at most once and never an id that was not requested; items that were not
+    /// requested are logged in a warning of their own, since they point at the base URL, not the token.
     /// </remarks>
     /// <exception cref="HttpRequestException">
     /// A batch was answered without a list. Omitted items are null slots in a list, so a missing list
@@ -73,7 +74,19 @@ internal static class AzureDevOpsWorkItemBatch
         // reach callers as part of the result and count as returned below. An item returned twice
         // would break callers that key the result by id, and count twice below.
         var requestedIds = requested.ToHashSet();
+        var unrequested = workItems.Where(workItem => !requestedIds.Contains(workItem.Id)).Select(workItem => workItem.Id).ToList();
         workItems = [.. workItems.Where(workItem => requestedIds.Contains(workItem.Id)).DistinctBy(workItem => workItem.Id)];
+
+        // Logged on its own, before the missing ids: items nobody asked for point at the base URL (a
+        // proxy, another organisation), not at the token's scope, which the warning below suggests.
+        if (unrequested.Count > 0)
+        {
+            logger.LogWarning(
+                "Azure DevOps returned {Unrequested} work items on {Organisation} that were not requested, so they were dropped. Check that the base URL points at this organisation. Their ids: {UnrequestedIds}",
+                unrequested.Count,
+                organisation,
+                FormatIds(unrequested));
+        }
 
         // By id, not by count: a duplicate in either list would otherwise hide a missing item.
         var missing = requested.Except(workItems.Select(workItem => workItem.Id)).ToList();
@@ -85,10 +98,13 @@ internal static class AzureDevOpsWorkItemBatch
                 workItems.Count,
                 requested.Count,
                 organisation,
-                string.Join(", ", missing.Take(MaxIdsInWarning))
-                    + (missing.Count > MaxIdsInWarning ? $" and {missing.Count - MaxIdsInWarning} more" : string.Empty));
+                FormatIds(missing));
         }
 
         return workItems;
     }
+
+    private static string FormatIds(IReadOnlyCollection<int> ids) =>
+        string.Join(", ", ids.Take(MaxIdsInWarning))
+        + (ids.Count > MaxIdsInWarning ? $" and {ids.Count - MaxIdsInWarning} more" : string.Empty);
 }

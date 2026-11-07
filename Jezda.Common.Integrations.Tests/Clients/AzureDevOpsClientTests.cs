@@ -155,7 +155,7 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
-    public async Task GetWorkItemsByQueryAsync_BatchReturnsAnItemNotRequested_DropsItAndWarnsAboutTheMissingOne()
+    public async Task GetWorkItemsByQueryAsync_BatchReturnsAnItemNotRequested_DropsItAndNamesItApartFromTheMissingOne()
     {
         var logger = new RecordingLogger<AzureDevOpsClient>();
         var client = new AzureDevOpsClient(
@@ -167,10 +167,14 @@ public class AzureDevOpsClientTests
 
         var result = await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
 
+        // The unrequested item points at the base URL, so the token scope hint alone would mislead.
         Assert.Equal([1], result.Select(w => w.Id));
         Assert.Equal(
-            "Azure DevOps returned 1 of 2 requested work items on https://dev.azure.com/myorg/. The rest were deleted or the token cannot read them. Missing ids: 2",
-            Assert.Single(logger.Warnings));
+            [
+                "Azure DevOps returned 1 work items on https://dev.azure.com/myorg/ that were not requested, so they were dropped. Check that the base URL points at this organisation. Their ids: 99",
+                "Azure DevOps returned 1 of 2 requested work items on https://dev.azure.com/myorg/. The rest were deleted or the token cannot read them. Missing ids: 2"
+            ],
+            logger.Warnings);
     }
 
     [Fact]
