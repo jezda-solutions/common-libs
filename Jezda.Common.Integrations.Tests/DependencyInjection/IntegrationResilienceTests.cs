@@ -269,6 +269,74 @@ public class IntegrationResilienceTests
         Assert.Throws<ArgumentNullException>(() => builder.AddIntegrationResilience(pipelineKey: null!));
     }
 
+    [Fact]
+    public async Task AddressesBeyondTheUnprovenBudget_ShareOneBreaker()
+    {
+        // Addresses that never answered successfully, such as base URLs a user mistyped, use up the
+        // 100 pipelines kept for unproven keys: 99 probes, because the resilience library takes one
+        // place when it checks the selector with a placeholder request. A 404 is not retried.
+        var client = CreateClient();
+        _handler.RespondTo("/probe", HttpStatusCode.NotFound);
+        _handler.RespondTo("/items", ServiceUnavailable);
+        await ProbeAsync(client, count: 99);
+
+        await FailUntilOpenAsync(client, "https://down.example.test/items");
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(
+            () => client.GetAsync("https://other-new.example.test/items"));
+    }
+
+    [Fact]
+    public async Task AddressThatAnswered_GetsItsOwnBreaker_AfterTheUnprovenBudgetIsUsed()
+    {
+        var client = CreateClient();
+        _handler.RespondTo("/probe", HttpStatusCode.NotFound);
+        _handler.RespondTo("/items", ServiceUnavailable);
+        _handler.RespondTo("/up", HttpStatusCode.OK);
+        await ProbeAsync(client, count: 99);
+
+        // Through the shared pipeline, which proves the address; its next call gets its own.
+        using (var first = await client.GetAsync("https://up.example.test/up"))
+        {
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        }
+
+        await FailUntilOpenAsync(client, "https://down.example.test/items");
+
+        using var response = await client.GetAsync("https://up.example.test/up");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Opens the breaker of the pipeline a URL shares with others: their successes there change
+    /// how many failures it takes, so this calls until it opens rather than a fixed number of times.
+    /// </summary>
+    private static async Task FailUntilOpenAsync(HttpClient client, string url)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            try
+            {
+                using var failed = await client.GetAsync(url);
+            }
+            catch (BrokenCircuitException)
+            {
+                return;
+            }
+        }
+
+        Assert.Fail($"The breaker for {url} did not open.");
+    }
+
+    private static async Task ProbeAsync(HttpClient client, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            using var probe = await client.GetAsync($"https://probe{i}.example.test/probe");
+            Assert.Equal(HttpStatusCode.NotFound, probe.StatusCode);
+        }
+    }
+
     /// <summary>
     /// The named client a provider registers, with its own pipeline key, sending to the mock handler.
     /// </summary>

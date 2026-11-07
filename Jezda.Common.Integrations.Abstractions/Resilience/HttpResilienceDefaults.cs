@@ -24,9 +24,11 @@ public static class HttpResilienceDefaults
     /// whose callers share one address passes its own key to the other overload: Azure DevOps adds the
     /// organisation, GitHub a hash of the token.
     /// <para />
-    /// Everything in the pipeline is per key, the concurrency limit (1000) included. A pipeline is
-    /// kept for every key the client has seen, for the life of the process; base URLs a user typed
-    /// count too, not only the configured sites.
+    /// Everything in the pipeline is per key, the concurrency limit (1000) included. A client keeps
+    /// at most 1000 pipelines, at most 100 of them for keys that had no successful answer yet, for
+    /// the life of the process; requests beyond that share one pipeline. A key that once answered
+    /// successfully gets its own as long as room is left, so a base URL a user mistyped, or probed
+    /// on purpose, cannot take a working site's breaker away.
     /// <para />
     /// Tokens on the same key still share a breaker, so a 429 does not count towards it: one
     /// token's rate limit would otherwise open it for every other token. Polly has no neutral outcome,
@@ -50,13 +52,15 @@ public static class HttpResilienceDefaults
     /// <remarks>
     /// For a provider whose callers do not all fail together: every organisation on one host, or
     /// every token on one address (<see cref="IntegrationPipelineKeys.AddressAndAuthorization"/>).
-    /// A pipeline is kept for every key, for the life of the process.
+    /// The number of pipelines is bounded as for the default key.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(
         this IHttpClientBuilder builder,
         Func<HttpRequestMessage, string> pipelineKey)
     {
         ArgumentNullException.ThrowIfNull(pipelineKey);
+
+        var budget = new PipelineKeyBudget(pipelineKey);
 
         builder.AddStandardResilienceHandler(options =>
         {
@@ -80,7 +84,10 @@ public static class HttpResilienceDefaults
 
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-        }).SelectPipelineBy(_ => pipelineKey);
+        }).SelectPipelineBy(_ => budget.Select);
+
+        // Inside the resilience handler, so it sees each attempt's answer.
+        builder.AddHttpMessageHandler(() => new PipelineKeyBudgetHandler(budget));
 
         return builder;
     }
