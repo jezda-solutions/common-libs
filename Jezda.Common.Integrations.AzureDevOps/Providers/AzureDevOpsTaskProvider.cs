@@ -470,7 +470,9 @@ public sealed class AzureDevOpsTaskProvider(
                 using var httpResponse = await client.GetAsync(url, ct);
                 await EnsureSuccessAsync(httpResponse, ct);
 
-                return await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
+                return httpResponse.StatusCode == HttpStatusCode.NoContent
+                    ? null
+                    : await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
             },
             logger,
             cancellationToken);

@@ -60,10 +60,11 @@ public sealed class AdoWorkItemListResponse
 
     /// <summary>
     /// The requested work items. With <c>errorPolicy=omit</c>, an item that was deleted or cannot be
-    /// read is a <see langword="null"/> slot.
+    /// read is a <see langword="null"/> slot. The list itself is <see langword="null"/> when the
+    /// answer had none, which is not the same as every item being omitted.
     /// </summary>
     [JsonPropertyName("value")]
-    public List<AdoWorkItem?> Value { get; set; } = new();
+    public List<AdoWorkItem?>? Value { get; set; }
 }
 
 public sealed class JsonPatchOperation

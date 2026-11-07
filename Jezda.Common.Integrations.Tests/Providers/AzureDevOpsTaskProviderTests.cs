@@ -619,6 +619,31 @@ public class AzureDevOpsTaskProviderTests
         Assert.Equal(["1"], result.Select(t => t.Id));
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("""{"count":2}""")]
+    [InlineData("""{"count":2,"value":null}""")]
+    public async Task GetTasksAsync_BatchAnswersWithoutAList_ThrowsInsteadOfReadingAsOmitted(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/"));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_BatchAnswersNoContent_ThrowsInsteadOfReadingAsOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/"));
+    }
+
     [Fact]
     public async Task GetTasksAsync_ItemsOmitted_LogsAWarningWithTheCounts()
     {

@@ -82,6 +82,40 @@ public class AzureDevOpsClientTests
         Assert.Empty(logger.Warnings);
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("""{"count":2}""")]
+    [InlineData("""{"count":2,"value":null}""")]
+    public async Task GetWorkItemsByQueryAsync_BatchAnswersWithoutAList_ThrowsInsteadOfReadingAsOmitted(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_BatchAnswersNoContent_ThrowsInsteadOfReadingAsOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_BatchAnswersAnEmptyList_ReadsAsOmitted()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":0,"value":[]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Empty(result);
+    }
+
     [Fact]
     public async Task GetWorkItemsByQueryAsync_MoreIdsThanOneBatch_SplitsAt200()
     {

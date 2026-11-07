@@ -26,6 +26,10 @@ internal static class AzureDevOpsWorkItemBatch
     /// records the difference, because a token that lost access to some items looks the same as
     /// those items being gone.
     /// </remarks>
+    /// <exception cref="HttpRequestException">
+    /// A batch was answered without a list. Omitted items are null slots in a list, so a missing list
+    /// says nothing about them, and reading it as omitted would lose up to a whole batch.
+    /// </exception>
     public static async Task<List<AdoWorkItem>> FetchAsync(
         IEnumerable<int> ids,
         string apiVersion,
@@ -43,10 +47,13 @@ internal static class AzureDevOpsWorkItemBatch
             var url = $"_apis/wit/workitems?ids={string.Join(",", batch)}&errorPolicy=omit&api-version={apiVersion}";
             var response = await getBatch(url, cancellationToken);
 
-            if (response?.Value is not null)
+            if (response?.Value is null)
             {
-                workItems.AddRange(response.Value.OfType<AdoWorkItem>());
+                throw new HttpRequestException(
+                    $"Azure DevOps answered a batch of {batch.Length} work items without a list of them.");
             }
+
+            workItems.AddRange(response.Value.OfType<AdoWorkItem>());
         }
 
         if (workItems.Count < requested)
