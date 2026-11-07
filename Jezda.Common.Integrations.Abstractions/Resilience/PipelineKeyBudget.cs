@@ -35,9 +35,10 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     /// <summary>
     /// The key <see cref="Select"/> computed, carried on the request to <see cref="RecordSuccess"/>:
     /// a redirect rewrites the URI and drops the <c>Authorization</c> header, so computing it again
-    /// there would prove the wrong key.
+    /// there would prove the wrong key. Per instance, so a second budget on the same request cannot
+    /// overwrite it.
     /// </summary>
-    private static readonly HttpRequestOptionsKey<string> RequestKey = new("Jezda.Integrations.PipelineKey");
+    private readonly HttpRequestOptionsKey<string> _requestKey = new($"Jezda.Integrations.PipelineKey.{Guid.NewGuid():N}");
 
     // Admitted keys, with whether they have had a successful answer yet.
     private readonly ConcurrentDictionary<string, bool> _admitted = new(StringComparer.Ordinal);
@@ -46,7 +47,7 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
 
     // Counted apart from the dictionaries: ConcurrentDictionary.Count takes every lock it has.
     private int _admittedCount;
-    private int _provenCount;
+    private int _provenCount; // changed and read under the admission lock only
     private int _unprovenAdmitted;
     private int _warnedFull;
     private int _warnedUnprovenFull;
@@ -63,7 +64,7 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     public string Select(HttpRequestMessage request)
     {
         var key = pipelineKey(request);
-        request.Options.Set(RequestKey, key);
+        request.Options.Set(_requestKey, key);
 
         if (_admitted.ContainsKey(key))
         {
@@ -94,7 +95,7 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
 
             if (proven)
             {
-                Interlocked.Decrement(ref _provenCount);
+                _provenCount--;
             }
             else if (Volatile.Read(ref _unprovenAdmitted) >= MaxUnprovenKeys)
             {
@@ -135,7 +136,7 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     /// </summary>
     public void RecordSuccess(HttpRequestMessage request)
     {
-        if (!request.Options.TryGetValue(RequestKey, out var key))
+        if (!request.Options.TryGetValue(_requestKey, out var key))
         {
             return;
         }
@@ -150,14 +151,20 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
             return;
         }
 
-        if (Volatile.Read(ref _admittedCount) + Volatile.Read(ref _provenCount) >= MaxKeys)
+        // Under the admission lock: otherwise Select could admit the key between the check above and
+        // the record, leaving it both admitted and proven for good, or concurrent records could pass
+        // the budget check together. Only successes on the shared pipeline come here.
+        lock (_admitLock)
         {
-            return;
-        }
+            if (_admitted.ContainsKey(key) || _admittedCount + _provenCount >= MaxKeys)
+            {
+                return;
+            }
 
-        if (_proven.TryAdd(key, 0))
-        {
-            Interlocked.Increment(ref _provenCount);
+            if (_proven.TryAdd(key, 0))
+            {
+                _provenCount++;
+            }
         }
     }
 }

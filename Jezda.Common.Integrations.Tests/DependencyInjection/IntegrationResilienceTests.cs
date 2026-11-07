@@ -307,6 +307,29 @@ public class IntegrationResilienceTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Fact]
+    public async Task AddressThatAnswersOnARetry_IsProvenToo()
+    {
+        // The key travels on the request's options, which the retry must carry to the answer.
+        var client = CreateClient();
+        _handler.RespondTo("/probe", HttpStatusCode.NotFound);
+        _handler.RespondTo("/items", ServiceUnavailable);
+        await ProbeAsync(client, count: 99);
+        _handler.EnqueueResponse(ServiceUnavailable);
+        _handler.EnqueueResponse(HttpStatusCode.OK);
+
+        using (var first = await client.GetAsync("https://up.example.test/up"))
+        {
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        }
+
+        await FailUntilOpenAsync(client, "https://down.example.test/items");
+
+        _handler.EnqueueResponse(HttpStatusCode.OK);
+        using var response = await client.GetAsync("https://up.example.test/up");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     /// <summary>
     /// Opens the breaker of the pipeline a URL shares with others: their successes there change
     /// how many failures it takes, so this calls until it opens rather than a fixed number of times.
