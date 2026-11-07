@@ -66,7 +66,6 @@ public class GitHubTaskProviderTests
     }
 
     [Theory]
-    [InlineData("""{"message":"You have exceeded a secondary rate limit."}""")]
     [InlineData("""{"message":"Maximum number of login attempts exceeded. Please try again later."}""")]
     [InlineData("<html>Blocked by proxy</html>")]
     public async Task ValidateConnectionAsync_Forbidden_ThrowsInsteadOfBlamingTheToken(string body)
@@ -79,8 +78,8 @@ public class GitHubTaskProviderTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.TooManyRequests)]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.InternalServerError)]
     public async Task ValidateConnectionAsync_OtherFailureStatus_ThrowsInsteadOfBlamingTheToken(HttpStatusCode status)
     {
         _handler.EnqueueResponse(status);
@@ -513,7 +512,7 @@ public class GitHubTaskProviderTests
         _handler.EnqueueResponse(HttpStatusCode.OK, new { total_count = 1, items = new[] { SearchItem(1, "owner/a") } });
         _handler.EnqueueResponse(limited.Build);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.SearchTasksAsync("token", "bug"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
     }
@@ -525,7 +524,7 @@ public class GitHubTaskProviderTests
         // The search API allows 30 requests a minute, so it runs out long before the lookups do.
         _handler.EnqueueResponse(limited.Build);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.SearchTasksAsync("token", "bug"));
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.SearchTasksAsync("token", "bug"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
     }
@@ -590,15 +589,131 @@ public class GitHubTaskProviderTests
             _provider.SearchTasksAsync("token", "bug", cancellationToken: cts.Token));
     }
 
-    [Fact]
-    public async Task GetTasksAsync_RateLimitedLookup_KeepsTheForbiddenStatus()
+    [Theory]
+    [MemberData(nameof(RateLimitResponses))]
+    public async Task ValidateConnectionAsync_RateLimited_ThrowsTooManyRequests(RateLimitResponse limited)
     {
-        // Only search translates a rate limit so far.
-        _handler.EnqueueResponse(RateLimited);
+        _handler.EnqueueResponse(limited.Build);
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.ValidateConnectionAsync("token"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(RateLimitResponses))]
+    public async Task GetProjectsAsync_RateLimitedPage_ThrowsTooManyRequests(RateLimitResponse limited)
+    {
+        // A later page, so following the Link header is covered as well as the first request.
+        _handler.EnqueueResponseWithHeader(new[] { Repo(1, "owner/a") }, "Link", "<https://api.github.com/user/repos?page=2>; rel=\"next\"");
+        _handler.EnqueueResponse(limited.Build);
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(RateLimitResponses))]
+    public async Task GetTasksAsync_RateLimitedRepositoryLookup_ThrowsTooManyRequests(RateLimitResponse limited)
+    {
+        // Consumers read 403 as an expired token, and a sync hitting a rate limit is no reason to sign in again.
+        _handler.EnqueueResponse(limited.Build);
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetTasksAsync("token", "owner/a"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(RateLimitResponses))]
+    public async Task GetTasksAsync_RateLimitedIssuesPage_ThrowsTooManyRequests(RateLimitResponse limited)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Repo(1, "owner/a"));
+        _handler.EnqueueResponse(limited.Build);
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetTasksAsync("token", "owner/a"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ForbiddenWithoutARateLimit_KeepsTheStatusCode()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Forbidden, new { message = "Resource protected by organization SAML enforcement." });
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "owner/a"));
 
+        Assert.IsNotType<IntegrationRateLimitException>(ex);
         Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task RateLimit_RetryAfterSeconds_RetryAtCountsFromTheResponseDate()
+    {
+        var sent = new DateTimeOffset(2026, 11, 7, 12, 0, 0, TimeSpan.Zero);
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("{}") };
+            response.Headers.Add("Retry-After", "60");
+            response.Headers.Date = sent;
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(sent.AddSeconds(60), ex.RetryAt);
+    }
+
+    [Fact]
+    public async Task RateLimit_RetryAfterDate_IsTheRetryAt()
+    {
+        var at = new DateTimeOffset(2026, 11, 7, 12, 5, 0, TimeSpan.Zero);
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("{}") };
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(at);
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(at, ex.RetryAt);
+    }
+
+    [Fact]
+    public async Task RateLimit_NoRequestsRemaining_RetryAtIsTheReset()
+    {
+        _handler.EnqueueResponse(() =>
+        {
+            var response = RateLimited();
+            response.Headers.Add("x-ratelimit-reset", "1793966400");
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1793966400), ex.RetryAt);
+    }
+
+    [Fact]
+    public async Task RateLimit_SecondaryWithRequestsRemaining_RetryAtIsUnknown()
+    {
+        // The reset belongs to the primary window, which is not used up, so it says nothing here.
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden)
+            {
+                Content = new StringContent("""{"message":"You have exceeded a secondary rate limit."}""")
+            };
+            response.Headers.Add("x-ratelimit-remaining", "4000");
+            response.Headers.Add("x-ratelimit-reset", "1793966400");
+            return response;
+        });
+
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Null(ex.RetryAt);
     }
 
     public sealed record RateLimitResponse(string Name, Func<HttpResponseMessage> Build)
