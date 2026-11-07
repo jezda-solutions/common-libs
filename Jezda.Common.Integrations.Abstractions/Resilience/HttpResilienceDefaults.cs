@@ -19,7 +19,8 @@ public static class HttpResilienceDefaults
     /// <para />
     /// The circuit breaker is shared by everyone using the same named client, so a 429 does not count
     /// towards it: one token's rate limit would otherwise open it for every other token, and they
-    /// would get Polly's <c>BrokenCircuitException</c> instead of an answer.
+    /// would get Polly's <c>BrokenCircuitException</c> instead of an answer. Polly has no neutral outcome, so the breaker
+    /// records a 429 as a success: the provider did answer, which is what the breaker measures.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder)
     {
