@@ -144,6 +144,60 @@ public class AzureDevOpsClientAuthenticationTests
         Assert.Equal("Project", Assert.Single(projects).Name);
     }
 
+    [Fact]
+    public async Task GetProjectsAsync_NoContent_ThrowsInsteadOfReadingAsNoProjects()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetWorkItemByIdAsync_NoContent_ThrowsInsteadOfReadingAsNotFound()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetWorkItemByIdAsync(1));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_NoContentOnWiql_ThrowsInsteadOfReadingAsNoMatches()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_NoContentLabelledAsJson_ThrowsInsteadOfReadingAsNoProjects()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent)
+        {
+            Content = new StringContent(string.Empty, Encoding.UTF8, "application/json")
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_EmptyOkWithoutContentType_ThrowsWithItsOwnStatus()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+    }
+
     private static HttpResponseMessage SignInPage(HttpStatusCode status) => new(status)
     {
         Content = new StringContent("<html><body>Sign in to your account</body></html>", Encoding.UTF8, "text/html")

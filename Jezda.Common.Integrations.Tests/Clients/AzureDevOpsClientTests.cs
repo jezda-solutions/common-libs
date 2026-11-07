@@ -227,8 +227,10 @@ public class AzureDevOpsClientTests
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
 
-        await Assert.ThrowsAsync<HttpRequestException>(
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
             () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
     }
 
     [Fact]
