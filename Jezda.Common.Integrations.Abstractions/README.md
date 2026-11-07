@@ -7,7 +7,7 @@ Shared abstractions for external task provider integrations, including the `IExt
 - **`IExternalTaskProvider`** — unified interface for importing tasks from external providers (GitHub, Jira, Azure DevOps)
 - **`ExternalProvider`** — enum identifying the provider
 - **`ExternalProjectDto`** / **`ExternalTaskDto`** — normalized DTOs returned by all providers
-- **`HttpResilienceDefaults.AddIntegrationResilience()`** — extension method for configuring standard resilience policies on `IHttpClientBuilder`. It does not retry a 429, so the caller gets the provider's answer at once instead of a timeout
+- **`HttpResilienceDefaults.AddIntegrationResilience()`** — extension method for configuring standard resilience policies on `IHttpClientBuilder`. It retries a 429 only when `Retry-After` asks for at most 5 s; a longer pause, or a 429 without `Retry-After`, reaches the caller at once instead of ending as a timeout
 - **`IntegrationRateLimitException`** — an `HttpRequestException` with status 429 that a provider throws when it recognises a rate limit, even one answered with 403; `RetryAt` says when to try again, when the provider said. GitHub throws it for now
 - **`HttpRedirectDefaults.DisableAutoRedirect()`** — extension method that stops an `IHttpClientBuilder` from following redirects, which would drop the `Authorization` header and make a valid token read as expired
 

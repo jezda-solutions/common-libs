@@ -11,10 +11,11 @@ public static class HttpResilienceDefaults
     /// a 10 s timeout per attempt and 30 s in total.
     /// </summary>
     /// <remarks>
-    /// A 429 is not retried, so the caller gets it at once, with its <c>Retry-After</c>. Retrying would
-    /// wait out a <c>Retry-After</c> longer than the total timeout and end as a timeout instead of a
-    /// 429, or keep calling a provider that asked for a pause, which GitHub warns can get an
-    /// integration banned.
+    /// A 429 is retried only when its <c>Retry-After</c> asks for at most
+    /// <see cref="MaxRetryAfterToRetry"/>, waiting what it asks. A longer pause, or a 429 without
+    /// <c>Retry-After</c>, reaches the caller at once: waiting it out would pass the total timeout and
+    /// end as a timeout instead of a 429, and calling again without being told when keeps calling a
+    /// provider that asked for a pause, which GitHub warns can get an integration banned.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder)
     {
@@ -23,8 +24,9 @@ public static class HttpResilienceDefaults
             options.Retry.MaxRetryAttempts = 3;
             options.Retry.Delay = TimeSpan.FromMilliseconds(500);
             options.Retry.ShouldHandle = args => ValueTask.FromResult(
-                HttpClientResiliencePredicates.IsTransient(args.Outcome)
-                && args.Outcome.Result?.StatusCode != HttpStatusCode.TooManyRequests);
+                args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests } response
+                    ? AsksForAShortPause(response)
+                    : HttpClientResiliencePredicates.IsTransient(args.Outcome));
 
             options.CircuitBreaker.FailureRatio = 0.5;
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
@@ -34,5 +36,19 @@ public static class HttpResilienceDefaults
         });
 
         return builder;
+    }
+
+    /// <summary>
+    /// The longest <c>Retry-After</c> a 429 is retried for. Three such waits fit within the 30 s total.
+    /// </summary>
+    private static readonly TimeSpan MaxRetryAfterToRetry = TimeSpan.FromSeconds(5);
+
+    private static bool AsksForAShortPause(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        var wait = retryAfter?.Delta
+            ?? (retryAfter?.Date is { } date ? date - (response.Headers.Date ?? DateTimeOffset.UtcNow) : null);
+
+        return wait is { } pause && pause <= MaxRetryAfterToRetry;
     }
 }

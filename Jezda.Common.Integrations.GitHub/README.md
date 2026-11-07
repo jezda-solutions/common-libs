@@ -97,8 +97,8 @@ token. Its `RetryAt` is when GitHub accepts requests again, taken from `retry-af
 `x-ratelimit-reset` when no requests remain; it is null when GitHub said neither, and GitHub then asks for
 at least a minute.
 
-`AddIntegrationResilience` does not retry a 429: the caller gets it at once instead of a timeout after
-waiting out a long `retry-after`.
+`AddIntegrationResilience` retries a 429 only when `retry-after` asks for at most 5 s. A longer pause, or a
+429 without `retry-after`, reaches the caller at once, instead of a timeout after waiting it out.
 
 ## Search failures
 
