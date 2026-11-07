@@ -17,24 +17,47 @@ public static class HttpResilienceDefaults
     /// end as a timeout instead of a 429, and calling again without being told when keeps calling a
     /// provider that asked for a pause, which GitHub warns can get an integration banned.
     /// <para />
-    /// Each address gets its own pipeline and so its own circuit breaker: scheme, host and port, plus
-    /// the organisation on <c>dev.azure.com</c>, where every organisation shares one host. Jira and
-    /// Azure DevOps send every customer's site or organisation through the same named client, so one
-    /// site that is down or mistyped would otherwise open the breaker for all of them, and they would
-    /// get Polly's <c>BrokenCircuitException</c> instead of an answer. The key never holds a username
-    /// or password typed into a base URL, because Polly writes it into logs and metrics.
+    /// Each address (<see cref="IntegrationPipelineKeys.Address"/>: scheme, host and port) gets its own
+    /// pipeline and so its own circuit breaker. Jira sends every customer's site through the same
+    /// named client, so one site that is down or mistyped would otherwise open the breaker for all of
+    /// them, and they would get Polly's <c>BrokenCircuitException</c> instead of an answer. A provider
+    /// whose callers share one address passes its own key to the other overload: Azure DevOps adds the
+    /// organisation, GitHub a hash of the token.
     /// <para />
-    /// Everything in the pipeline is per address, the concurrency limit (1000) included. A pipeline is
-    /// kept for every address the client has called, for the life of the process; base URLs a user
-    /// typed count too, not only the configured sites.
+    /// Everything in the pipeline is per key, the concurrency limit (1000) included. A pipeline is
+    /// kept for every key the client has seen, for the life of the process; base URLs a user typed
+    /// count too, not only the configured sites.
     /// <para />
-    /// Tokens on the same address still share a breaker, so a 429 does not count towards it: one
+    /// Tokens on the same key still share a breaker, so a 429 does not count towards it: one
     /// token's rate limit would otherwise open it for every other token. Polly has no neutral outcome,
     /// so the breaker records a 429 as a success: the provider did answer, which is what the breaker
     /// measures.
     /// </remarks>
-    public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder)
+    public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder) =>
+        builder.AddIntegrationResilience(IntegrationPipelineKeys.Address);
+
+    /// <summary>
+    /// Adds the same resilience handler as <see cref="AddIntegrationResilience(IHttpClientBuilder)"/>,
+    /// with one pipeline, and so one circuit breaker, per key that <paramref name="pipelineKey"/>
+    /// gives a request.
+    /// </summary>
+    /// <param name="builder">The client to add the handler to.</param>
+    /// <param name="pipelineKey">
+    /// The key of a request's pipeline, called on every attempt. Polly writes it into logs and
+    /// metrics, so it must never hold a token, password or other secret in readable form; start from
+    /// <see cref="IntegrationPipelineKeys.Address"/>, which drops credentials typed into a URL.
+    /// </param>
+    /// <remarks>
+    /// For a provider whose callers do not all fail together: every organisation on one host, or
+    /// every token on one address (<see cref="IntegrationPipelineKeys.AddressAndAuthorization"/>).
+    /// A pipeline is kept for every key, for the life of the process.
+    /// </remarks>
+    public static IHttpClientBuilder AddIntegrationResilience(
+        this IHttpClientBuilder builder,
+        Func<HttpRequestMessage, string> pipelineKey)
     {
+        ArgumentNullException.ThrowIfNull(pipelineKey);
+
         builder.AddStandardResilienceHandler(options =>
         {
             options.Retry.MaxRetryAttempts = 3;
@@ -45,9 +68,9 @@ public static class HttpResilienceDefaults
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
 
-            // The breaker is shared by every caller of the same address, whatever their token, so it
-            // counts only what says the provider itself is failing. A 429 is one token's rate limit:
-            // counted, it would open the breaker for every other token on the same address.
+            // With the default key the breaker is shared by every caller of the same address, whatever
+            // their token, so it counts only what says the provider itself is failing. A 429 is one
+            // token's rate limit: counted, it would open the breaker for every other token there.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is not { StatusCode: HttpStatusCode.TooManyRequests }
                 && (HttpClientResiliencePredicates.IsTransient(args.Outcome)
@@ -57,36 +80,10 @@ public static class HttpResilienceDefaults
 
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-        }).SelectPipelineBy(_ => PipelineKey);
+        }).SelectPipelineBy(_ => pipelineKey);
 
         return builder;
     }
-
-    /// <summary>
-    /// The address a request's breaker belongs to: scheme, host and port, plus the first path
-    /// segment on <c>dev.azure.com</c>. Built from components, not
-    /// <see cref="Uri.GetLeftPart(UriPartial)"/>, which keeps <c>user:pass@</c>.
-    /// </summary>
-    private static string PipelineKey(HttpRequestMessage request)
-    {
-        if (request.RequestUri is not { IsAbsoluteUri: true } uri)
-        {
-            return string.Empty;
-        }
-
-        var address = uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped);
-
-        if (!uri.Host.Equals(SharedAzureDevOpsHost, StringComparison.OrdinalIgnoreCase))
-        {
-            return address;
-        }
-
-        var organisation = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-
-        return organisation is null ? address : $"{address}/{organisation.ToLowerInvariant()}";
-    }
-
-    private const string SharedAzureDevOpsHost = "dev.azure.com";
 
     /// <summary>
     /// The longest <c>Retry-After</c> a 429 is retried for. Kept short so a retry usually ends before

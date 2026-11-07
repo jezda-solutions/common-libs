@@ -1,4 +1,5 @@
 using System.Net;
+using Jezda.Common.Integrations.Abstractions.Resilience;
 
 namespace Jezda.Common.Integrations.AzureDevOps;
 
@@ -22,6 +23,33 @@ internal static class AzureDevOpsHttp
     /// password a person typed into the base URL by mistake stays out of the log.
     /// </summary>
     public static string? OrganisationForLog(HttpClient client) => Describe(client.BaseAddress);
+
+    /// <summary>
+    /// The resilience pipeline key of a request: its address, plus the organisation on
+    /// <c>dev.azure.com</c>, where every organisation shares one host, so one organisation that keeps
+    /// failing does not open the circuit breaker for the others. The organisation is unescaped and
+    /// lowercased, because Azure DevOps reads <c>OrgA</c>, <c>orga</c> and <c>Org%41</c> as one.
+    /// </summary>
+    public static string PipelineKey(HttpRequestMessage request)
+    {
+        var address = IntegrationPipelineKeys.Address(request);
+        var uri = request.RequestUri!;
+
+        if (!uri.Host.Equals(SharedHost, StringComparison.OrdinalIgnoreCase))
+        {
+            return address;
+        }
+
+        var path = uri.AbsolutePath.AsSpan().TrimStart('/');
+        var end = path.IndexOf('/');
+        var organisation = end < 0 ? path : path[..end];
+
+        return organisation.IsEmpty
+            ? address
+            : $"{address}/{Uri.UnescapeDataString(organisation.ToString()).ToLowerInvariant()}";
+    }
+
+    private const string SharedHost = "dev.azure.com";
 
     /// <summary>
     /// Whether a response is a sign-in page, or a redirect to one, instead of an API answer.

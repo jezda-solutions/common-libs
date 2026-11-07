@@ -34,13 +34,15 @@ public static class IntegrationServiceCollectionExtensions
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
         });
 
-        // Named HttpClient for IExternalTaskProvider (per-request auth)
+        // Named HttpClient for IExternalTaskProvider (per-request auth). Every caller is on
+        // api.github.com, so the circuit breaker is kept per token: one caller whose searches keep
+        // timing out does not cut off the others.
         services.AddHttpClient(GitHubTaskProvider.HttpClientName, client =>
         {
             client.BaseAddress = new Uri("https://api.github.com/");
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Jezda-Common-Integration-Client");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
-        }).AddIntegrationResilience();
+        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization);
 
         services.AddSingleton<IExternalTaskProvider, GitHubTaskProvider>();
 
