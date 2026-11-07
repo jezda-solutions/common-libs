@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
+using Polly;
 
 namespace Jezda.Common.Integrations.Abstractions.Resilience;
 
@@ -34,7 +36,8 @@ public static class HttpResilienceDefaults
     /// Tokens on the same key still share a breaker, so a 429 does not count towards it: one
     /// token's rate limit would otherwise open it for every other token. Polly has no neutral outcome,
     /// so the breaker records a 429 as a success: the provider did answer, which is what the breaker
-    /// measures.
+    /// measures. The exception is the single probe of a half-open breaker: a 429 there keeps the
+    /// breaker open, since it says nothing about whether the provider recovered.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder) =>
         builder.AddIntegrationResilience(IntegrationPipelineKeys.Address);
@@ -64,6 +67,10 @@ public static class HttpResilienceDefaults
 
         var budget = new PipelineKeyBudget(builder.Name, pipelineKey);
 
+        // Keys whose breaker is half-open. The options, and so these callbacks, are shared by every
+        // key's pipeline, which is why the state is kept per key here and not in a state provider.
+        var halfOpen = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+
         builder.AddStandardResilienceHandler(options =>
         {
             options.Retry.MaxRetryAttempts = 3;
@@ -77,10 +84,25 @@ public static class HttpResilienceDefaults
             // With the default key the breaker is shared by every caller of the same address, whatever
             // their token, so it counts only what says the provider itself is failing. A 429 is one
             // token's rate limit: counted, it would open the breaker for every other token there.
+            // Recorded as a success instead, it would close a half-open breaker whose single probe
+            // happened to carry a rate-limited token, while the site is still failing; so a 429 to
+            // that probe counts as a failure and the breaker stays open.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
-                args.Outcome.Result is not { StatusCode: HttpStatusCode.TooManyRequests }
-                && (HttpClientResiliencePredicates.IsTransient(args.Outcome)
-                    || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken)));
+                args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests }
+                    ? IsHalfOpen(args.Context)
+                    : HttpClientResiliencePredicates.IsTransient(args.Outcome)
+                      || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
+            options.CircuitBreaker.OnHalfOpened = args =>
+            {
+                if (KeyOf(args.Context) is { } key)
+                {
+                    halfOpen[key] = 0;
+                }
+
+                return default;
+            };
+            options.CircuitBreaker.OnOpened = args => Leave(args.Context);
+            options.CircuitBreaker.OnClosed = args => Leave(args.Context);
             options.CircuitBreaker.FailureRatio = 0.5;
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
 
@@ -97,6 +119,20 @@ public static class HttpResilienceDefaults
         builder.AddHttpMessageHandler(() => new PipelineKeyBudgetHandler(budget));
 
         return builder;
+
+        string? KeyOf(ResilienceContext context) => budget.KeyOf(context.GetRequestMessage());
+
+        bool IsHalfOpen(ResilienceContext context) => KeyOf(context) is { } key && halfOpen.ContainsKey(key);
+
+        ValueTask Leave(ResilienceContext context)
+        {
+            if (KeyOf(context) is { } key)
+            {
+                halfOpen.TryRemove(key, out _);
+            }
+
+            return default;
+        }
     }
 
     /// <summary>
