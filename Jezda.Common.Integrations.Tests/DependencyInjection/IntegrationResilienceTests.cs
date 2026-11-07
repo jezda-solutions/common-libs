@@ -86,4 +86,17 @@ public class IntegrationResilienceTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(2, _handler.SentRequests.Count);
     }
+
+    [Fact]
+    public async Task ConnectTimeout_IsStillRetried()
+    {
+        // HttpClient reports a connect timeout as a cancellation wrapping a TimeoutException.
+        _handler.EnqueueException(new TaskCanceledException("connect timed out", new TimeoutException()));
+        _handler.EnqueueResponse(HttpStatusCode.OK);
+
+        using var response = await CreateClient().GetAsync("items");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, _handler.SentRequests.Count);
+    }
 }
