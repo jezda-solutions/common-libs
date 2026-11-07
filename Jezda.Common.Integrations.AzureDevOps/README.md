@@ -83,7 +83,7 @@ Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps repor
 |---|---|
 | Token rejected (401, 403) | `StatusCode` 401 / 403 |
 | Sign-in page instead of JSON (a redirect to `/_signin`, or 203 without JSON) | `StatusCode` 401; for a redirect, the message names the target's host and path. |
-| HTML page on any other success status (the base URL points at a website, a proxy or a captive portal answered) | `StatusCode` is the success status itself, e.g. 200. The token was not checked, so this is not 401. |
+| A body that is not JSON on any other success status (the base URL points at a website, a proxy or a captive portal answered). 204 and an empty body are not affected. | `StatusCode` is the success status itself, e.g. 200. The token was not checked, so this is not 401. |
 | Base URL redirects anywhere else (3xx, e.g. after an organisation rename) | `StatusCode` is the 3xx; the message names the target. Redirects are not followed, because .NET drops `Authorization` on the next hop and a valid PAT would read as expired. |
 | Any other failure | Its own status, or the original exception for dropped connections and cancellation. A timeout on `IAzureDevOpsClient` is `TaskCanceledException` from `HttpClient.Timeout`. |
 | Resilience pipeline on the `IExternalTaskProvider` client gave up | Polly's `TimeoutRejectedException`, `BrokenCircuitException` or `RateLimiterRejectedException`. None derives from `HttpRequestException`, so also catch their common base, `ExecutionRejectedException`. |

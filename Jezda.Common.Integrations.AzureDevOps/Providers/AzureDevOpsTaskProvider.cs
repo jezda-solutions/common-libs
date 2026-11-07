@@ -55,7 +55,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// answers <see langword="false"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">
-    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or an HTML page
+    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or a success without JSON
     /// on a success status: the base URL answers somewhere else, or something other than Azure DevOps
     /// answered. The status code is on the exception.
     /// </exception>
@@ -414,8 +414,8 @@ public sealed class AzureDevOpsTaskProvider(
     /// treat 401/403 as an expired token keep working.
     /// </para>
     /// <para>
-    /// A sign-in page or a redirect to one throws as 401, and any other redirect or an HTML page with
-    /// its own status; see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
+    /// A sign-in page or a redirect to one throws as 401, and any other redirect or a success without
+    /// JSON with its own status; see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
     /// </para>
     /// </remarks>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
