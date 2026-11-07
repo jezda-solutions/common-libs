@@ -342,7 +342,7 @@ public sealed class AzureDevOpsTaskProvider(
         Description = project.Description,
         // The project's own `url` is the REST resource (`_apis/projects/{id}`), which answers with
         // JSON, not the project page.
-        Url = new Uri(AzureDevOpsHttp.WebAddress(organisationUrl), Uri.EscapeDataString(project.Name)).AbsoluteUri,
+        Url = new Uri(organisationUrl, Uri.EscapeDataString(project.Name)).AbsoluteUri,
         Provider = ExternalProvider.AzureDevOps,
         // The list does not report a creation date. `lastUpdateTime` absent parses to the default.
         UpdatedAt = project.LastUpdateTime == default ? null : project.LastUpdateTime,
@@ -514,12 +514,14 @@ public sealed class AzureDevOpsTaskProvider(
     /// answers with JSON, not the work item page.
     /// </remarks>
     private static string WorkItemWebUrl(Uri organisationUrl, string projectName, int workItemId) =>
-        new Uri(AzureDevOpsHttp.WebAddress(organisationUrl), $"{Uri.EscapeDataString(projectName)}/_workitems/edit/{workItemId}").AbsoluteUri;
+        new Uri(organisationUrl, $"{Uri.EscapeDataString(projectName)}/_workitems/edit/{workItemId}").AbsoluteUri;
 
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
-        client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+        // Credentials written into the base URL would otherwise reach every request URI and every
+        // page link built from it. Authentication goes through the header below.
+        client.BaseAddress = new UriBuilder(new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/")) { UserName = "", Password = "" }.Uri;
 
         var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{accessToken}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);

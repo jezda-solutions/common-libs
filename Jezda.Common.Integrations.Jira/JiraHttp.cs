@@ -43,12 +43,6 @@ internal static class JiraHttp
         }
     }
 
-    /// <summary>
-    /// The site address to build page links from. The base URL comes from the user, and a link is
-    /// stored and shown, so this leaves out any credentials written into it.
-    /// </summary>
-    public static Uri WebAddress(Uri siteUrl) => new(Describe(siteUrl)!);
-
     private static Uri? RedirectTarget(HttpResponseMessage response)
     {
         var location = response.Headers.Location;

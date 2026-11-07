@@ -1262,6 +1262,7 @@ public class AzureDevOpsTaskProviderTests
         var project = Assert.Single(await _provider.GetProjectsAsync("my-pat", "https://admin:base-secret@dev.azure.com/myorg/"));
 
         Assert.Equal("https://dev.azure.com/myorg/Mobile%20Team", project.Url);
+        Assert.Equal(string.Empty, Assert.Single(_handler.SentRequests).RequestUri!.UserInfo);
     }
 
     [Fact]
@@ -1274,6 +1275,7 @@ public class AzureDevOpsTaskProviderTests
         var result = await _provider.GetTasksAsync("my-pat", "guid-1", "https://admin:base-secret@dev.azure.com/myorg/");
 
         Assert.Equal("https://dev.azure.com/myorg/Mobile%20Team/_workitems/edit/1", Assert.Single(result).Url);
+        Assert.All(_handler.SentRequests, request => Assert.Equal(string.Empty, request.RequestUri!.UserInfo));
     }
 
     [Theory]

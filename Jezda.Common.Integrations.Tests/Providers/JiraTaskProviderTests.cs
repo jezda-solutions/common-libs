@@ -347,9 +347,10 @@ public class JiraTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new[] { new { id = "10001", key = "PROJ", name = "Project One" } });
 
-        var result = await _provider.GetProjectsAsync("user@test.com:token", "https://admin:base-secret@test.atlassian.net/jira");
+        var result = await _provider.GetProjectsAsync("user@test.com:token", "https://admin:base-secret@jira.local:8443/jira");
 
-        Assert.Equal("https://test.atlassian.net/jira/browse/PROJ", Assert.Single(result).Url);
+        Assert.Equal("https://jira.local:8443/jira/browse/PROJ", Assert.Single(result).Url);
+        Assert.Equal(string.Empty, Assert.Single(_handler.SentRequests).RequestUri!.UserInfo);
     }
 
     [Fact]
@@ -363,6 +364,7 @@ public class JiraTaskProviderTests
         var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://admin:base-secret@test.atlassian.net/");
 
         Assert.Equal("https://test.atlassian.net/browse/PROJ-1", Assert.Single(result).Url);
+        Assert.Equal(string.Empty, Assert.Single(_handler.SentRequests).RequestUri!.UserInfo);
     }
 
     [Fact]

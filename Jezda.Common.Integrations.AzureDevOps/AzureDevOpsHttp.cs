@@ -24,12 +24,6 @@ internal static class AzureDevOpsHttp
     public static string? OrganisationForLog(HttpClient client) => Describe(client.BaseAddress);
 
     /// <summary>
-    /// The organisation address to build page links from. The base URL comes from the user, and a
-    /// link is stored and shown, so this leaves out any credentials written into it.
-    /// </summary>
-    public static Uri WebAddress(Uri organisationUrl) => new(Describe(organisationUrl)!);
-
-    /// <summary>
     /// Whether a response is a sign-in page, or a redirect to one, instead of an API answer.
     /// </summary>
     /// <remarks>
