@@ -436,7 +436,8 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     // Best effort: a body that cannot be read must not replace the status code, which is what callers
-    // branch on. InvalidOperationException is a charset .NET cannot decode.
+    // branch on. InvalidOperationException is a charset .NET does not know, and NotSupportedException
+    // one it knows but has disabled, such as utf-7.
     // The base URL comes from the user, so the body can be anything: control characters go, because a
     // line break in it would forge an entry in a plain-text log.
     private static async Task<string> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -446,7 +447,7 @@ public sealed class AzureDevOpsTaskProvider(
         {
             body = await response.Content.ReadAsStringAsync(cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or NotSupportedException)
         {
             return string.Empty;
         }
