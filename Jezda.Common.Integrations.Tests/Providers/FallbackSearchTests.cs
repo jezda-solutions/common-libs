@@ -106,8 +106,8 @@ public class FallbackSearchTests
 
         public ExternalProvider Provider => ExternalProvider.Jira;
 
-        public Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(true);
+        public Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(ConnectionValidationResult.Accepted);
 
         public Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
         {

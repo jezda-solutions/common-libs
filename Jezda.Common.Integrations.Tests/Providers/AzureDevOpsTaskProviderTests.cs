@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
+using Jezda.Common.Integrations.Abstractions.Models;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
@@ -39,7 +40,10 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("my-pat", "https://dev.azure.com/myorg/");
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
+        Assert.Same(ConnectionValidationResult.Accepted, result);
+        Assert.Null(result.Reason);
+        Assert.Null(result.Detail);
         Assert.Equal(2, _handler.SentRequests.Count);
         Assert.All(_handler.SentRequests, request => Assert.Equal("Basic", request.Headers.Authorization?.Scheme));
     }
@@ -60,7 +64,7 @@ public class AzureDevOpsTaskProviderTests
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden)]
-    public async Task ValidateConnectionAsync_WorkItemsRefused_ReturnsFalse(HttpStatusCode status)
+    public async Task ValidateConnectionAsync_WorkItemsRefused_ReturnsMissingScope(HttpStatusCode status)
     {
         // A PAT with "Project and Team (Read)" only: it lists projects, then fails on the first sync.
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
@@ -68,18 +72,23 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        // The same token just listed projects, so it is not a bad token: it lacks Work Items (Read).
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.MissingScope, result.Reason);
+        Assert.Equal($"{(int)status} on _apis/wit/fields", result.Detail);
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsFalse()
+    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsMissingScope()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
         _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
 
         var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.MissingScope, result.Reason);
+        Assert.Equal("answered 203 with a sign-in page instead of JSON on _apis/wit/fields", result.Detail);
     }
 
     [Fact]
@@ -112,7 +121,9 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
+        Assert.Equal("401 on _apis/projects", result.Detail);
         Assert.Single(_handler.SentRequests);
     }
 
@@ -131,7 +142,7 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
     }
 
     [Theory]
@@ -169,7 +180,7 @@ public class AzureDevOpsTaskProviderTests
         _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
         _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
 
-        Assert.True(await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+        Assert.True((await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/")).IsValid);
     }
 
     [Fact]
@@ -255,13 +266,16 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_Forbidden_ReturnsFalse()
+    public async Task ValidateConnectionAsync_Forbidden_ReturnsAccessDenied()
     {
+        // On projects a 403 can be a missing scope as well as Conditional Access or an IP allow list.
         _handler.EnqueueResponse(HttpStatusCode.Forbidden);
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.AccessDenied, result.Reason);
+        Assert.Equal("403 on _apis/projects", result.Detail);
     }
 
     [Fact]
@@ -333,7 +347,12 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.SignInPage, result.Reason);
+        // Host and path tell Azure DevOps from a gateway with its own /_signin; the query stays out.
+        Assert.Equal(
+            "redirected to the sign-in page at https://spsprodwus24.vssps.visualstudio.com/_signin with 302 on _apis/projects",
+            result.Detail);
     }
 
     [Fact]
@@ -373,7 +392,7 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
     }
 
     [Theory]
@@ -390,7 +409,7 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
     }
 
     [Fact]
@@ -477,7 +496,7 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
     }
 
     [Theory]
@@ -530,8 +549,23 @@ public class AzureDevOpsTaskProviderTests
         await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
         var message = Assert.Single(logger.Entries).Message;
-        Assert.EndsWith(": a sign-in page", message);
+        Assert.EndsWith(": answered 203 with a sign-in page instead of JSON", message);
         Assert.DoesNotContain("<html>", message);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectToSignIn_LogsWhereItPoints()
+    {
+        // A gateway with its own /_signin looks like Azure DevOps unless the log names the host.
+        var logger = new RecordingLogger();
+        var provider = ProviderWith(logger);
+        _handler.EnqueueResponse(() => Redirect(SignInRedirect));
+
+        await provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
+
+        var message = Assert.Single(logger.Entries).Message;
+        Assert.EndsWith(": redirected to the sign-in page at https://spsprodwus24.vssps.visualstudio.com/_signin with 302", message);
+        Assert.DoesNotContain("reply_to", message);
     }
 
     [Fact]
@@ -569,7 +603,7 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
     }
 
     [Fact]

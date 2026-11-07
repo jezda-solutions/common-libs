@@ -91,15 +91,26 @@ Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps repor
 | Any other failure | Its own status, or the original exception for dropped connections and cancellation. A timeout on `IAzureDevOpsClient` is `TaskCanceledException` from `HttpClient.Timeout`. |
 | Resilience pipeline on the `IExternalTaskProvider` client gave up | Polly's `TimeoutRejectedException`, `BrokenCircuitException` or `RateLimiterRejectedException`. None derives from `HttpRequestException`, so also catch their common base, `ExecutionRejectedException`. |
 
-`ValidateConnectionAsync` returns `false` only for a rejected token (401, 403, sign-in page). Every other
-failure propagates, so an outage is not shown to the user as a bad PAT.
+`ValidateConnectionAsync` returns a rejection only for a rejected token. Every other failure propagates, so an
+outage is not shown to the user as a bad PAT.
 
-A 403 is not always about the token: Conditional Access, an IP allow-list or a WAF can answer it for a valid
-PAT. Validation still returns `false`, and logs a warning with the start of the response body, which tells these
+| Answer | On `_apis/projects` | On `_apis/wit/fields` |
+|---|---|---|
+| 401 | `InvalidToken` | `MissingScope` |
+| 403 | `AccessDenied` | `MissingScope` |
+| sign-in page or redirect to one | `SignInPage` | `MissingScope` |
+
+The work item check runs only once projects passed, with the same token from the same address, so any refusal
+there is the missing "Work Items (Read)" scope, not a bad token, Conditional Access or an address block. For a sign-in page,
+`Detail` names the redirect target (host and path), which tells Azure DevOps from a gateway with its own
+`/_signin`.
+
+A 403 on `_apis/projects` is not always about the token: Conditional Access, an IP allow-list or a WAF can answer it for a valid
+PAT. Validation still returns a rejection, `AccessDenied`, and logs a warning with the start of the response body, which tells these
 apart.
 
 Validation sends two requests: `_apis/projects`, which needs "Project and Team (Read)", and `_apis/wit/fields`,
-which needs "Work Items (Read)". A PAT missing either scope returns `false`, instead of validating and failing
+which needs "Work Items (Read)". A PAT missing either scope returns a rejection, instead of validating and failing
 later on the first work item call.
 
 ### Keeping redirects off

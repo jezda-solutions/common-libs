@@ -38,22 +38,26 @@ public sealed class AzureDevOpsTaskProvider(
     /// Checks whether Azure DevOps accepts the token for the organisation, for both projects and work items.
     /// </summary>
     /// <returns>
-    /// <see langword="true"/> when the token is accepted; <see langword="false"/> when Azure DevOps
-    /// rejects it on either request: 401, 403, or a sign-in page in place of JSON.
+    /// <see cref="ConnectionValidationResult.Accepted"/> when the token is accepted; a rejection when
+    /// Azure DevOps rejects it on either request. On projects, 401 is
+    /// <see cref="TokenRejectionReason.InvalidToken"/>, 403 is <see cref="TokenRejectionReason.AccessDenied"/>
+    /// and a sign-in page in place of JSON is <see cref="TokenRejectionReason.SignInPage"/>. On work items,
+    /// which runs only once projects passed with the same token from the same address, any of them is
+    /// <see cref="TokenRejectionReason.MissingScope"/>.
     /// </returns>
     /// <remarks>
     /// Listing projects needs "Project and Team (Read)", and listing work item fields needs
     /// "Work Items (Read)". Checking only the first would confirm a PAT that fails on the first sync.
     /// <para />
-    /// Only a rejected token answers <see langword="false"/>. A failure that says nothing about the
+    /// Only a rejected token answers a rejection. A failure that says nothing about the
     /// token propagates instead, so an outage is not reported to the user as a bad PAT. That includes
     /// the resilience pipeline's own exceptions, all deriving from Polly's
     /// <c>ExecutionRejectedException</c> and none from <see cref="HttpRequestException"/>:
     /// <c>TimeoutRejectedException</c> for a timeout, <c>BrokenCircuitException</c> for an open circuit
     /// and <c>RateLimiterRejectedException</c> for too many concurrent requests.
     /// <para />
-    /// A 403 can also come from Conditional Access, an IP allow-list or a WAF, for a valid PAT. It still
-    /// answers <see langword="false"/>, with the response body in the log to tell these apart.
+    /// A 403 on projects can also come from Conditional Access, an IP allow-list or a WAF, for a valid PAT. It still
+    /// answers a rejection, <see cref="TokenRejectionReason.AccessDenied"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">
     /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page. Also a success
@@ -61,45 +65,67 @@ public sealed class AzureDevOpsTaskProvider(
     /// else, or something other than Azure DevOps answered. The status code is on the exception.
     /// </exception>
     /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
-    public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
         using var client = CreateClient(accessToken, baseUrl);
 
-        var accepted = await IsTokenAcceptedAsync(client, $"_apis/projects?$top=1&api-version={_apiVersion}", cancellationToken)
-            && await IsTokenAcceptedAsync(client, $"_apis/wit/fields?api-version={_apiVersion}", cancellationToken);
+        var result = await CheckTokenAsync(
+            client, $"_apis/projects?$top=1&api-version={_apiVersion}", workItemsCheck: false, cancellationToken);
 
-        if (accepted)
+        // Projects passed with the same token from the same address, so any refusal here, 401, 403 or
+        // a sign-in page, is no bad token, Conditional Access or address block, which would have
+        // refused that request too: the token lacks the Work Items (Read) scope.
+        if (result.IsValid)
+        {
+            result = await CheckTokenAsync(
+                client, $"_apis/wit/fields?api-version={_apiVersion}", workItemsCheck: true, cancellationToken);
+        }
+
+        if (result.IsValid)
         {
             logger.LogInformation(
                 "Azure DevOps accepted the token for projects and work items on {Organisation}",
                 AzureDevOpsHttp.OrganisationForLog(client));
         }
 
-        return accepted;
+        return result;
     }
 
-    private async Task<bool> IsTokenAcceptedAsync(HttpClient client, string url, CancellationToken cancellationToken)
+    private async Task<ConnectionValidationResult> CheckTokenAsync(
+        HttpClient client, string url, bool workItemsCheck, CancellationToken cancellationToken)
     {
         using var response = await client.GetAsync(url, cancellationToken);
 
+        var path = url.Split('?')[0];
         var isSignInPage = AzureDevOpsHttp.IsSignInPage(response);
 
         if (isSignInPage || response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
+            var answer = isSignInPage ? AzureDevOpsHttp.DescribeSignInPage(response) : $"{(int)response.StatusCode}";
+
             logger.LogWarning(
                 "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}: {Answer}",
                 (int)response.StatusCode,
-                url.Split('?')[0],
+                path,
                 AzureDevOpsHttp.OrganisationForLog(client),
-                isSignInPage ? "a sign-in page" : await ReadErrorBodyAsync(response, cancellationToken));
-            return false;
+                isSignInPage ? answer : await ReadErrorBodyAsync(response, cancellationToken));
+
+            var reason = (workItemsCheck, isSignInPage, response.StatusCode) switch
+            {
+                (true, _, _) => TokenRejectionReason.MissingScope,
+                (false, true, _) => TokenRejectionReason.SignInPage,
+                (false, false, HttpStatusCode.Unauthorized) => TokenRejectionReason.InvalidToken,
+                _ => TokenRejectionReason.AccessDenied
+            };
+
+            return ConnectionValidationResult.Rejected(reason, $"{answer} on {path}");
         }
 
         await EnsureSuccessAsync(response, cancellationToken);
 
-        return true;
+        return ConnectionValidationResult.Accepted;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

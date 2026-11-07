@@ -40,7 +40,7 @@ public class JiraTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("user@test.com:token", "https://test.atlassian.net/");
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
         Assert.Single(_handler.SentRequests);
         Assert.Equal("Basic", _handler.SentRequests[0].Headers.Authorization?.Scheme);
     }
@@ -63,7 +63,8 @@ public class JiraTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad:token", "https://test.atlassian.net/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Fact]
@@ -84,7 +85,8 @@ public class JiraTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad:token", "https://test.atlassian.net/");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Theory]
@@ -217,7 +219,7 @@ public class JiraTaskProviderTests
     {
         _handler.EnqueueResponse(() => Page(mediaType));
 
-        Assert.True(await _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+        Assert.True((await _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/")).IsValid);
     }
 
     [Fact]
@@ -229,7 +231,7 @@ public class JiraTaskProviderTests
             Content = new StringContent("<html></html>", System.Text.Encoding.UTF8, "text/html")
         });
 
-        Assert.False(await _provider.ValidateConnectionAsync("bad:token", "https://test.atlassian.net/"));
+        Assert.False((await _provider.ValidateConnectionAsync("bad:token", "https://test.atlassian.net/")).IsValid);
     }
 
     [Fact]

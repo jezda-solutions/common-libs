@@ -29,7 +29,7 @@ public sealed class TrelloTaskProvider(
     /// </summary>
     public static string FormatAccessToken(string apiKey, string apiToken) => $"{apiKey}:{apiToken}";
 
-    public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient();
         var (key, token) = ParseAccessToken(accessToken);
@@ -39,12 +39,12 @@ public sealed class TrelloTaskProvider(
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("Trello rejected the key or token with {StatusCode}", (int)response.StatusCode);
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "401 on members/me");
         }
 
         response.EnsureSuccessStatusCode();
 
-        return true;
+        return ConnectionValidationResult.Accepted;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

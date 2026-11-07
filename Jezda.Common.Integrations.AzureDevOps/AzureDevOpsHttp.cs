@@ -49,6 +49,15 @@ internal static class AzureDevOpsHttp
     }
 
     /// <summary>
+    /// Where a sign-in page came from, for a validation result: the redirect target, host and path
+    /// only, or the status it was served with.
+    /// </summary>
+    public static string DescribeSignInPage(HttpResponseMessage response) =>
+        IsRedirect(response)
+            ? $"redirected to the sign-in page at {Describe(RedirectTarget(response))} with {(int)response.StatusCode}"
+            : $"answered {(int)response.StatusCode} with a sign-in page instead of JSON";
+
+    /// <summary>
     /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, a redirect, or
     /// a success that is not JSON, and 204 whatever its content type. Every Azure DevOps call here
     /// reads a JSON answer, so an empty one is not "nothing found" but something other than Azure
@@ -66,9 +75,7 @@ internal static class AzureDevOpsHttp
     {
         if (IsSignInPage(response))
         {
-            var answer = IsRedirect(response)
-                ? $"redirected to the sign-in page at {Describe(RedirectTarget(response))} with {(int)response.StatusCode}"
-                : $"answered {(int)response.StatusCode} with a sign-in page instead of JSON";
+            var answer = DescribeSignInPage(response);
 
             throw new HttpRequestException(
                 $"Azure DevOps {answer}: the token was not accepted.",

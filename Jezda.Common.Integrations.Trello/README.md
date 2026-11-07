@@ -26,5 +26,5 @@ services.AddTrelloIntegration();
 
 ## Connection validation
 
-`ValidateConnectionAsync` returns `false` only for 401, which Trello answers a bad key or token with. Every
+`ValidateConnectionAsync` returns a rejection, `InvalidToken`, only for 401, which Trello answers a bad key or token with. Every
 other failure propagates, so an outage or a rate limit is not shown to the user as a bad token.

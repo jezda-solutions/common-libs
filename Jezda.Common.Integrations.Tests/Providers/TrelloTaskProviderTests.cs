@@ -36,7 +36,7 @@ public class TrelloTaskProviderTests
         var result = await _provider.ValidateConnectionAsync(
             TrelloTaskProvider.FormatAccessToken("mykey", "mytoken"));
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
         Assert.Single(_handler.SentRequests);
         Assert.Contains("key=mykey", _handler.SentRequests[0].RequestUri!.ToString());
         Assert.Contains("token=mytoken", _handler.SentRequests[0].RequestUri!.ToString());
@@ -49,7 +49,8 @@ public class TrelloTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("badkey:badtoken");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Theory]
