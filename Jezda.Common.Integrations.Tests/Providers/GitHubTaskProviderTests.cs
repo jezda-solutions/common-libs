@@ -36,7 +36,7 @@ public class GitHubTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("valid-token");
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
         Assert.Single(_handler.SentRequests);
         Assert.Equal("Bearer", _handler.SentRequests[0].Headers.Authorization?.Scheme);
         Assert.Equal("valid-token", _handler.SentRequests[0].Headers.Authorization?.Parameter);
@@ -51,7 +51,8 @@ public class GitHubTaskProviderTests
     {
         var result = await _provider.ValidateConnectionAsync(token);
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.NotSendable, result.Reason);
         Assert.Empty(_handler.SentRequests);
     }
 
@@ -62,7 +63,8 @@ public class GitHubTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-token");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Theory]

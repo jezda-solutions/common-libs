@@ -35,7 +35,7 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("monday-api-token");
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
         Assert.Single(_handler.SentRequests);
         Assert.Equal("Bearer", _handler.SentRequests[0].Headers.Authorization?.Scheme);
         Assert.Equal("monday-api-token", _handler.SentRequests[0].Headers.Authorization?.Parameter);
@@ -50,7 +50,8 @@ public class MondayTaskProviderTests
     {
         var result = await _provider.ValidateConnectionAsync(token);
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.NotSendable, result.Reason);
         Assert.Empty(_handler.SentRequests);
     }
 
@@ -61,7 +62,8 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-token");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Fact]
@@ -74,7 +76,8 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("bad-token");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Fact]
@@ -86,7 +89,8 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("token");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Theory]
@@ -114,7 +118,8 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("token");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Fact]
@@ -156,7 +161,7 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("token");
 
-        Assert.True(result);
+        Assert.True(result.IsValid);
     }
 
     [Theory]
@@ -265,7 +270,8 @@ public class MondayTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("token");
 
-        Assert.False(result);
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
     }
 
     [Theory]

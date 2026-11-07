@@ -62,13 +62,20 @@ internal static class AzureDevOpsHttp
     /// redirect or a success without JSON, neither of which says anything about the token: the base URL answers
     /// somewhere else, or something other than Azure DevOps answered in its place.
     /// </exception>
+    /// <summary>
+    /// Where a sign-in page came from, for a validation result: the redirect target, host and path
+    /// only, or the status it was served with.
+    /// </summary>
+    public static string DescribeSignInPage(HttpResponseMessage response) =>
+        IsRedirect(response)
+            ? $"redirected to the sign-in page at {Describe(RedirectTarget(response))} with {(int)response.StatusCode}"
+            : $"answered {(int)response.StatusCode} with a sign-in page instead of JSON";
+
     public static void ThrowIfNotApiResponse(HttpResponseMessage response)
     {
         if (IsSignInPage(response))
         {
-            var answer = IsRedirect(response)
-                ? $"redirected to the sign-in page at {Describe(RedirectTarget(response))} with {(int)response.StatusCode}"
-                : $"answered {(int)response.StatusCode} with a sign-in page instead of JSON";
+            var answer = DescribeSignInPage(response);
 
             throw new HttpRequestException(
                 $"Azure DevOps {answer}: the token was not accepted.",

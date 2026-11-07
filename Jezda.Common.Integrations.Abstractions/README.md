@@ -7,9 +7,24 @@ Shared abstractions for external task provider integrations, including the `IExt
 - **`IExternalTaskProvider`** — unified interface for importing tasks from external providers (GitHub, Jira, Azure DevOps)
 - **`ExternalProvider`** — enum identifying the provider
 - **`ExternalProjectDto`** / **`ExternalTaskDto`** — normalized DTOs returned by all providers
+- **`ConnectionValidationResult`** — what `ValidateConnectionAsync` returns: `IsValid`, and for a rejected token a `TokenRejectionReason` (`InvalidToken`, `NotSendable`, `MissingScope`, `AccessDenied`, `SignInPage`) plus a `Detail` for logs and support (status and path, or where a sign-in page is; never the token or the response body). Map `Reason` to a message for the user; `Detail` is English and not meant for display
 - **`HttpResilienceDefaults.AddIntegrationResilience()`** — extension method for configuring standard resilience policies on `IHttpClientBuilder`. It retries a 429 only when `Retry-After` asks for at most 5 s; a longer pause, or a 429 without `Retry-After`, reaches the caller at once instead of ending as a timeout
 - **`IntegrationRateLimitException`** — an `HttpRequestException` with status 429 that a provider throws when it recognises a rate limit, even one answered with 403; `RetryAt` says when to try again, when the provider said. GitHub throws it for now
 - **`HttpRedirectDefaults.DisableAutoRedirect()`** — extension method that stops an `IHttpClientBuilder` from following redirects, which would drop the `Authorization` header and make a valid token read as expired
+
+## Connection validation
+
+**Breaking change:** `ValidateConnectionAsync` returns `ConnectionValidationResult` instead of `bool`, so a caller can tell a revoked token from one without a scope. Replace `if (await provider.ValidateConnectionAsync(...))` with `.IsValid`, and show the user a message per `Reason`:
+
+| `Reason` | What the user should do |
+|---|---|
+| `InvalidToken` | Create a new token; this one is wrong, revoked or expired |
+| `NotSendable` | Paste the token again without stray characters (a smart quote, a line break) |
+| `MissingScope` | Add the missing scope to the token (Azure DevOps: Work Items (Read)); a new token with the same scopes fails the same way |
+| `AccessDenied` | Check the token's scopes and any Conditional Access, IP allow list or firewall in front of the provider |
+| `SignInPage` | Check the base URL; a gateway may ask for its own sign-in |
+
+Exceptions keep their meaning: "could not check", never "bad token".
 
 ## Project identity
 

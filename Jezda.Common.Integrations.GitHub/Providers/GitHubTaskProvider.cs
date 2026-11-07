@@ -30,12 +30,12 @@ public sealed class GitHubTaskProvider(
 
     public ExternalProvider Provider => ExternalProvider.GitHub;
 
-    public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         if (!AccessTokenRules.CanGoInHeader(accessToken))
         {
             logger.LogWarning("GitHub token has characters that cannot go in a header, so it was not sent");
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.NotSendable);
         }
 
         using var client = CreateClient(accessToken);
@@ -47,12 +47,12 @@ public sealed class GitHubTaskProvider(
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("GitHub rejected the token with {StatusCode}", (int)response.StatusCode);
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "401 on user");
         }
 
         response.EnsureSuccessStatusCode();
 
-        return true;
+        return ConnectionValidationResult.Accepted;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

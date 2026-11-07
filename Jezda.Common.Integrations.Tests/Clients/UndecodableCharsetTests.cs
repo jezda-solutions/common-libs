@@ -127,7 +127,7 @@ public class UndecodableCharsetTests
             "application/json",
             charset));
 
-        Assert.False(await MondayProvider().ValidateConnectionAsync("token"));
+        Assert.False((await MondayProvider().ValidateConnectionAsync("token")).IsValid);
     }
 
     [Theory]
@@ -141,7 +141,7 @@ public class UndecodableCharsetTests
             "application/json",
             charset));
 
-        Assert.False(await MondayProvider().ValidateConnectionAsync("token"));
+        Assert.False((await MondayProvider().ValidateConnectionAsync("token")).IsValid);
     }
 
     [Theory]

@@ -32,7 +32,7 @@ public sealed class JiraTaskProvider(
     /// </summary>
     public static string FormatAccessToken(string email, string apiToken) => $"{email}:{apiToken}";
 
-    public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl, nameof(baseUrl));
 
@@ -53,13 +53,13 @@ public sealed class JiraTaskProvider(
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("Jira rejected the token with {StatusCode}", (int)response.StatusCode);
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "401 on rest/api/3/myself");
         }
 
         JiraHttp.ThrowIfNotApiResponse(response);
         response.EnsureSuccessStatusCode();
 
-        return true;
+        return ConnectionValidationResult.Accepted;
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)

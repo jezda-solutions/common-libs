@@ -36,12 +36,12 @@ public sealed class MondayTaskProvider(
 
     public ExternalProvider Provider => ExternalProvider.Monday;
 
-    public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
+    public async Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         if (!AccessTokenRules.CanGoInHeader(accessToken))
         {
             logger.LogWarning("Monday.com token has characters that cannot go in a header, so it was not sent");
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.NotSendable);
         }
 
         using var client = CreateClient(accessToken);
@@ -61,7 +61,7 @@ public sealed class MondayTaskProvider(
             }
 
             logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "401");
         }
 
         // A 403 can come from a gateway in front of Monday.com, so only a known code blames the token.
@@ -69,7 +69,7 @@ public sealed class MondayTaskProvider(
             && HasRejectedTokenCode(await response.Content.ReadAsUtf8StringAsync(cancellationToken)))
         {
             logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "403 with a token rejection code");
         }
 
         response.EnsureSuccessStatusCode();
@@ -78,7 +78,7 @@ public sealed class MondayTaskProvider(
 
         if (ReadData<MondayMeData>(result)?.Me is not null)
         {
-            return true;
+            return ConnectionValidationResult.Accepted;
         }
 
         // Monday reports application errors with status 200, so only the code tells them apart.
@@ -87,7 +87,7 @@ public sealed class MondayTaskProvider(
         if (errors.Any(error => RejectedTokenCodes.Contains(error.Extensions?.Code)))
         {
             logger.LogWarning("Monday.com rejected the token with a GraphQL error");
-            return false;
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "a token rejection code in a GraphQL error");
         }
 
         var reasons = DescribeErrors(errors);
