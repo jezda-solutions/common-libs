@@ -58,7 +58,7 @@ internal static class AzureDevOpsHttp
         if (IsSignInPage(response))
         {
             var answer = IsRedirect(response)
-                ? $"redirected to the sign-in page at {SignInTarget(response)} with {(int)response.StatusCode}"
+                ? $"redirected to the sign-in page at {Describe(RedirectTarget(response))} with {(int)response.StatusCode}"
                 : $"answered {(int)response.StatusCode} with a sign-in page instead of JSON";
 
             throw new HttpRequestException(
@@ -70,7 +70,7 @@ internal static class AzureDevOpsHttp
         if (IsRedirect(response))
         {
             throw new HttpRequestException(
-                $"Azure DevOps redirected {response.RequestMessage?.RequestUri} to {RedirectTarget(response)?.ToString() ?? "(no location)"} "
+                $"Azure DevOps redirected {Describe(response.RequestMessage?.RequestUri) ?? "the request"} to {Describe(RedirectTarget(response)) ?? "(no location)"} "
                 + $"with {(int)response.StatusCode}. The base URL is likely out of date, for example after the organisation was renamed.",
                 inner: null,
                 statusCode: response.StatusCode);
@@ -102,11 +102,13 @@ internal static class AzureDevOpsHttp
             : location;
     }
 
-    // Host and path only: enough to tell Azure DevOps from a gateway with its own /_signin. The query
-    // carries the reply URL and an opaque context, which only make the message harder to read.
-    private static string? SignInTarget(HttpResponseMessage response) => RedirectTarget(response) switch
+    // Host and path only: enough to tell Azure DevOps from a gateway with its own /_signin. A base URL
+    // can carry a password, which the exception would carry into logs, and a sign-in redirect's query
+    // holds the reply URL and an opaque context, which only make the message harder to read.
+    private static string? Describe(Uri? uri) => uri switch
     {
-        { IsAbsoluteUri: true } target => target.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped),
-        var target => target?.OriginalString.Split('?', '#')[0]
+        null => null,
+        { IsAbsoluteUri: true } => uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped),
+        _ => uri.OriginalString.Split('?', '#')[0]
     };
 }
