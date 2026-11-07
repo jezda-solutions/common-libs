@@ -55,7 +55,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// answers <see langword="false"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">
-    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or a success without JSON
+    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or a body that is not JSON
     /// on a success status: the base URL answers somewhere else, or something other than Azure DevOps
     /// answered. The status code is on the exception.
     /// </exception>
