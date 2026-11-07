@@ -173,21 +173,27 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_NoContent_IsNotReadAsAMissingJsonType()
+    public async Task ValidateConnectionAsync_NoContent_ThrowsInsteadOfAcceptingTheToken()
     {
-        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+        // A proxy that answers 204 never checked the token.
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
 
-        Assert.True(await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_OkWithEmptyBody_IsNotReadAsAMissingJsonType()
+    public async Task ValidateConnectionAsync_OkWithEmptyBody_ThrowsInsteadOfAcceptingTheToken()
     {
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });
-        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });
 
-        Assert.True(await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("no content type", ex.Message);
     }
 
     private static HttpResponseMessage WithBody(HttpStatusCode statusCode, string? mediaType)

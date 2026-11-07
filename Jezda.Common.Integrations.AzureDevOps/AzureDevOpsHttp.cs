@@ -39,13 +39,13 @@ internal static class AzureDevOpsHttp
                 .EndsWith("/_signin", StringComparison.OrdinalIgnoreCase) == true;
         }
 
-        return response.StatusCode == HttpStatusCode.NonAuthoritativeInformation
-            && response.Content.Headers.ContentType?.MediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) != true;
+        return response.StatusCode == HttpStatusCode.NonAuthoritativeInformation && !IsJson(response);
     }
 
     /// <summary>
     /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, a redirect, or
-    /// a success with a body that is not JSON. Any other response, failed or not, is left to the caller.
+    /// a success that is not JSON. 204 is left to the caller, since a call such as a delete can answer
+    /// it; token validation does not. Any other response, failed or not, is left to the caller.
     /// </summary>
     /// <exception cref="HttpRequestException">
     /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page or a redirect to one, so callers
@@ -78,10 +78,7 @@ internal static class AzureDevOpsHttp
 
         var mediaType = response.Content.Headers.ContentType?.MediaType;
 
-        if (response.IsSuccessStatusCode
-            && response.StatusCode != HttpStatusCode.NoContent
-            && response.Content.Headers.ContentLength != 0
-            && mediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) != true)
+        if (response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NoContent && !IsJson(response))
         {
             throw new HttpRequestException(
                 $"The server answered {(int)response.StatusCode} with {mediaType ?? "no content type"} instead of JSON, so the token was not checked. "
@@ -92,6 +89,9 @@ internal static class AzureDevOpsHttp
     }
 
     private static bool IsRedirect(HttpResponseMessage response) => (int)response.StatusCode is >= 300 and < 400;
+
+    private static bool IsJson(HttpResponseMessage response) =>
+        response.Content.Headers.ContentType?.MediaType?.EndsWith("json", StringComparison.OrdinalIgnoreCase) == true;
 
     private static Uri? RedirectTarget(HttpResponseMessage response)
     {
