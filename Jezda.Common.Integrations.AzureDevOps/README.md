@@ -105,7 +105,7 @@ there is the missing "Work Items (Read)" scope, not a bad token, Conditional Acc
 `Detail` names the redirect target (host and path), which tells Azure DevOps from a gateway with its own
 `/_signin`.
 
-A 403 is not always about the token: Conditional Access, an IP allow-list or a WAF can answer it for a valid
+A 403 on `_apis/projects` is not always about the token: Conditional Access, an IP allow-list or a WAF can answer it for a valid
 PAT. Validation still returns a rejection, `AccessDenied`, and logs a warning with the start of the response body, which tells these
 apart.
 

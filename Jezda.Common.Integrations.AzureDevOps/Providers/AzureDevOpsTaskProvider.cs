@@ -56,7 +56,7 @@ public sealed class AzureDevOpsTaskProvider(
     /// <c>TimeoutRejectedException</c> for a timeout, <c>BrokenCircuitException</c> for an open circuit
     /// and <c>RateLimiterRejectedException</c> for too many concurrent requests.
     /// <para />
-    /// A 403 can also come from Conditional Access, an IP allow-list or a WAF, for a valid PAT. It still
+    /// A 403 on projects can also come from Conditional Access, an IP allow-list or a WAF, for a valid PAT. It still
     /// answers a rejection, <see cref="TokenRejectionReason.AccessDenied"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">

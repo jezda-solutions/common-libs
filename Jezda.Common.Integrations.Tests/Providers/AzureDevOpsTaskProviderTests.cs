@@ -79,7 +79,7 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
-    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsFalse()
+    public async Task ValidateConnectionAsync_SignInPageOnWorkItems_ReturnsMissingScope()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
         _handler.EnqueueResponse(() => SignInPage(HttpStatusCode.NonAuthoritativeInformation));
