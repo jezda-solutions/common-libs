@@ -185,6 +185,29 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task GetProjectsAsync_NoContent_ThrowsWithTheStatusInsteadOfAJsonError()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_NoContentOnWiql_ThrowsWithTheStatusInsteadOfAJsonError()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("pat", "ProjectA", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
     public async Task ValidateConnectionAsync_OkWithEmptyBody_ThrowsInsteadOfAcceptingTheToken()
     {
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });

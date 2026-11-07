@@ -50,8 +50,10 @@ internal static class AzureDevOpsHttp
 
     /// <summary>
     /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, a redirect, or
-    /// a success that is not JSON. 204 is left to the caller, since a call such as a delete can answer
-    /// it; token validation does not. Any other response, failed or not, is left to the caller.
+    /// a success that is not JSON, 204 included. Every Azure DevOps call here reads a JSON answer, so
+    /// an empty one is not "nothing found" but something other than Azure DevOps answering; a call
+    /// added later that legitimately answers 204, such as a delete, has to check before this. Any
+    /// other response, failed or not, is left to the caller.
     /// </summary>
     /// <exception cref="HttpRequestException">
     /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page or a redirect to one, so callers
@@ -84,7 +86,7 @@ internal static class AzureDevOpsHttp
 
         var mediaType = response.Content.Headers.ContentType?.MediaType;
 
-        if (response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NoContent && !IsJson(response))
+        if (response.IsSuccessStatusCode && !IsJson(response))
         {
             throw new HttpRequestException(
                 $"The server answered {(int)response.StatusCode} with {mediaType ?? "no content type"} instead of JSON, so the token was not checked. "

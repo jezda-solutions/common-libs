@@ -98,15 +98,6 @@ public sealed class AzureDevOpsTaskProvider(
 
         await EnsureSuccessAsync(response, cancellationToken);
 
-        // A delete may answer 204, so the shared check lets it through, but no answer here is no verdict.
-        if (response.StatusCode == HttpStatusCode.NoContent)
-        {
-            throw new HttpRequestException(
-                $"The server answered 204 without content on {url.Split('?')[0]}, so the token was not checked.",
-                inner: null,
-                statusCode: response.StatusCode);
-        }
-
         return true;
     }
 
@@ -478,9 +469,7 @@ public sealed class AzureDevOpsTaskProvider(
                 using var httpResponse = await client.GetAsync(url, ct);
                 await EnsureSuccessAsync(httpResponse, ct);
 
-                return httpResponse.StatusCode == HttpStatusCode.NoContent
-                    ? null
-                    : await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
+                return await httpResponse.Content.ReadFromJsonAsync<AdoWorkItemListResponse>(JsonOptions, ct);
             },
             logger,
             cancellationToken);
