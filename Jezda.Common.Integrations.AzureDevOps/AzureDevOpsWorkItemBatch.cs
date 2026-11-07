@@ -49,8 +49,10 @@ internal static class AzureDevOpsWorkItemBatch
     {
         var workItems = new List<AdoWorkItem>();
 
-        // Distinct before chunking, so a repeated id does not take a slot in a batch.
-        var requested = ids.Distinct().ToList();
+        // Distinct before chunking, so a repeated id does not take a slot in a batch. Work item ids
+        // start at 1: a reference without an id reads as 0, and asking for 0 would let a batch
+        // item without an id through the filter below.
+        var requested = ids.Where(id => id > 0).Distinct().ToList();
 
         foreach (var batch in requested.Chunk(MaxIdsPerRequest))
         {

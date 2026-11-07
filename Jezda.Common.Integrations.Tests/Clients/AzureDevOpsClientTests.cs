@@ -185,6 +185,18 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
+    public async Task GetWorkItemsByQueryAsync_ReferenceWithoutAnId_IsNotAskedForAndItemWithoutAnIdIsDropped()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"workItems":[{"id":1},{}]}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"fields":{}}]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1], result.Select(w => w.Id));
+        Assert.Contains("ids=1&", _handler.SentRequests[1].RequestUri!.Query);
+    }
+
+    [Fact]
     public async Task GetWorkItemsByQueryAsync_SameItemInTwoBatches_KeepsOne()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. Enumerable.Range(1, 201)]));
