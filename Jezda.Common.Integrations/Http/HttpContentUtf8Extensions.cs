@@ -28,7 +28,7 @@ public static class HttpContentUtf8Extensions
         var bytes = await content.ReadAsByteArrayAsync(cancellationToken);
         var text = Encoding.UTF8.GetString(bytes);
 
-        return text.Length > 0 && text[0] == '﻿' ? text[1..] : text;
+        return text.Length > 0 && text[0] == '\uFEFF' ? text[1..] : text;
     }
 
     /// <summary>
@@ -61,7 +61,8 @@ public static class HttpContentUtf8Extensions
     {
         ArgumentNullException.ThrowIfNull(client);
 
-        using var response = await client.GetAsync(requestUri, cancellationToken);
+        // Headers only, as GetFromJsonAsync does: the body is streamed into the deserializer, not buffered.
+        using var response = await client.GetAsync(requestUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromUtf8JsonAsync<T>(options, cancellationToken);

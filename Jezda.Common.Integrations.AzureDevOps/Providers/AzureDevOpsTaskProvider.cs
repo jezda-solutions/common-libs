@@ -434,7 +434,8 @@ public sealed class AzureDevOpsTaskProvider(
 
     // Best effort: a body that cannot be read must not replace the status code, which is what callers
     // branch on, so the filter catches a connection that drops mid-body and content already disposed
-    // (ObjectDisposedException is an InvalidOperationException). The declared charset cannot fail it:
+    // (ObjectDisposedException is an InvalidOperationException), and content that cannot be
+    // buffered (NotSupportedException). The declared charset cannot fail it:
     // the body is read as UTF-8 regardless; see HttpContentUtf8Extensions.
     // The base URL comes from the user, so the body can be anything: control characters go, because a
     // line break in it would forge an entry in a plain-text log.
@@ -445,7 +446,7 @@ public sealed class AzureDevOpsTaskProvider(
         {
             body = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or NotSupportedException)
         {
             return string.Empty;
         }
