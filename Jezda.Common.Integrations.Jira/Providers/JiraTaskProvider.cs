@@ -73,6 +73,7 @@ public sealed class JiraTaskProvider(
 
         var projects = await response.Content.ReadFromJsonAsync<List<JiraProject>>(JsonOptions, cancellationToken)
                        ?? [];
+        var site = JiraHttp.WebAddress(client.BaseAddress!);
 
         return [.. projects.Select(p => new ExternalProjectDto
         {
@@ -81,7 +82,7 @@ public sealed class JiraTaskProvider(
             Path = p.Key,
             Name = p.Name,
             Description = null,
-            Url = $"{baseUrl.TrimEnd('/')}/browse/{p.Key}",
+            Url = new Uri(site, $"browse/{p.Key}").AbsoluteUri,
             Provider = ExternalProvider.Jira,
             IsArchived = p.Archived
         })];
@@ -120,13 +121,14 @@ public sealed class JiraTaskProvider(
         response.EnsureSuccessStatusCode();
 
         var searchResponse = await response.Content.ReadFromJsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);
+        var site = JiraHttp.WebAddress(client.BaseAddress!);
 
         return [.. (searchResponse?.Issues ?? []).Select(i => new ExternalTaskDto
         {
             Id = i.Key,
             Title = i.Fields?.Summary ?? string.Empty,
             Status = i.Fields?.Status?.Name,
-            Url = $"{baseUrl.TrimEnd('/')}/browse/{i.Key}",
+            Url = new Uri(site, $"browse/{i.Key}").AbsoluteUri,
             ProjectId = i.Fields?.Project?.Id ?? projectId,
             Provider = ExternalProvider.Jira
         })];

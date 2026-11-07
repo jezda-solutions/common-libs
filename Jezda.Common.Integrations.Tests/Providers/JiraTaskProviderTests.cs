@@ -343,6 +343,29 @@ public class JiraTaskProviderTests
     }
 
     [Fact]
+    public async Task GetProjectsAsync_BaseUrlWithCredentials_LeavesThemOutOfTheLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new[] { new { id = "10001", key = "PROJ", name = "Project One" } });
+
+        var result = await _provider.GetProjectsAsync("user@test.com:token", "https://admin:base-secret@test.atlassian.net/jira");
+
+        Assert.Equal("https://test.atlassian.net/jira/browse/PROJ", Assert.Single(result).Url);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_BaseUrlWithCredentials_LeavesThemOutOfTheLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { new { id = "10001", key = "PROJ-1", fields = new { summary = "Fix bug" } } }
+        });
+
+        var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://admin:base-secret@test.atlassian.net/");
+
+        Assert.Equal("https://test.atlassian.net/browse/PROJ-1", Assert.Single(result).Url);
+    }
+
+    [Fact]
     public async Task GetTasksAsync_ReturnsExternalTaskDtos()
     {
         var searchResponse = new
