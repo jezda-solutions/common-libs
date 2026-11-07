@@ -28,9 +28,14 @@ public class IntegrationResilienceTests
 
     private readonly MockHttpMessageHandler _handler = new();
 
-    private HttpClient CreateClient()
+    private HttpClient CreateClient(TimeProvider? time = null)
     {
         var services = new ServiceCollection();
+        if (time is not null)
+        {
+            services.AddSingleton(time);
+        }
+
         services.AddHttpClient(ClientName, c => c.BaseAddress = new Uri("https://api.example.test/"))
             .ConfigurePrimaryHttpMessageHandler(() => _handler)
             .AddIntegrationResilience();
@@ -135,6 +140,98 @@ public class IntegrationResilienceTests
         {
             using var failed = await client.GetAsync("items");
             Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
+        }
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_AnsweredTooManyRequests_KeepsTheBreakerOpen()
+    {
+        // The probe may carry a rate-limited token: its 429 says nothing about whether the site
+        // recovered, so it must not close the breaker while the site is still failing.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: null));
+        using var probe = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.TooManyRequests, probe.StatusCode);
+
+        _handler.RespondTo("/items", HttpStatusCode.OK);
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_AnsweredTooManyRequestsWithShortRetryAfter_ReachesTheCallerAsTheRateLimit()
+    {
+        // A short Retry-After is normally retried, but the probe's 429 has just reopened the breaker:
+        // a retry would meet it and the caller would get BrokenCircuitException instead of the 429.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: 1));
+        using var probe = await client.GetAsync("items");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, probe.StatusCode);
+        Assert.Equal(TimeSpan.FromSeconds(1), probe.Headers.RetryAfter?.Delta);
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_AnsweredOk_ClosesTheBreaker_AndRateLimitsStayNeutral()
+    {
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", HttpStatusCode.OK);
+        using var probe = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.OK, probe.StatusCode);
+
+        // Closed again, a 429 is back to not counting: more than the minimum throughput of them
+        // leaves the breaker closed.
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: null));
+        for (var i = 0; i < 120; i++)
+        {
+            using var limited = await client.GetAsync("items");
+            Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_AnsweredTooManyRequests_ThenOk_ClosesTheBreaker()
+    {
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: null));
+        using var limited = await client.GetAsync("items");
+
+        time.Shift = BreakDurationPassed * 2;
+        _handler.RespondTo("/items", HttpStatusCode.OK);
+        using var probe = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.OK, probe.StatusCode);
+
+        using var after = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+    }
+
+    /// <summary>Past the breaker's default break duration of 5 s.</summary>
+    private static readonly TimeSpan BreakDurationPassed = TimeSpan.FromSeconds(6);
+
+    private async Task OpenOnServerErrorsAsync(HttpClient client)
+    {
+        _handler.RespondTo("/items", ServiceUnavailable);
+        for (var i = 0; i < 25; i++)
+        {
+            using var failed = await client.GetAsync("items");
         }
 
         await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
