@@ -40,6 +40,7 @@ public sealed class GitHubTaskProvider(
 
         using var client = CreateClient(accessToken);
         using var response = await client.GetAsync("user", cancellationToken);
+        await ThrowIfRateLimitedAsync(response, cancellationToken);
 
         // GitHub answers a bad token with 401. A 403 can refuse a valid one: a rate limit, a lockout
         // after failed logins from the same address, an IP allow list.
@@ -145,10 +146,12 @@ public sealed class GitHubTaskProvider(
     /// cannot be bound to a project, so it is dropped and logged.
     /// </para>
     /// </remarks>
+    /// <exception cref="IntegrationRateLimitException">
+    /// The search or a lookup hit a rate limit. Status 429, even where GitHub answered 403.
+    /// </exception>
     /// <exception cref="HttpRequestException">
-    /// The search or a lookup failed. A rate limit always has status 429, even where GitHub answered
-    /// 403, so it does not read as a rejected token; a 403 from the search itself that is not a rate
-    /// limit stays 403.
+    /// The search or a lookup failed otherwise; a 403 from the search itself that is not a rate limit
+    /// stays 403.
     /// </exception>
     public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
         string accessToken,
@@ -237,6 +240,7 @@ public sealed class GitHubTaskProvider(
     private static async Task<GitHubRepository> GetRepositoryAsync(HttpClient client, string url, CancellationToken cancellationToken)
     {
         using var response = await client.GetAsync(url, cancellationToken);
+        await ThrowIfRateLimitedAsync(response, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await ReadRepositoryAsync(response, url, cancellationToken);
@@ -247,20 +251,53 @@ public sealed class GitHubTaskProvider(
         ?? throw new HttpRequestException($"GitHub returned an empty repository for {url}");
 
     /// <summary>
-    /// Throws with status 429 when GitHub reports a rate limit, which it can do with 403 as well.
-    /// Consumers read a 403 as an expired token, and a rate limit is no reason to sign in again.
+    /// Throws <see cref="IntegrationRateLimitException"/>, status 429, when GitHub reports a rate
+    /// limit, which it can do with 403 as well. Consumers read a 403 as an expired token, and a rate
+    /// limit is no reason to sign in again.
     /// </summary>
     private static async Task ThrowIfRateLimitedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.StatusCode == HttpStatusCode.TooManyRequests
             || (response.StatusCode == HttpStatusCode.Forbidden && await IsRateLimitRefusalAsync(response, cancellationToken)))
         {
-            throw new HttpRequestException(
+            throw new IntegrationRateLimitException(
                 $"GitHub rate limit exceeded (answered {(int)response.StatusCode})",
-                inner: null,
-                statusCode: HttpStatusCode.TooManyRequests);
+                RetryAt(response));
         }
     }
+
+    /// <summary>
+    /// When GitHub accepts requests again: <c>retry-after</c> first, then <c>x-ratelimit-reset</c> but
+    /// only with no requests remaining, since the reset of a window that is not used up says nothing
+    /// about a secondary limit. GitHub asks for at least a minute when neither applies, which is
+    /// left to the caller.
+    /// </summary>
+    private static DateTimeOffset? RetryAt(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+
+        if (retryAfter?.Date is { } date)
+        {
+            return date;
+        }
+
+        if (retryAfter?.Delta is { } delta)
+        {
+            return (response.Headers.Date ?? DateTimeOffset.UtcNow) + delta;
+        }
+
+        if (HeaderValue(response, "x-ratelimit-remaining") == "0"
+            && long.TryParse(HeaderValue(response, "x-ratelimit-reset"), NumberStyles.None, CultureInfo.InvariantCulture, out var reset)
+            && reset <= DateTimeOffset.MaxValue.ToUnixTimeSeconds())
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(reset);
+        }
+
+        return null;
+    }
+
+    private static string? HeaderValue(HttpResponseMessage response, string name) =>
+        response.Headers.TryGetValues(name, out var values) ? values.FirstOrDefault() : null;
 
     /// <summary>
     /// Recognises a rate limit on a 403. A primary limit has <c>x-ratelimit-remaining: 0</c>. A
@@ -268,8 +305,7 @@ public sealed class GitHubTaskProvider(
     /// </summary>
     private static async Task<bool> IsRateLimitRefusalAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        if (response.Headers.RetryAfter is not null
-            || (response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) && remaining.FirstOrDefault() == "0"))
+        if (response.Headers.RetryAfter is not null || HeaderValue(response, "x-ratelimit-remaining") == "0")
         {
             return true;
         }
@@ -302,6 +338,7 @@ public sealed class GitHubTaskProvider(
         while (url is not null)
         {
             using var response = await client.GetAsync(url, cancellationToken);
+            await ThrowIfRateLimitedAsync(response, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             all.AddRange(await response.Content.ReadFromUtf8JsonAsync<List<T>>(JsonOptions, cancellationToken) ?? []);

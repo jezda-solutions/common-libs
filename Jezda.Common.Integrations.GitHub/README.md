@@ -83,19 +83,28 @@ public class GitHubService
 ## Connection validation
 
 `ValidateConnectionAsync` returns `false` for 401, which is what GitHub answers a bad token with. Every
-other failure propagates, including every 403, which can be a rate limit, a lockout after failed logins or an
-address block, so none of them is shown to the user as a bad token.
+other failure propagates, including every 403, which can be a lockout after failed logins or an address
+block, so none of them is shown to the user as a bad token. A rate limit propagates as 429, see below.
 
 A token with a character outside printable ASCII, such as a pasted smart quote or line break, also returns
 `false`, without a request: it cannot go in a header, and the failure would otherwise read as an outage.
+
+## Rate limits
+
+Every `GitHubTaskProvider` method reports a rate limit as `IntegrationRateLimitException`, an
+`HttpRequestException` with status 429, even where GitHub answered 403, so it does not read as a rejected
+token. Its `RetryAt` is when GitHub accepts requests again, taken from `retry-after`, or from
+`x-ratelimit-reset` when no requests remain; it is null when GitHub said neither, and GitHub then asks for
+at least a minute.
+
+`AddIntegrationResilience` retries a 429 only when `retry-after` asks for at most 5 s. A longer pause, or a
+429 without `retry-after`, reaches the caller at once, instead of a timeout after waiting it out.
 
 ## Search failures
 
 `SearchTasksAsync` looks up each repository in its result, at most five at once:
 
-- A rate limit fails the search with `HttpRequestException` status 429, even where GitHub answered 403, so it
-  does not read as a rejected token. That covers the search request and the lookups; `GetProjectsAsync` and
-  `GetTasksAsync` still report what GitHub answered.
+- A rate limit on the search or a lookup fails the search, as described above.
 - A lookup answering 404, 451 or any other 403 drops only that repository's issues and logs a warning. If every
   repository is refused, the result is empty.
 - Any other failure, such as 401 or 5xx, fails the search with its status.

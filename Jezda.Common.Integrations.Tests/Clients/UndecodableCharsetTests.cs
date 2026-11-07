@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.AzureDevOps;
 using Jezda.Common.Integrations.AzureDevOps.Configuration;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
@@ -154,7 +155,7 @@ public class UndecodableCharsetTests
         _handler.EnqueueResponse(() => Response(
             HttpStatusCode.Forbidden, """{"message":"You have exceeded a secondary rate limit."}""", "application/json", charset));
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => provider.SearchTasksAsync("token", "bug"));
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => provider.SearchTasksAsync("token", "bug"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
     }
