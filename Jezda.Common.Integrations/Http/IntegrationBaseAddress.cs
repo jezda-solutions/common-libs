@@ -11,8 +11,10 @@ public static class IntegrationBaseAddress
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
-    /// <item>Credentials go: they would otherwise reach every request URI, every page link built from
-    /// it, and any log that prints either. Authentication belongs in a header.</item>
+    /// <item>A username and password go. Integrations authenticate only through the
+    /// <c>Authorization</c> header and never put credentials in a URL, but a person can type them into
+    /// one by mistake (<c>https://user:pass@host/</c>). Kept, they would reach every request URI,
+    /// every page link built from it, and any log that prints either.</item>
     /// <item>A query and a fragment go: a base address with one never resolves a relative path below
     /// its own path, so <c>https://dev.azure.com/myorg?x=1</c> would send requests to
     /// <c>https://dev.azure.com/_apis/…</c>.</item>

@@ -138,7 +138,8 @@ public sealed class JiraTaskProvider(
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
-        // Without credentials, query or fragment, and with a trailing slash; see IntegrationBaseAddress.
+        // Trailing slash added; query, fragment and any username/password typed into the URL by
+        // mistake dropped (the token goes only in the header below); see IntegrationBaseAddress.
         client.BaseAddress = IntegrationBaseAddress.Create(baseUrl);
 
         // ASCII would turn a character outside its range into '?', and a valid email would read as rejected.

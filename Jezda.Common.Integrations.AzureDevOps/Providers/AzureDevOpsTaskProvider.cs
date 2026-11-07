@@ -510,7 +510,8 @@ public sealed class AzureDevOpsTaskProvider(
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {
         var client = httpClientFactory.CreateClient(HttpClientName);
-        // Without credentials, query or fragment, and with a trailing slash; see IntegrationBaseAddress.
+        // Trailing slash added; query, fragment and any username/password typed into the URL by
+        // mistake dropped (the token goes only in the header below); see IntegrationBaseAddress.
         client.BaseAddress = IntegrationBaseAddress.Create(baseUrl);
 
         var authToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($":{accessToken}"));
