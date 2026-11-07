@@ -127,8 +127,28 @@ public class AzureDevOpsClientTests
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(HttpStatusCode.OK, body);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
             () => _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+
+        Assert.Null(ex.StatusCode);
+        Assert.Contains("https://dev.azure.com/myorg/", ex.Message);
+        Assert.Contains("first id 1, last id 2", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_DuplicateReturnedInPlaceOfAMissingItem_StillWarns()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"id":1,"fields":{}}]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.EndsWith("Missing ids: 2", Assert.Single(logger.Warnings));
     }
 
     [Fact]

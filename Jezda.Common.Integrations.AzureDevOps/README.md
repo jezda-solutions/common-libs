@@ -72,7 +72,9 @@ public class MyService
 
 `GetWorkItemsByQueryAsync` takes flat queries only. A link query (`FROM WorkItemLinks`) throws
 `NotSupportedException`. The result can hold fewer items than the query matched: an item deleted or
-made unreadable after the query ran is left out, with a warning in the log.
+made unreadable after the query ran is left out, with a warning in the log that names the
+organisation and the missing ids. A batch answered without a list throws instead, because it says
+nothing about the items in it.
 
 ## 🔐 Errors and authentication
 
@@ -84,6 +86,7 @@ Both `IAzureDevOpsClient` and the `IExternalTaskProvider` for Azure DevOps repor
 | Token rejected (401, 403) | `StatusCode` 401 / 403 |
 | Sign-in page instead of JSON (a redirect to `/_signin`, or 203 without JSON) | `StatusCode` 401; for a redirect, the message names the target's host and path. |
 | A body that is not JSON on any other success status (the base URL points at a website, a proxy or a captive portal answered). Token validation treats 204 the same way. | `StatusCode` is the success status itself, e.g. 200. The token was not checked, so this is not 401. |
+| Work item batch answered without a list (204, a `null` body, or no `value`) | `StatusCode` is `null`: the answer was a success, so the status says nothing. Treat it like an outage. The message names the organisation and the batch's first and last id. |
 | Base URL redirects anywhere else (3xx, e.g. after an organisation rename) | `StatusCode` is the 3xx; the message names the target. Redirects are not followed, because .NET drops `Authorization` on the next hop and a valid PAT would read as expired. |
 | Any other failure | Its own status, or the original exception for dropped connections and cancellation. A timeout on `IAzureDevOpsClient` is `TaskCanceledException` from `HttpClient.Timeout`. |
 | Resilience pipeline on the `IExternalTaskProvider` client gave up | Polly's `TimeoutRejectedException`, `BrokenCircuitException` or `RateLimiterRejectedException`. None derives from `HttpRequestException`, so also catch their common base, `ExecutionRejectedException`. |

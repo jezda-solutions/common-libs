@@ -35,6 +35,8 @@ internal static class AzureDevOpsWorkItemBatch
     /// <exception cref="HttpRequestException">
     /// A batch was answered without a list. Omitted items are null slots in a list, so a missing list
     /// says nothing about them, and reading it as omitted would lose up to a whole batch.
+    /// <see cref="HttpRequestException.StatusCode"/> is <see langword="null"/>: the answer was a
+    /// success, so the status says nothing, and the call failed for the same reason an outage does.
     /// </exception>
     public static async Task<List<AdoWorkItem>> FetchAsync(
         IEnumerable<int> ids,
@@ -57,20 +59,22 @@ internal static class AzureDevOpsWorkItemBatch
             if (response?.Value is null)
             {
                 throw new HttpRequestException(
-                    $"Azure DevOps answered a batch of {batch.Length} work items without a list of them.");
+                    $"Azure DevOps answered a batch of {batch.Length} work items (first id {batch[0]}, last id {batch[^1]}) "
+                    + $"on {organisation} without a list of them, so their state is unknown.");
             }
 
             workItems.AddRange(response.Value.OfType<AdoWorkItem>());
         }
 
-        if (workItems.Count < requested.Count)
-        {
-            var missing = requested.Except(workItems.Select(workItem => workItem.Id)).ToList();
+        // By id, not by count: a duplicate in either list would otherwise hide a missing item.
+        var missing = requested.Except(workItems.Select(workItem => workItem.Id)).ToList();
 
+        if (missing.Count > 0)
+        {
             logger.LogWarning(
                 "Azure DevOps returned {Returned} of {Requested} requested work items on {Organisation}. The rest were deleted or the token cannot read them. Missing ids: {MissingIds}",
                 workItems.Count,
-                requested.Count,
+                requested.Distinct().Count(),
                 organisation,
                 string.Join(", ", missing.Take(MaxIdsInWarning))
                     + (missing.Count > MaxIdsInWarning ? $" and {missing.Count - MaxIdsInWarning} more" : string.Empty));
