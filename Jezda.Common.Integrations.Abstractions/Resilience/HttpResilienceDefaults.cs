@@ -26,7 +26,7 @@ public static class HttpResilienceDefaults
     /// organisation, GitHub a hash of the token.
     /// <para />
     /// Everything in the pipeline is per key, the concurrency limit (1000) included. A client keeps
-    /// at most 1000 pipelines, at most 100 of them for keys that had no successful answer yet, for
+    /// at most 1000 pipelines, at most 100 of them for keys that have had no successful answer yet, for
     /// the life of the process; requests beyond that share one pipeline. A key that once answered
     /// successfully gets its own as long as room is left, so a base URL a user mistyped, or probed
     /// on purpose, cannot take a working site's breaker away.
@@ -48,7 +48,8 @@ public static class HttpResilienceDefaults
     /// <param name="pipelineKey">
     /// The key of a request's pipeline, called once per request, before its retries. Polly writes it into logs and
     /// metrics, so it must never hold a token, password or other secret in readable form; start from
-    /// <see cref="IntegrationPipelineKeys.Address"/>, which drops credentials typed into a URL.
+    /// <see cref="IntegrationPipelineKeys.Address"/>, which drops credentials typed into a URL. The
+    /// key <c>overflow</c> is reserved for the pipeline requests beyond the budget share.
     /// </param>
     /// <remarks>
     /// For a provider whose callers do not all fail together: every organisation on one host, or

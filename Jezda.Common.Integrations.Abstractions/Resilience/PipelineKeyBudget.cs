@@ -12,11 +12,11 @@ namespace Jezda.Common.Integrations.Abstractions.Resilience;
 /// </summary>
 /// <remarks>
 /// A key gets a pipeline of its own while the budget lasts: at most <see cref="MaxKeys"/> in all, of
-/// which at most <see cref="MaxUnprovenKeys"/> have never had a successful answer. Every other request
-/// shares <see cref="OverflowKey"/>. A key whose request succeeds through the shared pipeline is
-/// proven and gets its own on its next request, so a working site keeps its own breaker even after
-/// mistyped or probed addresses have used up the unproven part. Admitted keys are never dropped,
-/// because the registry cannot drop their pipelines.
+/// which at most <see cref="MaxUnprovenKeys"/> have not had a successful answer yet. Every other
+/// request shares <see cref="OverflowKey"/>, a name reserved for that. A key whose request succeeds
+/// through the shared pipeline is proven and gets its own on its next request, so a working site
+/// keeps its own breaker even after mistyped or probed addresses have used up the unproven part.
+/// Admitted keys are never dropped, because the registry cannot drop their pipelines.
 /// <para />
 /// Each limit logs one warning per client the first time it sends a request to the shared pipeline,
 /// so a filled budget can be told apart from an ordinary outage.
@@ -26,18 +26,30 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     /// <summary>The most keys with a pipeline of their own, per client.</summary>
     public const int MaxKeys = 1000;
 
-    /// <summary>The most of those that had no successful answer when they were admitted.</summary>
+    /// <summary>The most of those that have not had a successful answer yet.</summary>
     public const int MaxUnprovenKeys = 100;
 
     /// <summary>The key every request beyond the budget shares. Holds no address or token.</summary>
     public const string OverflowKey = "overflow";
 
-    private readonly ConcurrentDictionary<string, byte> _admitted = new(StringComparer.Ordinal);
+    /// <summary>
+    /// The key <see cref="Select"/> computed, carried on the request to <see cref="RecordSuccess"/>:
+    /// a redirect rewrites the URI and drops the <c>Authorization</c> header, so computing it again
+    /// there would prove the wrong key.
+    /// </summary>
+    private static readonly HttpRequestOptionsKey<string> RequestKey = new("Jezda.Integrations.PipelineKey");
+
+    // Admitted keys, with whether they have had a successful answer yet.
+    private readonly ConcurrentDictionary<string, bool> _admitted = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _proven = new(StringComparer.Ordinal);
     private readonly object _admitLock = new();
+
+    // Counted apart from the dictionaries: ConcurrentDictionary.Count takes every lock it has.
+    private int _admittedCount;
+    private int _provenCount;
     private int _unprovenAdmitted;
-    private bool _warnedFull;
-    private bool _warnedUnprovenFull;
+    private int _warnedFull;
+    private int _warnedUnprovenFull;
 
     /// <summary>Where the warnings go; set once the client's services are known.</summary>
     public ILogger Logger { get; set; } = NullLogger.Instance;
@@ -45,16 +57,24 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     /// <summary>The pipeline key a request runs under.</summary>
     /// <remarks>
     /// The resilience library calls the selector once with a placeholder request each time it builds
-    /// the handler, to check it. That placeholder always gives the same key, so it takes one unproven
-    /// place, never more.
+    /// the handler, to check it. That placeholder always gives the same key and never answers, so it
+    /// takes one unproven place, never more.
     /// </remarks>
     public string Select(HttpRequestMessage request)
     {
         var key = pipelineKey(request);
+        request.Options.Set(RequestKey, key);
 
         if (_admitted.ContainsKey(key))
         {
             return key;
+        }
+
+        // Once the budget is full, overflow traffic does not queue on the lock.
+        if (Volatile.Read(ref _admittedCount) >= MaxKeys)
+        {
+            WarnOnce(ref _warnedFull, $"all {MaxKeys} pipelines are taken");
+            return OverflowKey;
         }
 
         lock (_admitLock)
@@ -64,7 +84,7 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
                 return key;
             }
 
-            if (_admitted.Count >= MaxKeys)
+            if (_admittedCount >= MaxKeys)
             {
                 WarnOnce(ref _warnedFull, $"all {MaxKeys} pipelines are taken");
                 return OverflowKey;
@@ -72,32 +92,34 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
 
             var proven = _proven.TryRemove(key, out _);
 
-            if (!proven && _unprovenAdmitted >= MaxUnprovenKeys)
+            if (proven)
+            {
+                Interlocked.Decrement(ref _provenCount);
+            }
+            else if (Volatile.Read(ref _unprovenAdmitted) >= MaxUnprovenKeys)
             {
                 WarnOnce(ref _warnedUnprovenFull, $"the {MaxUnprovenKeys} pipelines for addresses that never answered successfully are taken");
                 return OverflowKey;
             }
-
-            if (!proven)
+            else
             {
-                _unprovenAdmitted++;
+                Interlocked.Increment(ref _unprovenAdmitted);
             }
 
-            _admitted[key] = 0;
+            _admitted[key] = proven;
+            Volatile.Write(ref _admittedCount, _admittedCount + 1);
 
             return key;
         }
     }
 
-    // Called under the admission lock, so each warning is written once.
-    private void WarnOnce(ref bool warned, string reason)
+    private void WarnOnce(ref int warned, string reason)
     {
-        if (warned)
+        if (Interlocked.Exchange(ref warned, 1) == 1)
         {
             return;
         }
 
-        warned = true;
         Logger.LogWarning(
             "HTTP client {ClientName}: {Reason}, so new addresses or tokens now share one resilience pipeline and circuit breaker "
             + "until they answer successfully. Many distinct base URLs or tokens were used, for example mistyped or probed ones.",
@@ -106,19 +128,37 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     }
 
     /// <summary>
-    /// Records a successful answer to a request. Only a key not yet admitted needs it, and only
-    /// while there is room, so the record stays within the budget too.
+    /// Records a successful answer to a request <see cref="Select"/> saw. An admitted key that had
+    /// none yet gives its unproven place back, so working sites do not use up the places meant for
+    /// addresses that never answered. A key not admitted is remembered only while there is room, so
+    /// the record stays within the budget too.
     /// </summary>
     public void RecordSuccess(HttpRequestMessage request)
     {
-        var key = pipelineKey(request);
-
-        if (_admitted.ContainsKey(key) || _admitted.Count + _proven.Count >= MaxKeys)
+        if (!request.Options.TryGetValue(RequestKey, out var key))
         {
             return;
         }
 
-        _proven.TryAdd(key, 0);
+        if (_admitted.TryGetValue(key, out var proven))
+        {
+            if (!proven && _admitted.TryUpdate(key, true, false))
+            {
+                Interlocked.Decrement(ref _unprovenAdmitted);
+            }
+
+            return;
+        }
+
+        if (Volatile.Read(ref _admittedCount) + Volatile.Read(ref _provenCount) >= MaxKeys)
+        {
+            return;
+        }
+
+        if (_proven.TryAdd(key, 0))
+        {
+            Interlocked.Increment(ref _provenCount);
+        }
     }
 }
 

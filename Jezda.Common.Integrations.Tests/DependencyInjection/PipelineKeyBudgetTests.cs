@@ -71,6 +71,33 @@ public class PipelineKeyBudgetTests
     }
 
     [Fact]
+    public void AdmittedKey_ThatSucceeds_GivesItsUnprovenPlaceBack()
+    {
+        // Working sites admitted before their first answer must not use up the places meant for
+        // addresses that never answer.
+        for (var i = 0; i < PipelineKeyBudget.MaxUnprovenKeys; i++)
+        {
+            RecordSuccess($"https://site{i}.example.test/x");
+        }
+
+        Assert.Equal("https://new.example.test", Select("https://new.example.test/x"));
+    }
+
+    [Fact]
+    public void RedirectedRequest_ProvesTheKeyItWasSelectedUnder()
+    {
+        // A redirect rewrites the request's URI (and drops Authorization) before the answer comes.
+        FillUnproven();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://up.example.test/x");
+        Assert.Equal(PipelineKeyBudget.OverflowKey, _budget.Select(request));
+        request.RequestUri = new Uri("https://moved.example.test/x");
+
+        _budget.RecordSuccess(request);
+
+        Assert.Equal("https://up.example.test", Select("https://up.example.test/x"));
+    }
+
+    [Fact]
     public void FilledUnprovenBudget_LogsOneWarning()
     {
         var logger = new ListLogger();
@@ -111,9 +138,11 @@ public class PipelineKeyBudgetTests
         return _budget.Select(request);
     }
 
+    /// <summary>A request that ran under the key <see cref="PipelineKeyBudget.Select"/> gave it and succeeded.</summary>
     private void RecordSuccess(string url)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        _budget.Select(request);
         _budget.RecordSuccess(request);
     }
 }
