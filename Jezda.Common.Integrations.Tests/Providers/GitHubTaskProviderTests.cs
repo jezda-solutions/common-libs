@@ -57,6 +57,19 @@ public class GitHubTaskProviderTests
     }
 
     [Fact]
+    public async Task OtherCalls_TokenThatCannotGoInAHeader_ThrowWithoutSending()
+    {
+        // Sent, it would fail in the HTTP stack as an outage, be retried and count towards the
+        // circuit breaker every caller of this provider shares.
+        const string token = "token\u201D";
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetProjectsAsync(token));
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetTasksAsync(token, "123"));
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.SearchTasksAsync(token, "bug"));
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Fact]
     public async Task ValidateConnectionAsync_WithInvalidToken_ReturnsFalse()
     {
         _handler.EnqueueResponse(HttpStatusCode.Unauthorized);

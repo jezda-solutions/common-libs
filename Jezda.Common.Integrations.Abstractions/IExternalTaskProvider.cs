@@ -40,6 +40,10 @@ public interface IExternalTaskProvider
         string? baseUrl = null,
         CancellationToken cancellationToken = default);
 
+    /// <exception cref="ArgumentException">
+    /// GitHub, ClickUp and Monday.com: the token has a character outside printable ASCII, so it cannot
+    /// go in a header. Thrown before any request, so it is neither retried nor counted by the circuit breaker.
+    /// </exception>
     Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(
         string accessToken,
         string? baseUrl = null,
@@ -57,6 +61,10 @@ public interface IExternalTaskProvider
     /// </param>
     /// <param name="baseUrl">The organisation or site address, for providers that need one.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
+    /// <exception cref="ArgumentException">
+    /// GitHub, ClickUp and Monday.com: the token has a character outside printable ASCII, so it cannot
+    /// go in a header. Thrown before any request, so it is neither retried nor counted by the circuit breaker.
+    /// </exception>
     Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(
         string accessToken,
         string projectId,
@@ -99,6 +107,10 @@ public interface IExternalTaskProvider
     /// implementation given whitespace returns an empty list rather than every task in the account.
     /// </param>
     /// <param name="limit">Maximum number of results to return. Implementations may return fewer.</param>
+    /// <exception cref="ArgumentException">
+    /// GitHub, ClickUp and Monday.com: the token has a character outside printable ASCII, so it cannot
+    /// go in a header. Thrown before any request, so it is neither retried nor counted by the circuit breaker.
+    /// </exception>
     Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
         string accessToken,
         string searchTerm,

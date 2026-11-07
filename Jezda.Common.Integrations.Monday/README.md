@@ -30,6 +30,8 @@ token.
 
 A token with a character outside printable ASCII, such as a pasted smart quote or line break, returns
 `NotSendable`, without a request: it cannot go in a header, and the failure would otherwise read as an outage.
+The other calls throw `ArgumentException` for such a token, also without a request, so it is not
+retried and does not count towards the circuit breaker every caller of the provider shares.
 
 ## Failures on status 200
 
