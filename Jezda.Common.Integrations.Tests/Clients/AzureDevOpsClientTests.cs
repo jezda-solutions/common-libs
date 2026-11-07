@@ -64,6 +64,42 @@ public class AzureDevOpsClientTests
 
         var warning = Assert.Single(logger.Warnings);
         Assert.Contains("returned 2 of 3", warning);
+        Assert.Contains("https://dev.azure.com/myorg/", warning);
+        Assert.EndsWith("Missing ids: 2", warning);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_ManyItemsOmitted_CapsTheIdsInTheWarning()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. Enumerable.Range(1, 25)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":0,"value":[]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("returned 0 of 25", warning);
+        Assert.EndsWith("Missing ids: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 and 5 more", warning);
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_ItemsOmitted_KeepsBaseUrlCredentialsOutOfTheWarning()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://admin:base-secret@dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[null]}""");
+
+        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.DoesNotContain("secret", Assert.Single(logger.Warnings));
     }
 
     [Fact]

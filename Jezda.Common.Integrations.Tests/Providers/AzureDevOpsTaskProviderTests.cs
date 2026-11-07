@@ -664,6 +664,8 @@ public class AzureDevOpsTaskProviderTests
 
         var warning = Assert.Single(logger.Warnings);
         Assert.Contains("returned 1 of 2", warning);
+        Assert.Contains("https://dev.azure.com/myorg/", warning);
+        Assert.EndsWith("Missing ids: 2", warning);
     }
 
     [Fact]

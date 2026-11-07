@@ -73,7 +73,7 @@ public sealed class AzureDevOpsTaskProvider(
         {
             logger.LogInformation(
                 "Azure DevOps accepted the token for projects and work items on {Organisation}",
-                OrganisationForLog(client));
+                AzureDevOpsHttp.OrganisationForLog(client));
         }
 
         return accepted;
@@ -91,7 +91,7 @@ public sealed class AzureDevOpsTaskProvider(
                 "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}: {Answer}",
                 (int)response.StatusCode,
                 url.Split('?')[0],
-                OrganisationForLog(client),
+                AzureDevOpsHttp.OrganisationForLog(client),
                 isSignInPage ? "a sign-in page" : await ReadErrorBodyAsync(response, cancellationToken));
             return false;
         }
@@ -100,10 +100,6 @@ public sealed class AzureDevOpsTaskProvider(
 
         return true;
     }
-
-    // The base URL comes from the user, so leave out any credentials written into it.
-    private static string? OrganisationForLog(HttpClient client) =>
-        client.BaseAddress?.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
@@ -465,6 +461,7 @@ public sealed class AzureDevOpsTaskProvider(
         AzureDevOpsWorkItemBatch.FetchAsync(
             ids,
             _apiVersion,
+            AzureDevOpsHttp.OrganisationForLog(client),
             async (url, ct) =>
             {
                 using var httpResponse = await client.GetAsync(url, ct);
