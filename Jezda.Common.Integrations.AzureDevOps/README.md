@@ -96,12 +96,12 @@ outage is not shown to the user as a bad PAT.
 
 | Answer | On `_apis/projects` | On `_apis/wit/fields` |
 |---|---|---|
-| 401 | `InvalidToken` | `InvalidToken` |
+| 401 | `InvalidToken` | `MissingScope` |
 | 403 | `AccessDenied` | `MissingScope` |
-| sign-in page or redirect to one | `SignInPage` | `SignInPage` |
+| sign-in page or redirect to one | `SignInPage` | `MissingScope` |
 
-The work item check runs only once projects passed, with the same token from the same address, so a 403 there
-is the missing "Work Items (Read)" scope, not Conditional Access or an address block. For a sign-in page,
+The work item check runs only once projects passed, with the same token from the same address, so any refusal
+there is the missing "Work Items (Read)" scope, not a bad token, Conditional Access or an address block. For a sign-in page,
 `Detail` names the redirect target (host and path), which tells Azure DevOps from a gateway with its own
 `/_signin`.
 

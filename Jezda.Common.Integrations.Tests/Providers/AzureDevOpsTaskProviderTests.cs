@@ -62,9 +62,9 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, TokenRejectionReason.InvalidToken)]
-    [InlineData(HttpStatusCode.Forbidden, TokenRejectionReason.MissingScope)]
-    public async Task ValidateConnectionAsync_WorkItemsRefused_ReturnsRejection(HttpStatusCode status, TokenRejectionReason reason)
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ValidateConnectionAsync_WorkItemsRefused_ReturnsMissingScope(HttpStatusCode status)
     {
         // A PAT with "Project and Team (Read)" only: it lists projects, then fails on the first sync.
         _handler.EnqueueResponse(HttpStatusCode.OK, new { count = 0, value = Array.Empty<object>() });
@@ -72,8 +72,9 @@ public class AzureDevOpsTaskProviderTests
 
         var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
 
+        // The same token just listed projects, so it is not a bad token: it lacks Work Items (Read).
         Assert.False(result.IsValid);
-        Assert.Equal(reason, result.Reason);
+        Assert.Equal(TokenRejectionReason.MissingScope, result.Reason);
         Assert.Equal($"{(int)status} on _apis/wit/fields", result.Detail);
     }
 
@@ -86,7 +87,7 @@ public class AzureDevOpsTaskProviderTests
         var result = await _provider.ValidateConnectionAsync("project-only-pat", "https://dev.azure.com/myorg/");
 
         Assert.False(result.IsValid);
-        Assert.Equal(TokenRejectionReason.SignInPage, result.Reason);
+        Assert.Equal(TokenRejectionReason.MissingScope, result.Reason);
         Assert.Equal("answered 203 with a sign-in page instead of JSON on _apis/wit/fields", result.Detail);
     }
 

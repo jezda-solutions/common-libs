@@ -18,7 +18,7 @@ public enum TokenRejectionReason
 
     /// <summary>
     /// The provider knows the token but it lacks a permission the integration needs: for Azure DevOps,
-    /// Work Items (Read). A token with that scope fixes it; a new token with the same scopes does not.
+    /// Work Items (Read); for Monday.com, <c>missingRequiredPermissions</c>. A token with that scope fixes it; a new token with the same scopes does not.
     /// </summary>
     MissingScope = 3,
 

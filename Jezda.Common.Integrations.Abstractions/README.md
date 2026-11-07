@@ -22,7 +22,7 @@ Shared abstractions for external task provider integrations, including the `IExt
 | `NotSendable` | Paste the token again without stray characters (a smart quote, a line break) |
 | `MissingScope` | Add the missing scope to the token (Azure DevOps: Work Items (Read)); a new token with the same scopes fails the same way |
 | `AccessDenied` | Check the token's scopes and any Conditional Access, IP allow list or firewall in front of the provider |
-| `SignInPage` | Check the base URL; a gateway may ask for its own sign-in |
+| `SignInPage` | Check the base URL and the token; a gateway may ask for its own sign-in (`Detail` names where) |
 
 Exceptions keep their meaning: "could not check", never "bad token".
 

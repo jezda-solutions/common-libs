@@ -39,10 +39,11 @@ public sealed class AzureDevOpsTaskProvider(
     /// </summary>
     /// <returns>
     /// <see cref="ConnectionValidationResult.Accepted"/> when the token is accepted; a rejection when
-    /// Azure DevOps rejects it on either request. 401 is <see cref="TokenRejectionReason.InvalidToken"/>
-    /// and a sign-in page in place of JSON is <see cref="TokenRejectionReason.SignInPage"/>. A 403 on
-    /// projects is <see cref="TokenRejectionReason.AccessDenied"/>; a 403 on work items, once projects
-    /// passed with the same token from the same address, is <see cref="TokenRejectionReason.MissingScope"/>.
+    /// Azure DevOps rejects it on either request. On projects, 401 is
+    /// <see cref="TokenRejectionReason.InvalidToken"/>, 403 is <see cref="TokenRejectionReason.AccessDenied"/>
+    /// and a sign-in page in place of JSON is <see cref="TokenRejectionReason.SignInPage"/>. On work items,
+    /// which runs only once projects passed with the same token from the same address, any of them is
+    /// <see cref="TokenRejectionReason.MissingScope"/>.
     /// </returns>
     /// <remarks>
     /// Listing projects needs "Project and Team (Read)", and listing work item fields needs
@@ -71,14 +72,15 @@ public sealed class AzureDevOpsTaskProvider(
         using var client = CreateClient(accessToken, baseUrl);
 
         var result = await CheckTokenAsync(
-            client, $"_apis/projects?$top=1&api-version={_apiVersion}", TokenRejectionReason.AccessDenied, cancellationToken);
+            client, $"_apis/projects?$top=1&api-version={_apiVersion}", workItemsCheck: false, cancellationToken);
 
-        // Projects passed, so a 403 here is no Conditional Access or address block, which would have
+        // Projects passed with the same token from the same address, so any refusal here, 401, 403 or
+        // a sign-in page, is no bad token, Conditional Access or address block, which would have
         // refused that request too: the token lacks the Work Items (Read) scope.
         if (result.IsValid)
         {
             result = await CheckTokenAsync(
-                client, $"_apis/wit/fields?api-version={_apiVersion}", TokenRejectionReason.MissingScope, cancellationToken);
+                client, $"_apis/wit/fields?api-version={_apiVersion}", workItemsCheck: true, cancellationToken);
         }
 
         if (result.IsValid)
@@ -92,7 +94,7 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     private async Task<ConnectionValidationResult> CheckTokenAsync(
-        HttpClient client, string url, TokenRejectionReason forbiddenReason, CancellationToken cancellationToken)
+        HttpClient client, string url, bool workItemsCheck, CancellationToken cancellationToken)
     {
         using var response = await client.GetAsync(url, cancellationToken);
 
@@ -101,19 +103,24 @@ public sealed class AzureDevOpsTaskProvider(
 
         if (isSignInPage || response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
+            var answer = isSignInPage ? AzureDevOpsHttp.DescribeSignInPage(response) : $"{(int)response.StatusCode}";
+
             logger.LogWarning(
                 "Azure DevOps rejected the token with {StatusCode} on {Path} for {Organisation}: {Answer}",
                 (int)response.StatusCode,
                 path,
                 AzureDevOpsHttp.OrganisationForLog(client),
-                isSignInPage ? AzureDevOpsHttp.DescribeSignInPage(response) : await ReadErrorBodyAsync(response, cancellationToken));
+                isSignInPage ? answer : await ReadErrorBodyAsync(response, cancellationToken));
 
-            return isSignInPage
-                ? ConnectionValidationResult.Rejected(
-                    TokenRejectionReason.SignInPage, $"{AzureDevOpsHttp.DescribeSignInPage(response)} on {path}")
-                : ConnectionValidationResult.Rejected(
-                    response.StatusCode == HttpStatusCode.Unauthorized ? TokenRejectionReason.InvalidToken : forbiddenReason,
-                    $"{(int)response.StatusCode} on {path}");
+            var reason = (workItemsCheck, isSignInPage, response.StatusCode) switch
+            {
+                (true, _, _) => TokenRejectionReason.MissingScope,
+                (false, true, _) => TokenRejectionReason.SignInPage,
+                (false, false, HttpStatusCode.Unauthorized) => TokenRejectionReason.InvalidToken,
+                _ => TokenRejectionReason.AccessDenied
+            };
+
+            return ConnectionValidationResult.Rejected(reason, $"{answer} on {path}");
         }
 
         await EnsureSuccessAsync(response, cancellationToken);

@@ -90,7 +90,8 @@ public class MondayTaskProviderTests
         var result = await _provider.ValidateConnectionAsync("token");
 
         Assert.False(result.IsValid);
-        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
+        Assert.Equal(TokenRejectionReason.AccessDenied, result.Reason);
+        Assert.Equal("403 with USER_ACCESS_DENIED", result.Detail);
     }
 
     [Theory]
@@ -107,19 +108,20 @@ public class MondayTaskProviderTests
     }
 
     [Theory]
-    [InlineData("NOT_AUTHENTICATED")]
-    [InlineData("Unauthorized")]
-    [InlineData("UserUnauthorizedException")]
-    [InlineData("USER_ACCESS_DENIED")]
-    [InlineData("missingRequiredPermissions")]
-    public async Task ValidateConnectionAsync_RejectionOnStatus200_ReturnsFalse(string code)
+    [InlineData("NOT_AUTHENTICATED", TokenRejectionReason.InvalidToken)]
+    [InlineData("Unauthorized", TokenRejectionReason.InvalidToken)]
+    [InlineData("UserUnauthorizedException", TokenRejectionReason.InvalidToken)]
+    [InlineData("USER_ACCESS_DENIED", TokenRejectionReason.AccessDenied)]
+    [InlineData("missingRequiredPermissions", TokenRejectionReason.MissingScope)]
+    public async Task ValidateConnectionAsync_RejectionOnStatus200_ReturnsReasonForTheCode(string code, TokenRejectionReason reason)
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, ErrorBody(code));
 
         var result = await _provider.ValidateConnectionAsync("token");
 
         Assert.False(result.IsValid);
-        Assert.Equal(TokenRejectionReason.InvalidToken, result.Reason);
+        Assert.Equal(reason, result.Reason);
+        Assert.Equal($"200 with {code}", result.Detail);
     }
 
     [Fact]

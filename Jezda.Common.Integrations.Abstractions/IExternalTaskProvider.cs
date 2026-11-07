@@ -14,11 +14,11 @@ public interface IExternalTaskProvider
     /// <remarks>
     /// What counts as a rejected token differs per provider, with the <see cref="Enums.TokenRejectionReason"/> it gets:
     /// <list type="bullet">
-    /// <item><description>Azure DevOps: on the check for projects, 401 is <c>InvalidToken</c> and 403 is <c>AccessDenied</c> (a missing Project scope, Conditional Access, an IP allow list or a WAF). On the check for work items, which runs only once projects passed, 401 is <c>InvalidToken</c> and 403 is <c>MissingScope</c> (Work Items (Read)). A sign-in page on either is <c>SignInPage</c>.</description></item>
+    /// <item><description>Azure DevOps: on the check for projects, 401 is <c>InvalidToken</c> and 403 is <c>AccessDenied</c> (a missing Project scope, Conditional Access, an IP allow list or a WAF). A sign-in page there is <c>SignInPage</c>. On the check for work items, which runs only once projects passed, any refusal is <c>MissingScope</c> (Work Items (Read)).</description></item>
     /// <item><description>GitHub: 401 is <c>InvalidToken</c>. A 403 can be a rate limit, a login-attempt lockout or an address block, so it is not a rejection.</description></item>
     /// <item><description>Jira: 401 is <c>InvalidToken</c>, unless <c>X-Seraph-LoginReason</c> is <c>AUTHENTICATION_DENIED</c>: the CAPTCHA was triggered and needs a sign-in through the website, which throws. A 403 is not a rejection.</description></item>
     /// <item><description>ClickUp: 401 is <c>InvalidToken</c>.</description></item>
-    /// <item><description>Monday.com: 401, or a rejection code in a GraphQL error on status 200 or 403, is <c>InvalidToken</c>. An IP restriction or a temporary API block is not a rejection.</description></item>
+    /// <item><description>Monday.com: 401 is <c>InvalidToken</c>; a rejection code in a GraphQL error on status 200 or 403 is <c>MissingScope</c> for <c>missingRequiredPermissions</c>, <c>AccessDenied</c> for <c>USER_ACCESS_DENIED</c> and <c>InvalidToken</c> for the others. An IP restriction or a temporary API block is not a rejection.</description></item>
     /// <item><description>Trello: 401 is <c>InvalidToken</c>, for a bad key as well as a bad token.</description></item>
     /// </list>
     /// GitHub, ClickUp and Monday.com send the token as it is in a header, so one with a character outside

@@ -61,15 +61,15 @@ public sealed class MondayTaskProvider(
             }
 
             logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
-            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "401");
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "401 on the GraphQL endpoint");
         }
 
         // A 403 can come from a gateway in front of Monday.com, so only a known code blames the token.
         if (response.StatusCode == HttpStatusCode.Forbidden
-            && HasRejectedTokenCode(await response.Content.ReadAsUtf8StringAsync(cancellationToken)))
+            && RejectedTokenCode(await response.Content.ReadAsUtf8StringAsync(cancellationToken)) is { } forbiddenCode)
         {
-            logger.LogWarning("Monday.com rejected the token with {StatusCode}", (int)response.StatusCode);
-            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "403 with a token rejection code");
+            logger.LogWarning("Monday.com rejected the token with {StatusCode}: {Code}", (int)response.StatusCode, forbiddenCode);
+            return ConnectionValidationResult.Rejected(ReasonFor(forbiddenCode), $"403 with {forbiddenCode}");
         }
 
         response.EnsureSuccessStatusCode();
@@ -84,10 +84,10 @@ public sealed class MondayTaskProvider(
         // Monday reports application errors with status 200, so only the code tells them apart.
         var errors = result?.Errors ?? [];
 
-        if (errors.Any(error => RejectedTokenCodes.Contains(error.Extensions?.Code)))
+        if (errors.Select(error => error.Extensions?.Code).FirstOrDefault(RejectedTokenCodes.Contains) is { } code)
         {
-            logger.LogWarning("Monday.com rejected the token with a GraphQL error");
-            return ConnectionValidationResult.Rejected(TokenRejectionReason.InvalidToken, "a token rejection code in a GraphQL error");
+            logger.LogWarning("Monday.com rejected the token with a GraphQL error: {Code}", code);
+            return ConnectionValidationResult.Rejected(ReasonFor(code), $"{(int)response.StatusCode} with {code}");
         }
 
         var reasons = DescribeErrors(errors);
@@ -98,19 +98,27 @@ public sealed class MondayTaskProvider(
             response.StatusCode);
     }
 
-    private static bool HasRejectedTokenCode(string body)
+    private static string? RejectedTokenCode(string body)
     {
         try
         {
             var errors = JsonSerializer.Deserialize<MondayGraphQlResponse<JsonElement>>(body, JsonOptions)?.Errors;
 
-            return errors?.Any(error => RejectedTokenCodes.Contains(error.Extensions?.Code)) == true;
+            return errors?.Select(error => error.Extensions?.Code).FirstOrDefault(RejectedTokenCodes.Contains);
         }
         catch (JsonException)
         {
-            return false;
+            return null;
         }
     }
+
+    // A token Monday.com knows but that lacks a scope, or a user it denies, is not a token to replace.
+    private static TokenRejectionReason ReasonFor(string code) => code switch
+    {
+        _ when code.Equals("missingRequiredPermissions", StringComparison.OrdinalIgnoreCase) => TokenRejectionReason.MissingScope,
+        _ when code.Equals("USER_ACCESS_DENIED", StringComparison.OrdinalIgnoreCase) => TokenRejectionReason.AccessDenied,
+        _ => TokenRejectionReason.InvalidToken
+    };
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
