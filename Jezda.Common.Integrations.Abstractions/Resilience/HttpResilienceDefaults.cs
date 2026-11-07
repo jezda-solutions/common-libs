@@ -43,7 +43,7 @@ public static class HttpResilienceDefaults
     /// </summary>
     /// <param name="builder">The client to add the handler to.</param>
     /// <param name="pipelineKey">
-    /// The key of a request's pipeline, called on every attempt. Polly writes it into logs and
+    /// The key of a request's pipeline, called once per request, before its retries. Polly writes it into logs and
     /// metrics, so it must never hold a token, password or other secret in readable form; start from
     /// <see cref="IntegrationPipelineKeys.Address"/>, which drops credentials typed into a URL.
     /// </param>

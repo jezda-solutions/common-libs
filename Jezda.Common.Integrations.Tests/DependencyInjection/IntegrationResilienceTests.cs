@@ -182,6 +182,28 @@ public class IntegrationResilienceTests
     }
 
     [Fact]
+    public async Task GitHubTokens_SetAsDefaultHeaders_GetTheirOwnBreakers()
+    {
+        // GitHubTaskProvider sets the token on DefaultRequestHeaders, which HttpClient copies onto
+        // the request before the resilience handler reads it.
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddGitHubIntegration(configuration);
+        services.AddHttpClient(GitHubTaskProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => _handler);
+        var factory = services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>();
+        _handler.RespondTo("/search/issues", ServiceUnavailable);
+
+        var clientA = factory.CreateClient(GitHubTaskProvider.HttpClientName);
+        clientA.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "token-a");
+        await OpenBreakerAsync(clientA, "search/issues");
+
+        var clientB = factory.CreateClient(GitHubTaskProvider.HttpClientName);
+        clientB.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "token-b");
+        using var response = await clientB.GetAsync("search/issues");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GitHubToken_FailingAlone_StillOpensItsOwnBreaker()
     {
         var client = CreateProviderClient(GitHubTaskProvider.HttpClientName);
@@ -196,7 +218,7 @@ public class IntegrationResilienceTests
     [Theory]
     // Credentials typed into a base URL stay out of the key: the same site, one breaker.
     [InlineData(null, "https://user:secret@down.example.test/down/items", "https://down.example.test/down/items")]
-    // Azure DevOps reads organisation names case-insensitively and unescaped.
+    // Azure DevOps reads organisation names case-insensitively; Uri decodes the unreserved %41 itself.
     [InlineData(AzureDevOpsTaskProvider.HttpClientName, "https://dev.azure.com/OrgA/items", "https://dev.azure.com/orga/items")]
     [InlineData(AzureDevOpsTaskProvider.HttpClientName, "https://dev.azure.com/Org%41/items", "https://dev.azure.com/orga/items")]
     public async Task SameAddress_WrittenDifferently_SharesOneBreaker(string? providerClient, string failingUrl, string sameAddressUrl)

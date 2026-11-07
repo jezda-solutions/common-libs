@@ -25,7 +25,7 @@ public static class IntegrationPipelineKeys
     /// </summary>
     /// <remarks>
     /// The first 16 hex characters of the header's SHA-256: enough to keep tokens apart, never the
-    /// token itself. Hashing a header of under a hundred bytes per attempt costs far less than the
+    /// token itself. Hashing a header of under a hundred bytes once per request costs far less than the
     /// request it guards.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The request has no absolute URI.</exception>

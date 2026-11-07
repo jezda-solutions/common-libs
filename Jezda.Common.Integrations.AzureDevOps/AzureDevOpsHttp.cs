@@ -27,8 +27,11 @@ internal static class AzureDevOpsHttp
     /// <summary>
     /// The resilience pipeline key of a request: its address, plus the organisation on
     /// <c>dev.azure.com</c>, where every organisation shares one host, so one organisation that keeps
-    /// failing does not open the circuit breaker for the others. The organisation is unescaped and
-    /// lowercased, because Azure DevOps reads <c>OrgA</c>, <c>orga</c> and <c>Org%41</c> as one.
+    /// failing does not open the circuit breaker for the others. The organisation is lowercased,
+    /// because Azure DevOps reads <c>OrgA</c> and <c>orga</c> as one. It is not unescaped: <see cref="Uri"/>
+    /// already decodes unreserved characters (<c>Org%41</c> reads as <c>OrgA</c>), and decoding the
+    /// rest would let a <c>%0D%0A</c> typed into a base URL forge a line in the logs Polly writes
+    /// the key into.
     /// </summary>
     public static string PipelineKey(HttpRequestMessage request)
     {
@@ -46,7 +49,7 @@ internal static class AzureDevOpsHttp
 
         return organisation.IsEmpty
             ? address
-            : $"{address}/{Uri.UnescapeDataString(organisation.ToString()).ToLowerInvariant()}";
+            : $"{address}/{organisation.ToString().ToLowerInvariant()}";
     }
 
     private const string SharedHost = "dev.azure.com";
