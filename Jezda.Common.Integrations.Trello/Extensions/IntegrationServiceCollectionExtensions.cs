@@ -15,7 +15,7 @@ public static class IntegrationServiceCollectionExtensions
         {
             client.BaseAddress = new Uri("https://api.trello.com/1/");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddIntegrationResilience();
+        }).AddIntegrationResilience(TrelloHttp.PipelineKey);
 
         services.AddSingleton<IExternalTaskProvider, TrelloTaskProvider>();
 

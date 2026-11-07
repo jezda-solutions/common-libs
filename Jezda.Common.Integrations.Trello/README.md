@@ -28,3 +28,7 @@ services.AddTrelloIntegration();
 
 `ValidateConnectionAsync` returns a rejection, `InvalidToken`, only for 401, which Trello answers a bad key or token with. Every
 other failure propagates, so an outage or a rate limit is not shown to the user as a bad token.
+
+`IExternalTaskProvider` keeps one circuit breaker per token: every caller is on `api.trello.com`, so
+one caller whose requests keep failing does not cut off the others. The breaker key holds a hash of
+the `token` query parameter, never the token.
