@@ -30,7 +30,8 @@ internal static class AzureDevOpsWorkItemBatch
     /// which is dropped here, so the result can hold fewer items than ids were asked for. A warning
     /// records the difference, because a token that lost access to some items looks the same as
     /// those items being gone. It names the organisation, since one host can serve several, and the
-    /// missing ids, which are what lets someone check whether those items still exist.
+    /// missing ids, which are what lets someone check whether those items still exist. The result
+    /// holds each requested id at most once and never an id that was not requested.
     /// </remarks>
     /// <exception cref="HttpRequestException">
     /// A batch was answered without a list. Omitted items are null slots in a list, so a missing list
@@ -47,12 +48,12 @@ internal static class AzureDevOpsWorkItemBatch
         CancellationToken cancellationToken)
     {
         var workItems = new List<AdoWorkItem>();
-        var requested = new List<int>();
 
-        foreach (var batch in ids.Chunk(MaxIdsPerRequest))
+        // Distinct before chunking, so a repeated id does not take a slot in a batch.
+        var requested = ids.Distinct().ToList();
+
+        foreach (var batch in requested.Chunk(MaxIdsPerRequest))
         {
-            requested.AddRange(batch);
-
             var url = $"_apis/wit/workitems?ids={string.Join(",", batch)}&errorPolicy=omit&api-version={apiVersion}";
             var response = await getBatch(url, cancellationToken);
 
@@ -66,8 +67,11 @@ internal static class AzureDevOpsWorkItemBatch
             workItems.AddRange(response.Value.OfType<AdoWorkItem>());
         }
 
-        // An item returned twice would break callers that key the result by id, and count twice below.
-        workItems = [.. workItems.DistinctBy(workItem => workItem.Id)];
+        // Only items that were asked for: one that was not (an item without an id reads as 0) would
+        // reach callers as part of the result and count as returned below. An item returned twice
+        // would break callers that key the result by id, and count twice below.
+        var requestedIds = requested.ToHashSet();
+        workItems = [.. workItems.Where(workItem => requestedIds.Contains(workItem.Id)).DistinctBy(workItem => workItem.Id)];
 
         // By id, not by count: a duplicate in either list would otherwise hide a missing item.
         var missing = requested.Except(workItems.Select(workItem => workItem.Id)).ToList();
@@ -77,7 +81,7 @@ internal static class AzureDevOpsWorkItemBatch
             logger.LogWarning(
                 "Azure DevOps returned {Returned} of {Requested} requested work items on {Organisation}. The rest were deleted or the token cannot read them. Missing ids: {MissingIds}",
                 workItems.Count,
-                requested.Distinct().Count(),
+                requested.Count,
                 organisation,
                 string.Join(", ", missing.Take(MaxIdsInWarning))
                     + (missing.Count > MaxIdsInWarning ? $" and {missing.Count - MaxIdsInWarning} more" : string.Empty));

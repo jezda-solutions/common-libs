@@ -155,6 +155,61 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
+    public async Task GetWorkItemsByQueryAsync_BatchReturnsAnItemNotRequested_DropsItAndWarnsAboutTheMissingOne()
+    {
+        var logger = new RecordingLogger<AzureDevOpsClient>();
+        var client = new AzureDevOpsClient(
+            new HttpClient(_handler) { BaseAddress = new Uri("https://dev.azure.com/myorg/") },
+            Options.Create(new AzureDevOpsOptions { ApiVersion = "7.1" }),
+            logger);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"id":99,"fields":{}}]}""");
+
+        var result = await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1], result.Select(w => w.Id));
+        Assert.Equal(
+            "Azure DevOps returned 1 of 2 requested work items on https://dev.azure.com/myorg/. The rest were deleted or the token cannot read them. Missing ids: 2",
+            Assert.Single(logger.Warnings));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_BatchReturnsAnItemWithoutAnId_DropsIt()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"fields":{}}]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1], result.Select(w => w.Id));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_SameItemInTwoBatches_KeepsOne()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([.. Enumerable.Range(1, 201)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":1,"value":[{"id":1,"fields":{}}]}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"id":201,"fields":{}}]}""");
+
+        var result = await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal([1, 201], result.Select(w => w.Id));
+    }
+
+    [Fact]
+    public async Task GetWorkItemsByQueryAsync_RepeatedIds_AsksForEachIdOnce()
+    {
+        // 200 distinct ids plus a repeat fit one batch once the repeat is dropped.
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs([1, .. Enumerable.Range(1, 200)]));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":0,"value":[]}""");
+
+        await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+
+        Assert.Equal(2, _handler.SentRequests.Count);
+        Assert.Contains($"ids={string.Join(",", Enumerable.Range(1, 200))}&", _handler.SentRequests[1].RequestUri!.Query);
+    }
+
+    [Fact]
     public async Task GetWorkItemsByQueryAsync_BatchAnswersNoContent_ThrowsInsteadOfReadingAsOmitted()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
