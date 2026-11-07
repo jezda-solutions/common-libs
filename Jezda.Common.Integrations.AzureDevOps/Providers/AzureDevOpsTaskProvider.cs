@@ -55,9 +55,9 @@ public sealed class AzureDevOpsTaskProvider(
     /// answers <see langword="false"/>, with the response body in the log to tell these apart.
     /// </remarks>
     /// <exception cref="HttpRequestException">
-    /// Any other failed status, such as 5xx, a redirect that is not to a sign-in page, or an HTML page
-    /// on a success status: the base URL answers somewhere else, or something other than Azure DevOps
-    /// answered. The status code is on the exception.
+    /// Any other failed status, such as 5xx, or a redirect that is not to a sign-in page. Also a success
+    /// that is not JSON, 204 included, since neither checked the token: the base URL answers somewhere
+    /// else, or something other than Azure DevOps answered. The status code is on the exception.
     /// </exception>
     /// <exception cref="OperationCanceledException">The call was cancelled.</exception>
     public async Task<bool> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
@@ -97,6 +97,15 @@ public sealed class AzureDevOpsTaskProvider(
         }
 
         await EnsureSuccessAsync(response, cancellationToken);
+
+        // A delete may answer 204, so the shared check lets it through, but no answer here is no verdict.
+        if (response.StatusCode == HttpStatusCode.NoContent)
+        {
+            throw new HttpRequestException(
+                $"The server answered 204 without content on {url.Split('?')[0]}, so the token was not checked.",
+                inner: null,
+                statusCode: response.StatusCode);
+        }
 
         return true;
     }
@@ -410,8 +419,8 @@ public sealed class AzureDevOpsTaskProvider(
     /// treat 401/403 as an expired token keep working.
     /// </para>
     /// <para>
-    /// A sign-in page or a redirect to one throws as 401, and any other redirect or an HTML page with
-    /// its own status; see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
+    /// A sign-in page or a redirect to one throws as 401, and any other redirect or a success without
+    /// JSON with its own status; see <see cref="AzureDevOpsHttp.ThrowIfNotApiResponse"/>.
     /// </para>
     /// </remarks>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -432,7 +441,9 @@ public sealed class AzureDevOpsTaskProvider(
     }
 
     // Best effort: a body that cannot be read must not replace the status code, which is what callers
-    // branch on. InvalidOperationException is a charset .NET cannot decode.
+    // branch on, so the filter deliberately catches every failure to read the content. A charset .NET
+    // does not know surfaces as InvalidOperationException, and one it knows but has disabled, such as
+    // utf-7, as NotSupportedException.
     // The base URL comes from the user, so the body can be anything: control characters go, because a
     // line break in it would forge an entry in a plain-text log.
     private static async Task<string> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -442,7 +453,7 @@ public sealed class AzureDevOpsTaskProvider(
         {
             body = await response.Content.ReadAsStringAsync(cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or NotSupportedException)
         {
             return string.Empty;
         }

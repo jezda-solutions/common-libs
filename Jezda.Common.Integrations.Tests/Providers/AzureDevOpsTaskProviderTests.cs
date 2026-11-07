@@ -134,6 +134,76 @@ public class AzureDevOpsTaskProviderTests
         Assert.False(result);
     }
 
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData("application/xhtml+xml")]
+    [InlineData("application/xml")]
+    [InlineData(null)]
+    public async Task ValidateConnectionAsync_SuccessWithoutJson_ThrowsInsteadOfAcceptingTheToken(string? mediaType)
+    {
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains(mediaType ?? "no content type", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_SuccessWithoutJson_ThrowsWithTheStatus()
+    {
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, "text/plain"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("application/json")]
+    [InlineData("application/problem+json")]
+    public async Task ValidateConnectionAsync_SuccessWithJsonType_AcceptsTheToken(string mediaType)
+    {
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
+        _handler.EnqueueResponse(() => WithBody(HttpStatusCode.OK, mediaType));
+
+        Assert.True(await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_NoContent_ThrowsInsteadOfAcceptingTheToken()
+    {
+        // A proxy that answers 204 never checked the token.
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConnectionAsync_OkWithEmptyBody_ThrowsInsteadOfAcceptingTheToken()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("no content type", ex.Message);
+    }
+
+    private static HttpResponseMessage WithBody(HttpStatusCode statusCode, string? mediaType)
+    {
+        var content = new ByteArrayContent("{}"u8.ToArray());
+        content.Headers.ContentType = mediaType is null ? null : new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
+
+        return new HttpResponseMessage(statusCode) { Content = content };
+    }
+
     [Fact]
     public async Task ValidateConnectionAsync_HtmlOnOk_ThrowsInsteadOfBlamingTheToken()
     {
@@ -144,7 +214,7 @@ public class AzureDevOpsTaskProviderTests
             _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
-        Assert.Contains("HTML page", ex.Message);
+        Assert.Contains("text/html", ex.Message);
     }
 
     [Fact]
@@ -200,6 +270,21 @@ public class AzureDevOpsTaskProviderTests
         Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
     }
 
+    [Fact]
+    public async Task ValidateConnectionAsync_RedirectWithCredentialsInUrls_KeepsThemOutOfTheMessage()
+    {
+        // A consumer that logs the exception must not log a password typed into the base URL, or one
+        // handed back in the redirect.
+        _handler.EnqueueResponse(() => Redirect("https://admin:location-secret@dev.azure.com/neworg/_apis/projects"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://admin:base-secret@dev.azure.com/oldorg/"));
+
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Contains("https://dev.azure.com/oldorg/_apis/projects", ex.Message);
+        Assert.Contains("https://dev.azure.com/neworg/_apis/projects", ex.Message);
+    }
+
     // The shape Azure DevOps answers a bad PAT with when the FedAuthRedirect header is missing.
     private const string SignInRedirect =
         "https://spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com&reply_to=https%3A%2F%2Fdev.azure.com%2Fmyorg&redirect=1";
@@ -223,6 +308,20 @@ public class AzureDevOpsTaskProviderTests
             _provider.GetProjectsAsync("bad-pat", "https://dev.azure.com/myorg/"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_RedirectToSignInWithCredentials_KeepsThemOutOfTheMessage()
+    {
+        _handler.EnqueueResponse(() =>
+            Redirect("https://admin:location-secret@spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("bad-pat", "https://admin:base-secret@dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Contains("https://spsprodwus24.vssps.visualstudio.com/_signin", ex.Message);
     }
 
     [Fact]
@@ -330,21 +429,26 @@ public class AzureDevOpsTaskProviderTests
         Assert.DoesNotContain(new string('x', 500), message);
     }
 
-    [Fact]
-    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUnknownCharset_StillReturnsFalse()
+    // .NET cannot decode windows-1252 without the CodePages provider, and it knows utf-7 by name but
+    // has it disabled. The two fail with different exceptions.
+    [Theory]
+    [InlineData("windows-1252")]
+    [InlineData("utf-7")]
+    public async Task ValidateConnectionAsync_ForbiddenWithBodyInUndecodableCharset_StillReturnsFalse(string charset)
     {
-        // windows-1252 is one such charset: .NET cannot decode it without the CodePages provider.
-        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.Forbidden));
+        _handler.EnqueueResponse(() => WithCharset(HttpStatusCode.Forbidden, charset));
 
         var result = await _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/");
 
         Assert.False(result);
     }
 
-    [Fact]
-    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUnknownCharset_KeepsTheStatus()
+    [Theory]
+    [InlineData("windows-1252")]
+    [InlineData("utf-7")]
+    public async Task ValidateConnectionAsync_ServerErrorWithBodyInUndecodableCharset_KeepsTheStatus(string charset)
     {
-        _handler.EnqueueResponse(() => WithUnknownCharset(HttpStatusCode.InternalServerError));
+        _handler.EnqueueResponse(() => WithCharset(HttpStatusCode.InternalServerError, charset));
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
@@ -371,10 +475,10 @@ public class AzureDevOpsTaskProviderTests
         Assert.Contains("fake log entry", message);
     }
 
-    private static HttpResponseMessage WithUnknownCharset(HttpStatusCode statusCode)
+    private static HttpResponseMessage WithCharset(HttpStatusCode statusCode, string charset)
     {
         var content = new ByteArrayContent("blocked"u8.ToArray());
-        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = "windows-1252" };
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") { CharSet = charset };
 
         return new HttpResponseMessage(statusCode) { Content = content };
     }
