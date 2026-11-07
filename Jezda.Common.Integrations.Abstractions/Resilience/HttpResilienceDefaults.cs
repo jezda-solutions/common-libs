@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.Extensions.Logging;
 
 namespace Jezda.Common.Integrations.Abstractions.Resilience;
 
@@ -60,7 +61,7 @@ public static class HttpResilienceDefaults
     {
         ArgumentNullException.ThrowIfNull(pipelineKey);
 
-        var budget = new PipelineKeyBudget(pipelineKey);
+        var budget = new PipelineKeyBudget(builder.Name, pipelineKey);
 
         builder.AddStandardResilienceHandler(options =>
         {
@@ -84,7 +85,12 @@ public static class HttpResilienceDefaults
 
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-        }).SelectPipelineBy(_ => budget.Select);
+        }).SelectPipelineBy(services =>
+        {
+            budget.Logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(HttpResilienceDefaults))
+                ?? budget.Logger;
+            return budget.Select;
+        });
 
         // Inside the resilience handler, so it sees each attempt's answer.
         builder.AddHttpMessageHandler(() => new PipelineKeyBudgetHandler(budget));

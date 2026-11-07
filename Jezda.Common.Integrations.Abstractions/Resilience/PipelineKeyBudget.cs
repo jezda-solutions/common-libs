@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jezda.Common.Integrations.Abstractions.Resilience;
 
@@ -15,8 +17,11 @@ namespace Jezda.Common.Integrations.Abstractions.Resilience;
 /// proven and gets its own on its next request, so a working site keeps its own breaker even after
 /// mistyped or probed addresses have used up the unproven part. Admitted keys are never dropped,
 /// because the registry cannot drop their pipelines.
+/// <para />
+/// Each limit logs one warning per client the first time it sends a request to the shared pipeline,
+/// so a filled budget can be told apart from an ordinary outage.
 /// </remarks>
-internal sealed class PipelineKeyBudget(Func<HttpRequestMessage, string> pipelineKey)
+internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessage, string> pipelineKey)
 {
     /// <summary>The most keys with a pipeline of their own, per client.</summary>
     public const int MaxKeys = 1000;
@@ -31,6 +36,11 @@ internal sealed class PipelineKeyBudget(Func<HttpRequestMessage, string> pipelin
     private readonly ConcurrentDictionary<string, byte> _proven = new(StringComparer.Ordinal);
     private readonly object _admitLock = new();
     private int _unprovenAdmitted;
+    private bool _warnedFull;
+    private bool _warnedUnprovenFull;
+
+    /// <summary>Where the warnings go; set once the client's services are known.</summary>
+    public ILogger Logger { get; set; } = NullLogger.Instance;
 
     /// <summary>The pipeline key a request runs under.</summary>
     /// <remarks>
@@ -56,6 +66,7 @@ internal sealed class PipelineKeyBudget(Func<HttpRequestMessage, string> pipelin
 
             if (_admitted.Count >= MaxKeys)
             {
+                WarnOnce(ref _warnedFull, $"all {MaxKeys} pipelines are taken");
                 return OverflowKey;
             }
 
@@ -63,6 +74,7 @@ internal sealed class PipelineKeyBudget(Func<HttpRequestMessage, string> pipelin
 
             if (!proven && _unprovenAdmitted >= MaxUnprovenKeys)
             {
+                WarnOnce(ref _warnedUnprovenFull, $"the {MaxUnprovenKeys} pipelines for addresses that never answered successfully are taken");
                 return OverflowKey;
             }
 
@@ -75,6 +87,22 @@ internal sealed class PipelineKeyBudget(Func<HttpRequestMessage, string> pipelin
 
             return key;
         }
+    }
+
+    // Called under the admission lock, so each warning is written once.
+    private void WarnOnce(ref bool warned, string reason)
+    {
+        if (warned)
+        {
+            return;
+        }
+
+        warned = true;
+        Logger.LogWarning(
+            "HTTP client {ClientName}: {Reason}, so new addresses or tokens now share one resilience pipeline and circuit breaker "
+            + "until they answer successfully. Many distinct base URLs or tokens were used, for example mistyped or probed ones.",
+            clientName,
+            reason);
     }
 
     /// <summary>

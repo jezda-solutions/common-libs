@@ -1,11 +1,12 @@
 using Jezda.Common.Integrations.Abstractions.Resilience;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Jezda.Common.Integrations.Tests.DependencyInjection;
 
 public class PipelineKeyBudgetTests
 {
-    private readonly PipelineKeyBudget _budget = new(IntegrationPipelineKeys.Address);
+    private readonly PipelineKeyBudget _budget = new("test-client", IntegrationPipelineKeys.Address);
 
     [Fact]
     public void UnprovenKeys_BeyondTheirBudget_ShareTheOverflowKey()
@@ -67,6 +68,33 @@ public class PipelineKeyBudgetTests
 
         Assert.Equal("https://proven0.example.test", Select("https://proven0.example.test/x"));
         Assert.Equal(PipelineKeyBudget.OverflowKey, Select("https://proven950.example.test/x"));
+    }
+
+    [Fact]
+    public void FilledUnprovenBudget_LogsOneWarning()
+    {
+        var logger = new ListLogger();
+        _budget.Logger = logger;
+        FillUnproven();
+
+        Select("https://late1.example.test/x");
+        Select("https://late2.example.test/x");
+
+        var warning = Assert.Single(logger.Messages);
+        Assert.Contains("test-client", warning);
+        Assert.Contains("never answered successfully", warning);
+    }
+
+    private sealed class ListLogger : ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 
     private void FillUnproven()
