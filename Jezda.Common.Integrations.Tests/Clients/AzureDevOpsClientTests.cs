@@ -21,6 +21,46 @@ public class AzureDevOpsClientTests
     }
 
     [Fact]
+    public async Task GetWorkItemsByQueryAsync_MapsTheHtmlLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1));
+        _handler.EnqueueResponse(HttpStatusCode.OK, """
+            {"count":1,"value":[{"id":1,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/1","fields":{},
+              "_links":{"html":{"href":"https://dev.azure.com/myorg/p/_workitems/edit/1"}}}]}
+            """);
+
+        var item = Assert.Single(await _client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems"));
+
+        Assert.Equal("https://dev.azure.com/myorg/p/_workitems/edit/1", item.HtmlUrl);
+        Assert.Equal("https://dev.azure.com/myorg/_apis/wit/workItems/1", item.Url);
+        Assert.Contains("$expand=links", _handler.SentRequests[1].RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task GetWorkItemByIdAsync_AsksForLinksAndMapsTheHtmlLink()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """
+            {"id":4,"fields":{},"_links":{"html":{"href":"https://dev.azure.com/myorg/p/_workitems/edit/4"}}}
+            """);
+
+        var item = await _client.GetWorkItemByIdAsync(4);
+
+        Assert.Equal("https://dev.azure.com/myorg/p/_workitems/edit/4", item!.HtmlUrl);
+        Assert.Contains("$expand=links", Assert.Single(_handler.SentRequests).RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task CreateWorkItemAsync_AsksForLinks()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"id":4,"fields":{}}""");
+
+        var item = await _client.CreateWorkItemAsync("p", "Task", new Dictionary<string, object> { ["System.Title"] = "t" });
+
+        Assert.Null(item!.HtmlUrl);
+        Assert.Contains("$expand=links", Assert.Single(_handler.SentRequests).RequestUri!.Query);
+    }
+
+    [Fact]
     public async Task GetWorkItemsByQueryAsync_AsksTheDetailsBatchToOmitUnreadableItems()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));

@@ -174,7 +174,9 @@ public sealed class AzureDevOpsTaskProvider(
         var workItems = await FetchWorkItemDetailsAsync(
             client, references.Select(wi => wi.Id), cancellationToken);
 
-        return [.. workItems.Select(wi => ToExternalTask(wi, project.Id, project.Name, client.BaseAddress!))];
+        var organisationUrl = client.BaseAddress!;
+
+        return [.. workItems.Select(wi => ToExternalTask(wi, project.Id, project.Name, organisationUrl))];
     }
 
     /// <summary>
@@ -270,17 +272,18 @@ public sealed class AzureDevOpsTaskProvider(
         // and the WIQL's ORDER BY is the whole reason the newest-changed item should be first.
         // Re-key on the requested order; the lookup also drops anything deleted between the calls.
         var byId = workItems.ToDictionary(wi => wi.Id);
-        var ordered = ids.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        var ordered = ids.Select(id => byId.GetValueOrDefault(id)).OfType<AdoWorkItem>().ToList();
 
         var projects = await FindProjectsAsync(client, ordered.Select(wi => wi.TeamProject), cancellationToken);
+        var organisationUrl = client.BaseAddress!;
 
         return
         [
             .. ordered
                 .Where(wi => wi.TeamProject.Length == 0 || projects.ContainsKey(wi.TeamProject))
                 .Select(wi => projects.TryGetValue(wi.TeamProject, out var project)
-                    ? ToExternalTask(wi, project.Id, project.Name, client.BaseAddress!)
-                    : ToExternalTask(wi, string.Empty, string.Empty, client.BaseAddress!))
+                    ? ToExternalTask(wi, project.Id, project.Name, organisationUrl)
+                    : ToExternalTask(wi, string.Empty, string.Empty, organisationUrl))
         ];
     }
 
@@ -484,28 +487,36 @@ public sealed class AzureDevOpsTaskProvider(
     /// The project's GUID, equal to what <see cref="GetProjectsAsync"/> reports as
     /// <c>ExternalProjectDto.Id</c>. Consumers key stored rows on it.
     /// </param>
-    /// <param name="projectPath">The project's current name, which the work item's page link needs.</param>
+    /// <param name="projectPath">
+    /// The project's current name, for the page link when the answer had no <c>_links</c>; empty when
+    /// the item has no project.
+    /// </param>
     /// <param name="organisationUrl">The organisation base address the client was created with.</param>
     private static ExternalTaskDto ToExternalTask(AdoWorkItem workItem, string projectId, string projectPath, Uri organisationUrl) => new()
     {
         Id = workItem.Id.ToString(),
         Title = workItem.Title,
         Status = workItem.State,
-        // Without a project there is no page to name; the REST link is still a real link to the item.
-        Url = string.IsNullOrEmpty(projectPath) ? workItem.Url : WorkItemWebUrl(organisationUrl, projectPath, workItem.Id),
+        Url = workItem.HtmlUrl ?? WorkItemWebUrl(organisationUrl, projectPath, workItem.Id),
         ProjectId = projectId,
         Provider = ExternalProvider.AzureDevOps
     };
 
     /// <summary>
-    /// The link a person opens in the browser: <c>{organisation}/{project}/_workitems/edit/{id}</c>.
+    /// The page link built by hand, for an answer without <c>_links</c>:
+    /// <c>{organisation}/{project}/_workitems/edit/{id}</c>, or <c>{organisation}/_workitems/edit/{id}</c>
+    /// without a project, which Azure DevOps also opens.
     /// </summary>
     /// <remarks>
     /// The work item's own <c>url</c> is the REST resource (<c>_apis/wit/workItems/{id}</c>), which
     /// answers with JSON, not the work item page.
     /// </remarks>
     private static string WorkItemWebUrl(Uri organisationUrl, string projectName, int workItemId) =>
-        new Uri(organisationUrl, $"{Uri.EscapeDataString(projectName)}/_workitems/edit/{workItemId}").AbsoluteUri;
+        new Uri(
+            organisationUrl,
+            projectName.Length > 0
+                ? $"{Uri.EscapeDataString(projectName)}/_workitems/edit/{workItemId}"
+                : $"_workitems/edit/{workItemId}").AbsoluteUri;
 
     private HttpClient CreateClient(string accessToken, string baseUrl)
     {

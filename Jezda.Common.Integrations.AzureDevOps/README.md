@@ -119,5 +119,5 @@ asks for 401 instead of a redirect to sign-in. Four setups need care:
 
 ## 🛠️ Key Models
 
-- **`AdoWorkItem`**: Represents a simplified work item with generic `Fields` dictionary.
+- **`AdoWorkItem`**: Represents a simplified work item with generic `Fields` dictionary. `Url` is the REST resource, which answers JSON; `HtmlUrl` is the page a person opens (`_links.html.href`, asked for with `$expand=links`), null when the answer had no links.
 - **`AdoProject`**: Contains project details (Id, Name, Description, Url).
