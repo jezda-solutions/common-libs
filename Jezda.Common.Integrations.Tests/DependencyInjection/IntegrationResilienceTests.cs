@@ -8,6 +8,7 @@ using Jezda.Common.Integrations.GitHub.Extensions;
 using Jezda.Common.Integrations.GitHub.Providers;
 using Jezda.Common.Integrations.Monday.Extensions;
 using Jezda.Common.Integrations.Monday.Providers;
+using Jezda.Common.Integrations.Trello;
 using Jezda.Common.Integrations.Trello.Extensions;
 using Jezda.Common.Integrations.Trello.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
@@ -289,6 +290,27 @@ public class IntegrationResilienceTests
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/search/issues");
 
         Assert.Equal("https://api.github.com", IntegrationPipelineKeys.AddressAndAuthorization(request));
+    }
+
+    [Fact]
+    public void TrelloPipelineKey_HoldsAHashOfTheToken_NeverTheToken()
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get, "https://api.trello.com/1/members/me?key=api-key&token=trello-secret-token");
+
+        var key = TrelloHttp.PipelineKey(request);
+
+        Assert.StartsWith("https://api.trello.com#", key);
+        Assert.Equal("https://api.trello.com#".Length + 16, key.Length);
+        Assert.DoesNotContain("secret", key);
+    }
+
+    [Fact]
+    public void TrelloPipelineKey_WithoutToken_IsTheAddress()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.trello.com/1/members/me");
+
+        Assert.Equal("https://api.trello.com", TrelloHttp.PipelineKey(request));
     }
 
     [Fact]
