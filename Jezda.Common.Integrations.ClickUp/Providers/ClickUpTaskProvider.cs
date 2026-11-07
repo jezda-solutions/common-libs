@@ -88,6 +88,8 @@ public sealed class ClickUpTaskProvider(
 
     private HttpClient CreateClient(string accessToken)
     {
+        AccessTokenRules.ThrowIfCannotGoInHeader(accessToken);
+
         var client = httpClientFactory.CreateClient(HttpClientName);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         return client;

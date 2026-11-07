@@ -76,6 +76,30 @@ public class IntegrationResilienceTests
     }
 
     [Fact]
+    public async Task TooManyRequests_DoNotOpenTheSharedCircuitBreaker()
+    {
+        // The breaker is shared by every token on the named client, so one token's rate limit must
+        // not cut off the others. 100 is the breaker's minimum throughput; all of them fail.
+        var client = CreateClient();
+        for (var i = 0; i < 120; i++)
+        {
+            _handler.EnqueueResponse(() => TooManyRequests(retryAfterSeconds: 60));
+        }
+
+        _handler.EnqueueResponse(HttpStatusCode.OK);
+
+        for (var i = 0; i < 120; i++)
+        {
+            using var limited = await client.GetAsync("items");
+            Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        }
+
+        using var response = await client.GetAsync("items");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ServiceUnavailable_IsStillRetried()
     {
         _handler.EnqueueResponse(HttpStatusCode.ServiceUnavailable);

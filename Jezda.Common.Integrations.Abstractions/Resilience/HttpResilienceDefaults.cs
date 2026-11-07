@@ -16,6 +16,10 @@ public static class HttpResilienceDefaults
     /// <c>Retry-After</c>, reaches the caller at once: waiting it out would pass the total timeout and
     /// end as a timeout instead of a 429, and calling again without being told when keeps calling a
     /// provider that asked for a pause, which GitHub warns can get an integration banned.
+    /// <para />
+    /// The circuit breaker is shared by everyone using the same named client, so a 429 does not count
+    /// towards it: one token's rate limit would otherwise open it for every other token, and they
+    /// would get Polly's <c>BrokenCircuitException</c> instead of an answer.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder)
     {
@@ -29,6 +33,13 @@ public static class HttpResilienceDefaults
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
 
+            // The breaker is shared by every caller of the named client, whatever their token, so it
+            // counts only what says the provider itself is failing. A 429 is one token's rate limit:
+            // counted, it would open the breaker for every other token on the same provider.
+            options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
+                args.Outcome.Result is not { StatusCode: HttpStatusCode.TooManyRequests }
+                && (HttpClientResiliencePredicates.IsTransient(args.Outcome)
+                    || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken)));
             options.CircuitBreaker.FailureRatio = 0.5;
             options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
 

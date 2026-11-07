@@ -25,4 +25,18 @@ public class AccessTokenRulesTests
     {
         Assert.False(AccessTokenRules.CanGoInHeader(token));
     }
+
+    [Fact]
+    public void ThrowIfCannotGoInHeader_AnythingElse_Throws()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => AccessTokenRules.ThrowIfCannotGoInHeader("token\n"));
+
+        Assert.Equal("accessToken", exception.ParamName);
+    }
+
+    [Fact]
+    public void ThrowIfCannotGoInHeader_PrintableAscii_DoesNotThrow()
+    {
+        AccessTokenRules.ThrowIfCannotGoInHeader("ghp_abc-123");
+    }
 }

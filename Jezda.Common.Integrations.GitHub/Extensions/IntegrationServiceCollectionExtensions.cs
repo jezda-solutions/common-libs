@@ -27,6 +27,13 @@ public static class IntegrationServiceCollectionExtensions
 
             if (!string.IsNullOrEmpty(options.AccessToken))
             {
+                // A bad value in configuration would otherwise fail every request as an outage.
+                if (!AccessTokenRules.CanGoInHeader(options.AccessToken))
+                {
+                    throw new InvalidOperationException(
+                        "GitHub AccessToken has characters that cannot go in a request header, such as a pasted smart quote or line break.");
+                }
+
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.AccessToken);
             }
 

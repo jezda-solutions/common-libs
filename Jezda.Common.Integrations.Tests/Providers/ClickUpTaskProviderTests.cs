@@ -1,4 +1,5 @@
 using System.Net;
+using Jezda.Common.Integrations.Abstractions;
 using Jezda.Common.Integrations.Abstractions.Enums;
 using Jezda.Common.Integrations.ClickUp.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
@@ -52,6 +53,19 @@ public class ClickUpTaskProviderTests
 
         Assert.False(result.IsValid);
         Assert.Equal(TokenRejectionReason.NotSendable, result.Reason);
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task OtherCalls_TokenThatCannotGoInAHeader_ThrowWithoutSending()
+    {
+        // Sent, it would fail in the HTTP stack as an outage, be retried and count towards the
+        // circuit breaker every caller of this provider shares.
+        const string token = "token\u201D";
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetProjectsAsync(token));
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetTasksAsync(token, "123"));
+        await Assert.ThrowsAsync<ArgumentException>(() => ((IExternalTaskProvider)_provider).SearchTasksAsync(token, "bug"));
         Assert.Empty(_handler.SentRequests);
     }
 

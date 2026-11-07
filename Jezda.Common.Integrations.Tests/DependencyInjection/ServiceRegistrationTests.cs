@@ -54,6 +54,25 @@ public class ServiceRegistrationTests
         Assert.Equal(ExternalProvider.GitHub, taskProviders[0].Provider);
     }
 
+    [Fact]
+    public void AddGitHubIntegration_ConfiguredTokenThatCannotGoInAHeader_FailsWhenTheClientIsCreated()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Integrations:GitHub:BaseUrl"] = "https://api.github.com/",
+                ["Integrations:GitHub:AccessToken"] = "token\u201D"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddGitHubIntegration(config);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IGitHubClient>());
+    }
+
     [Theory]
     [InlineData(nameof(IAzureDevOpsClient))]
     [InlineData(AzureDevOpsTaskProvider.HttpClientName)]
