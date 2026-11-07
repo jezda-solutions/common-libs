@@ -241,6 +241,20 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task GetProjectsAsync_RedirectToSignInWithCredentials_KeepsThemOutOfTheMessage()
+    {
+        _handler.EnqueueResponse(() =>
+            Redirect("https://admin:location-secret@spsprodwus24.vssps.visualstudio.com/_signin?realm=dev.azure.com"));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetProjectsAsync("bad-pat", "https://admin:base-secret@dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+        Assert.DoesNotContain("secret", ex.Message);
+        Assert.Contains("https://spsprodwus24.vssps.visualstudio.com/_signin", ex.Message);
+    }
+
+    [Fact]
     public async Task ValidateConnectionAsync_NonAuthoritativeJson_ReturnsTrue()
     {
         // A transforming proxy can answer 203 with the real response. Only JSON counts as an answer.
