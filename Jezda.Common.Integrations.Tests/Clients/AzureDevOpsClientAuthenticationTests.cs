@@ -176,6 +176,19 @@ public class AzureDevOpsClientAuthenticationTests
     }
 
     [Fact]
+    public async Task GetProjectsAsync_NoContentLabelledAsJson_ThrowsInsteadOfReadingAsNoProjects()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent)
+        {
+            Content = new StringContent(string.Empty, Encoding.UTF8, "application/json")
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.GetProjectsAsync());
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
     public async Task GetProjectsAsync_EmptyOkWithoutContentType_ThrowsWithItsOwnStatus()
     {
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([]) });

@@ -185,6 +185,20 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task ValidateConnectionAsync_NoContentLabelledAsJson_ThrowsInsteadOfAcceptingTheToken()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent)
+        {
+            Content = new StringContent(string.Empty, Encoding.UTF8, "application/json")
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("pat", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
+    }
+
+    [Fact]
     public async Task GetProjectsAsync_NoContent_ThrowsWithTheStatusInsteadOfAJsonError()
     {
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
@@ -767,8 +781,10 @@ public class AzureDevOpsTaskProviderTests
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.NoContent));
 
-        await Assert.ThrowsAsync<HttpRequestException>(
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
             () => _provider.GetTasksAsync("my-pat", "ProjectA", "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.NoContent, ex.StatusCode);
     }
 
     [Fact]

@@ -50,10 +50,11 @@ internal static class AzureDevOpsHttp
 
     /// <summary>
     /// Throws for a response that is not an Azure DevOps API answer: a sign-in page, a redirect, or
-    /// a success that is not JSON, 204 included. Every Azure DevOps call here reads a JSON answer, so
-    /// an empty one is not "nothing found" but something other than Azure DevOps answering; a call
-    /// added later that legitimately answers 204, such as a delete, has to check before this. Any
-    /// other response, failed or not, is left to the caller.
+    /// a success that is not JSON, and 204 whatever its content type. Every Azure DevOps call here
+    /// reads a JSON answer, so an empty one is not "nothing found" but something other than Azure
+    /// DevOps answering. A call added later that legitimately answers 204, such as a delete, needs
+    /// an opt-out here: the client's delete and put run this check before the caller sees the
+    /// response. Any other response, failed or not, is left to the caller.
     /// </summary>
     /// <exception cref="HttpRequestException">
     /// <see cref="HttpStatusCode.Unauthorized"/> for a sign-in page or a redirect to one, so callers
@@ -86,10 +87,13 @@ internal static class AzureDevOpsHttp
 
         var mediaType = response.Content.Headers.ContentType?.MediaType;
 
-        if (response.IsSuccessStatusCode && !IsJson(response))
+        // By status for 204, not by content type: a 204 labelled as JSON still has no body to read.
+        var noContent = response.StatusCode == HttpStatusCode.NoContent;
+
+        if (response.IsSuccessStatusCode && (noContent || !IsJson(response)))
         {
             throw new HttpRequestException(
-                $"The server answered {(int)response.StatusCode} with {mediaType ?? "no content type"} instead of JSON, so the token was not checked. "
+                $"The server answered {(int)response.StatusCode} with {(noContent ? "no content" : mediaType ?? "no content type")} instead of JSON, so the token was not checked. "
                 + "The base URL likely points at a website, or a proxy or captive portal answered in place of Azure DevOps.",
                 inner: null,
                 statusCode: response.StatusCode);
