@@ -792,6 +792,25 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task SearchTasksAsync_DetailsBatchReturnsADuplicate_KeepsOneInsteadOfFailing()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(9, 3));
+        _handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {"count":2,"value":[
+              {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}},
+              {"id":3,"url":"https://dev.azure.com/myorg/_apis/wit/workItems/3","fields":{"System.Title":"Kept","System.State":"Active","System.TeamProject":"Platform"}}
+            ]}
+            """);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
+
+        var result = await _provider.SearchTasksAsync("my-pat", "webhook", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(["3"], result.Select(t => t.Id));
+    }
+
+    [Fact]
     public async Task GetTasksAsync_RejectedDetailsBatch_CarriesTheAzureDevOpsReasonAndStatus()
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, Project("ProjectA"));

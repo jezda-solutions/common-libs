@@ -146,9 +146,12 @@ public class AzureDevOpsClientTests
         _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1, 2));
         _handler.EnqueueResponse(HttpStatusCode.OK, """{"count":2,"value":[{"id":1,"fields":{}},{"id":1,"fields":{}}]}""");
 
-        await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
+        var result = await client.GetWorkItemsByQueryAsync("SELECT [System.Id] FROM WorkItems");
 
-        Assert.EndsWith("Missing ids: 2", Assert.Single(logger.Warnings));
+        Assert.Equal([1], result.Select(w => w.Id));
+        Assert.Equal(
+            "Azure DevOps returned 1 of 2 requested work items on https://dev.azure.com/myorg/. The rest were deleted or the token cannot read them. Missing ids: 2",
+            Assert.Single(logger.Warnings));
     }
 
     [Fact]

@@ -66,6 +66,9 @@ internal static class AzureDevOpsWorkItemBatch
             workItems.AddRange(response.Value.OfType<AdoWorkItem>());
         }
 
+        // An item returned twice would break callers that key the result by id, and count twice below.
+        workItems = [.. workItems.DistinctBy(workItem => workItem.Id)];
+
         // By id, not by count: a duplicate in either list would otherwise hide a missing item.
         var missing = requested.Except(workItems.Select(workItem => workItem.Id)).ToList();
 
