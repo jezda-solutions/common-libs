@@ -23,6 +23,10 @@ public interface IFileService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the uploaded file.</returns>
     /// <exception cref="InvalidOperationException">Thrown when file validation fails.</exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="subPath"/> is rooted or contains a <c>..</c> segment, when the file name has a
+    /// directory part, or when either resolves outside the storage root.
+    /// </exception>
     Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -31,6 +35,7 @@ public interface IFileService
     /// <param name="relativePath">The relative path to the file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file stream. Caller is responsible for disposing the stream.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="relativePath"/> resolves outside the storage root.</exception>
     Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -39,5 +44,6 @@ public interface IFileService
     /// <param name="relativePath">The relative path to the file to delete.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing true if the file was deleted; false if the file was not found.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="relativePath"/> resolves outside the storage root.</exception>
     Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default);
 }
