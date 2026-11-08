@@ -17,6 +17,9 @@ public interface IFileStorage
     /// <param name="subPath">Optional sub-path for organizing files (e.g., tenant ID).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the saved file.</returns>
+    /// <exception cref="System.ArgumentException">
+    /// Thrown when <paramref name="subPath"/> or <paramref name="fileName"/> resolves outside the storage root.
+    /// </exception>
     Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -25,6 +28,7 @@ public interface IFileStorage
     /// <param name="relativePath">The relative path to the file.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file stream. Caller is responsible for disposing the stream.</returns>
+    /// <exception cref="System.ArgumentException">Thrown when <paramref name="relativePath"/> resolves outside the storage root.</exception>
     Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -33,6 +37,7 @@ public interface IFileStorage
     /// <param name="relativePath">The relative path to the file to delete.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing true if the file was deleted; false if the file was not found.</returns>
+    /// <exception cref="System.ArgumentException">Thrown when <paramref name="relativePath"/> resolves outside the storage root.</exception>
     Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default);
 
     /// <summary>
