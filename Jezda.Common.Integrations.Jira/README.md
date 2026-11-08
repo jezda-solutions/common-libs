@@ -61,20 +61,30 @@ public class JiraService
 
     public async Task PrintHighPriorityBugsAsync()
     {
-        // Search using JQL
+        // Search using JQL; one page per call, the next one asked for with the page token
         var jql = "project = 'MYPROJ' AND issuetype = Bug AND priority = High";
-        var result = await _jiraClient.SearchIssuesAsync(jql);
-        
-        if (result != null)
+        string? nextPageToken = null;
+
+        do
         {
-            foreach(var issue in result.Issues)
+            var page = await _jiraClient.SearchIssuesAsync(jql, nextPageToken);
+            if (page is null) break;
+
+            foreach (var issue in page.Issues)
             {
-                 Console.WriteLine($"[{issue.Key}] {issue.Fields?.Summary} - {issue.Fields?.Status?.Name}");
+                Console.WriteLine($"[{issue.Key}] {issue.Fields?.Summary} - {issue.Fields?.Status?.Name}");
             }
+
+            nextPageToken = page.IsLast == true ? null : page.NextPageToken;
         }
+        while (nextPageToken is not null);
     }
 }
 ```
+
+`SearchIssuesAsync` calls `POST rest/api/3/search/jql`. Jira removed the offset-based
+`rest/api/3/search` (it answers 410 Gone), so pages are chained by `NextPageToken`; there is no
+`startAt` and no total. `JiraTaskProvider.GetTasksAsync` follows the tokens to the last page itself.
 
 ## Connection validation
 

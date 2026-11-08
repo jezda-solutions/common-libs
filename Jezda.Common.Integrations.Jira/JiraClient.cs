@@ -17,17 +17,17 @@ public sealed class JiraClient(
         return await GetAsync<List<JiraProject>>("rest/api/3/project", cancellationToken) ?? new List<JiraProject>();
     }
 
-    public async Task<JiraSearchResponse?> SearchIssuesAsync(string jql, int startAt = 0, int maxResults = 50, CancellationToken cancellationToken = default)
+    public async Task<JiraSearchResponse?> SearchIssuesAsync(string jql, string? nextPageToken = null, int maxResults = 50, CancellationToken cancellationToken = default)
     {
         var request = new JiraSearchRequest
         {
             Jql = jql,
-            StartAt = startAt,
+            NextPageToken = nextPageToken,
             MaxResults = maxResults,
             Fields = ["summary", "status", "project", "priority"]
         };
 
-        return await PostAsync<JiraSearchRequest, JiraSearchResponse>("rest/api/3/search", request, cancellationToken);
+        return await PostAsync<JiraSearchRequest, JiraSearchResponse>("rest/api/3/search/jql", request, cancellationToken);
     }
 
     protected override void EnsureApiResponse(HttpResponseMessage response) => JiraHttp.ThrowIfNotApiResponse(response);

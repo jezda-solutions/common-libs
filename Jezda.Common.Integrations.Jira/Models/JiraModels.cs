@@ -64,9 +64,16 @@ public sealed class JiraSearchRequest
     [JsonPropertyName("jql")]
     public string Jql { get; set; } = string.Empty;
 
-    [JsonPropertyName("startAt")]
-    public int StartAt { get; set; }
+    /// <summary>
+    /// The <see cref="JiraSearchResponse.NextPageToken"/> of the previous page; null asks for the first.
+    /// </summary>
+    [JsonPropertyName("nextPageToken")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? NextPageToken { get; set; }
 
+    /// <summary>
+    /// Page size. Jira caps it (100 when issue fields are requested) and may return fewer.
+    /// </summary>
     [JsonPropertyName("maxResults")]
     public int MaxResults { get; set; } = 50;
 
@@ -76,14 +83,14 @@ public sealed class JiraSearchRequest
 
 public sealed class JiraSearchResponse
 {
-    [JsonPropertyName("startAt")]
-    public int StartAt { get; set; }
+    /// <summary>
+    /// Token for the next page; null on the last one. <c>search/jql</c> has no offset and no total.
+    /// </summary>
+    [JsonPropertyName("nextPageToken")]
+    public string? NextPageToken { get; set; }
 
-    [JsonPropertyName("maxResults")]
-    public int MaxResults { get; set; }
-
-    [JsonPropertyName("total")]
-    public int Total { get; set; }
+    [JsonPropertyName("isLast")]
+    public bool? IsLast { get; set; }
 
     [JsonPropertyName("issues")]
     public List<JiraIssue> Issues { get; set; } = new();
