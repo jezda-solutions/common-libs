@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
@@ -31,6 +32,18 @@ public class LocalFileStorage : IFileStorage
     /// <inheritdoc />
     public async Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
+        // A ".." in subPath or a directory part in fileName could reach another sub-path's
+        // folder (another tenant's) while still staying inside the root, so both are refused
+        if (!string.IsNullOrWhiteSpace(subPath) && subPath.Split('/', '\\').Contains(".."))
+        {
+            throw new ArgumentException("The sub-path must not contain '..' segments.", nameof(subPath));
+        }
+
+        if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)
+        {
+            throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
+        }
+
         // Create hierarchy: Root/subPath/(yyyy/MM/dd)/
         var basePath = _options.RootPath;
         if (!string.IsNullOrWhiteSpace(subPath))
@@ -133,7 +146,10 @@ public class LocalFileStorage : IFileStorage
         var full = Path.GetFullPath(path);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-        if (string.Equals(full, root, comparison) || full.StartsWith(root + Path.DirectorySeparatorChar, comparison))
+        // A drive or filesystem root (D:\ or /) keeps its separator after trimming
+        var rootPrefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
+
+        if (string.Equals(full, root, comparison) || full.StartsWith(rootPrefix, comparison))
         {
             return full;
         }

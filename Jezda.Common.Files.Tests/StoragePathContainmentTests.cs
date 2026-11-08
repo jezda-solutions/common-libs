@@ -78,22 +78,52 @@ public sealed class StoragePathContainmentTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_SubPathWithDotDotStayingInside_IsAllowed()
+    public async Task SaveAsync_SubPathReachingSiblingFolder_Throws()
     {
+        // Stays inside the root but leaves tenant-a's folder for tenant-b's
         await using var stream = Content();
 
-        var descriptor = await _storage.SaveAsync(stream, "doc.txt", "a/../b");
+        await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", "tenant-a/../tenant-b"));
 
-        Assert.True(File.Exists(Path.Combine(_root, descriptor.RelativePath)));
+        Assert.False(Directory.Exists(Path.Combine(_root, "tenant-b")));
     }
 
     [Fact]
-    public async Task SaveAsync_SiblingWithRootAsPrefix_Throws()
+    public async Task SaveAsync_FileNameReachingSiblingFolder_Throws()
     {
-        // "<parent>/root-other" starts with "<parent>/root" as a string but is outside the root
+        // The "<guid>-" prefix turns the first ".." into a folder name; the next four climb out of
+        // it and yyyy/MM/dd, the fifth out of tenant-a, so the file would land in tenant-b
         await using var stream = Content();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", "../root-other"));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _storage.SaveAsync(stream, "../../../../../../tenant-b/evil.txt", "tenant-a"));
+
+        Assert.False(Directory.Exists(Path.Combine(_root, "tenant-b")));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithFilesystemRootAsRootPath_DoesNotThrow()
+    {
+        var fsRoot = Path.GetPathRoot(Path.GetTempPath())!;
+        var storage = new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = fsRoot }));
+
+        var deleted = await storage.DeleteAsync($"missing-{Guid.NewGuid():N}.txt");
+
+        Assert.False(deleted);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_SiblingWithRootAsPrefix_ThrowsAndKeepsFile()
+    {
+        // "<parent>/root-other" starts with "<parent>/root" as a string but is outside the root
+        var sibling = Path.Combine(_parent, "root-other");
+        Directory.CreateDirectory(sibling);
+        var victim = Path.Combine(sibling, "victim.txt");
+        await File.WriteAllTextAsync(victim, "keep");
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _storage.DeleteAsync("../root-other/victim.txt"));
+
+        Assert.True(File.Exists(victim));
     }
 
     [Fact]

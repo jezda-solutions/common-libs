@@ -18,7 +18,8 @@ public interface IFileStorage
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the saved file.</returns>
     /// <exception cref="System.ArgumentException">
-    /// Thrown when <paramref name="subPath"/> or <paramref name="fileName"/> resolves outside the storage root.
+    /// Thrown when <paramref name="subPath"/> contains a <c>..</c> segment, <paramref name="fileName"/> has a
+    /// directory part, or either resolves outside the storage root.
     /// </exception>
     Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
 
