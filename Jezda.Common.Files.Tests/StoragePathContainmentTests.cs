@@ -83,9 +83,24 @@ public sealed class StoragePathContainmentTests : IDisposable
         // Stays inside the root but leaves tenant-a's folder for tenant-b's
         await using var stream = Content();
 
+        var tenantB = Directory.CreateDirectory(Path.Combine(_root, "tenant-b")).FullName;
+
         await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", "tenant-a/../tenant-b"));
 
-        Assert.False(Directory.Exists(Path.Combine(_root, "tenant-b")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(tenantB));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RootedSubPathInsideRoot_Throws()
+    {
+        // Path.Combine drops RootPath for a rooted second argument, so this one contains no ".."
+        // and still points at tenant-b's folder inside the root
+        await using var stream = Content();
+        var tenantB = Directory.CreateDirectory(Path.Combine(_root, "tenant-b")).FullName;
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", tenantB));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(tenantB));
     }
 
     [Fact]
@@ -95,10 +110,12 @@ public sealed class StoragePathContainmentTests : IDisposable
         // it and yyyy/MM/dd, the fifth out of tenant-a, so the file would land in tenant-b
         await using var stream = Content();
 
+        var tenantB = Directory.CreateDirectory(Path.Combine(_root, "tenant-b")).FullName;
+
         await Assert.ThrowsAsync<ArgumentException>(
             () => _storage.SaveAsync(stream, "../../../../../../tenant-b/evil.txt", "tenant-a"));
 
-        Assert.False(Directory.Exists(Path.Combine(_root, "tenant-b")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(tenantB));
     }
 
     [Fact]

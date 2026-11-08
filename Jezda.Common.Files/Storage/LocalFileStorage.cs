@@ -32,11 +32,12 @@ public class LocalFileStorage : IFileStorage
     /// <inheritdoc />
     public async Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
-        // A ".." in subPath or a directory part in fileName could reach another sub-path's
-        // folder (another tenant's) while still staying inside the root, so both are refused
-        if (!string.IsNullOrWhiteSpace(subPath) && subPath.Split('/', '\\').Contains(".."))
+        // A rooted subPath, a ".." in it or a directory part in fileName could reach another
+        // sub-path's folder (another tenant's) while still staying inside the root, so all are refused
+        if (!string.IsNullOrWhiteSpace(subPath)
+            && (Path.IsPathRooted(subPath) || subPath.Split('/', '\\').Contains("..")))
         {
-            throw new ArgumentException("The sub-path must not contain '..' segments.", nameof(subPath));
+            throw new ArgumentException("The sub-path must be relative and must not contain '..' segments.", nameof(subPath));
         }
 
         if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)

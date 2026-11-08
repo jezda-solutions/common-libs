@@ -24,7 +24,8 @@ public interface IFileService
     /// <returns>A task containing the file descriptor with metadata about the uploaded file.</returns>
     /// <exception cref="InvalidOperationException">Thrown when file validation fails.</exception>
     /// <exception cref="ArgumentException">
-    /// Thrown when <paramref name="subPath"/> contains a <c>..</c> segment, or when it or the file name resolves outside the storage root.
+    /// Thrown when <paramref name="subPath"/> is rooted or contains a <c>..</c> segment, when the file name has a
+    /// directory part, or when either resolves outside the storage root.
     /// </exception>
     Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
 
