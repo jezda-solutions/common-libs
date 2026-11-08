@@ -88,9 +88,8 @@ public interface IExternalTaskProvider
     /// </para>
     /// <para>
     /// <b>The fallback is best-effort, not exhaustive.</b> It can only see what
-    /// <see cref="GetTasksAsync"/> returns, and several providers return a truncated first page
-    /// there — Jira caps at 50 issues per project with no <c>startAt</c> loop, ClickUp and Monday
-    /// take their API defaults. A task past that cut is simply not found, and the caller cannot
+    /// <see cref="GetTasksAsync"/> returns, and a provider may return a truncated first page there —
+    /// ClickUp takes its API default; Jira and Monday.com page to the end. A task past that cut is simply not found, and the caller cannot
     /// tell that apart from "no such task". Overriding with a native search is the fix; paging
     /// <see cref="GetTasksAsync"/> is the other.
     /// </para>
