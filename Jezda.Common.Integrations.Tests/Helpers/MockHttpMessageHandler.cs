@@ -37,10 +37,11 @@ public sealed class MockHttpMessageHandler : HttpMessageHandler
         _responsesByPath[absolutePath] = new MockResponse(statusCode, json, Delay: delay);
     }
 
-    public void EnqueueResponse(HttpStatusCode statusCode, object? body = null)
+    /// <param name="delay">How long the answer takes, so a test can overlap requests.</param>
+    public void EnqueueResponse(HttpStatusCode statusCode, object? body = null, TimeSpan delay = default)
     {
         var json = body is not null ? JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) : "{}";
-        _responses.Enqueue(new MockResponse(statusCode, json));
+        _responses.Enqueue(new MockResponse(statusCode, json, Delay: delay));
     }
 
     public void EnqueueResponse(HttpStatusCode statusCode, string json)

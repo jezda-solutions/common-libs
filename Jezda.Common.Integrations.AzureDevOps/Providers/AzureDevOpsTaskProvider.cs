@@ -233,8 +233,8 @@ public sealed class AzureDevOpsTaskProvider(
     /// <para>
     /// <b>A number is also a work item id.</b> Developers usually know the id (<c>1234</c>, or
     /// <c>#1234</c> as Azure DevOps writes it) better than the title. Such a term runs a second, tiny
-    /// WIQL on <c>[System.Id]</c> next to the title search, and its hit goes first. It is a separate
-    /// query rather than an <c>OR</c> in the title one because that query is cut by <c>$top</c> after
+    /// WIQL on <c>[System.Id]</c> alongside the title search, both in flight at once, and its hit
+    /// goes first. It is a separate query rather than an <c>OR</c> in the title one because that query is cut by <c>$top</c> after
     /// ordering by change date: an older item asked for by its number would be cut off by newer titles
     /// that merely contain the same digits.
     /// </para>
@@ -259,25 +259,32 @@ public sealed class AzureDevOpsTaskProvider(
         var exactId = TryParseWorkItemId(term);
         var titleTerm = exactId is not null && term.StartsWith('#') ? term[1..] : term;
 
-        // The id lookup first, unbounded by the title search's $top. It matches at most one row:
-        // ids are unique across the organisation.
-        var exactIds = new List<int>();
-        if (exactId is { } wanted)
-        {
-            var idQuery = new AdoWiqlRequest
-            {
-                Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Id] = {wanted} AND [System.State] <> 'Removed'"
-            };
-            exactIds.AddRange((await RunWiqlAsync(client, idQuery, "_apis/wit/wiql", cancellationToken)).Select(wi => wi.Id));
-        }
+        // The id lookup is unbounded by the title search's $top. It matches at most one row: ids are
+        // unique across the organisation.
+        IReadOnlyList<AdoWorkItemReference> noExactId = [];
+        var exactIdQuery = exactId is { } wanted
+            ? RunWiqlAsync(
+                client,
+                new AdoWiqlRequest
+                {
+                    Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Id] = {wanted} AND [System.State] <> 'Removed'"
+                },
+                "_apis/wit/wiql",
+                cancellationToken)
+            : Task.FromResult(noExactId);
 
         var wiqlRequest = new AdoWiqlRequest
         {
             Query = $"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(titleTerm)}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC"
         };
 
-        // No project segment in the path: that is what makes this organisation-wide.
-        var references = await RunWiqlAsync(client, wiqlRequest, "_apis/wit/wiql", cancellationToken, top: limit);
+        // No project segment in the path: that is what makes this organisation-wide. Both queries run
+        // at once: neither depends on the other, and a person is waiting on the search.
+        var titleQuery = RunWiqlAsync(client, wiqlRequest, "_apis/wit/wiql", cancellationToken, top: limit);
+        await Task.WhenAll(exactIdQuery, titleQuery);
+
+        var exactIds = (await exactIdQuery).Select(wi => wi.Id);
+        var references = await titleQuery;
 
         // $top already bounded the title query, but a server that ignores it must not turn into an
         // unbounded details batch. The exact id leads; a title hit on the same item is not repeated.

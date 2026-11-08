@@ -1354,6 +1354,34 @@ public class AzureDevOpsTaskProviderTests
     }
 
     [Fact]
+    public async Task SearchTasksAsync_NumericTerm_RunsTheIdAndTitleQueriesAtOnce()
+    {
+        // Neither query needs the other's answer, so a numeric term costs one round trip, not two.
+        var slow = TimeSpan.FromMilliseconds(200);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(1234), slow);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(5000), slow);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Details((5000, "Follow-up to 1234"), (1234, "Login fails")));
+        _handler.EnqueueResponse(HttpStatusCode.OK, Project("Platform"));
+
+        var result = await _provider.SearchTasksAsync("my-pat", "1234", baseUrl: "https://dev.azure.com/myorg/");
+
+        Assert.Equal(2, _handler.MaxInFlight);
+        Assert.Equal(["1234", "5000"], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_IdQueryFails_WhileTheTitleQuerySucceeds_StillThrows()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+        _handler.EnqueueResponse(HttpStatusCode.OK, Refs(5000));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.SearchTasksAsync("my-pat", "1234", baseUrl: "https://dev.azure.com/myorg/"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+    }
+
+    [Fact]
     public async Task GetProjectsAsync_FollowsTheContinuationTokenAcrossPages()
     {
         _handler.EnqueueResponseWithHeader(
