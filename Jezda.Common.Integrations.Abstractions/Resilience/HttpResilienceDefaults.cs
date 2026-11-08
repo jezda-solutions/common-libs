@@ -35,8 +35,9 @@ public static class HttpResilienceDefaults
     /// Tokens on the same key still share a breaker, so a 429 does not count towards it: one
     /// token's rate limit would otherwise open it for every other token. Polly has no neutral outcome,
     /// so the breaker records a 429 as a success: the provider did answer, which is what the breaker
-    /// measures. The exception is the single probe of a half-open breaker: a 429 there keeps the
-    /// breaker open, since it says nothing about whether the provider recovered.
+    /// measures. The exception is the single probe of a half-open breaker: a 429, 401 or 403 there
+    /// keeps the breaker open, since it speaks only for the probe's token, not for whether the
+    /// provider recovered. A provider keyed per token says so with <see cref="PipelineKeyScope.PerToken"/>.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(this IHttpClientBuilder builder) =>
         builder.AddIntegrationResilience(IntegrationPipelineKeys.Address);
@@ -60,9 +61,30 @@ public static class HttpResilienceDefaults
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(
         this IHttpClientBuilder builder,
-        Func<HttpRequestMessage, string> pipelineKey)
+        Func<HttpRequestMessage, string> pipelineKey) =>
+        builder.AddIntegrationResilience(pipelineKey, PipelineKeyScope.SharedByTokens);
+
+    /// <summary>
+    /// Adds the same resilience handler as
+    /// <see cref="AddIntegrationResilience(IHttpClientBuilder, Func{HttpRequestMessage, string})"/>,
+    /// saying whether a key belongs to one token.
+    /// </summary>
+    /// <param name="builder">The client to add the handler to.</param>
+    /// <param name="pipelineKey">The key of a request's pipeline; the same rules apply.</param>
+    /// <param name="scope">
+    /// <see cref="PipelineKeyScope.PerToken"/> when every key holds the token, as
+    /// <see cref="IntegrationPipelineKeys.AddressAndAuthorization"/> does. It decides what the single
+    /// probe of a half-open breaker may conclude: on a key several tokens share, a probe answered 429,
+    /// 401 or 403 speaks only for its own token and keeps the breaker open; on a per-token key any
+    /// answer shows the provider is up and may close it.
+    /// </param>
+    public static IHttpClientBuilder AddIntegrationResilience(
+        this IHttpClientBuilder builder,
+        Func<HttpRequestMessage, string> pipelineKey,
+        PipelineKeyScope scope)
     {
         ArgumentNullException.ThrowIfNull(pipelineKey);
+        var shared = scope == PipelineKeyScope.SharedByTokens;
 
         var budget = new PipelineKeyBudget(builder.Name, pipelineKey);
 
@@ -70,13 +92,21 @@ public static class HttpResilienceDefaults
         {
             options.Retry.MaxRetryAttempts = 3;
             options.Retry.Delay = TimeSpan.FromMilliseconds(500);
-            // A probe's 429 has just reopened the breaker, so a retry would only meet the open
-            // breaker and hand the caller BrokenCircuitException instead of the 429.
+            // On a shared key a probe's 429 has just reopened the breaker, so a retry would only meet
+            // the open breaker and hand the caller BrokenCircuitException instead of the 429.
             options.Retry.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests } response
-                    ? !IsProbe(args.Context) && AsksForAShortPause(response)
+                    ? !(shared && IsProbe(args.Context)) && AsksForAShortPause(response)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
+
+            // The mark belongs to the attempt that was the probe. Left on, a later attempt of the same
+            // execution, after another request's probe closed the breaker, would be judged as a probe.
+            options.Retry.OnRetry = args =>
+            {
+                args.Context.Properties.Set(HalfOpenProbe, false);
+                return default;
+            };
 
             // With the default key the breaker is shared by every caller of the same address, whatever
             // their token, so it counts only what says the provider itself is failing. A 429 is one
@@ -86,9 +116,14 @@ public static class HttpResilienceDefaults
             // that probe counts as a failure and the breaker stays open. Polly raises OnHalfOpened
             // with the probe's own context before the probe runs, so the mark is on that one
             // execution: a 429 to a request that started before the breaker opened stays neutral.
+            //
+            // The same holds for 401 and 403 on a shared key: a probe carrying a revoked or
+            // under-scoped token would otherwise close the breaker for every other token. On a
+            // per-token key the probe carries the key's own token, so any answer shows the provider
+            // is up and may close it; the caller then gets the 429 with its retry time.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
-                args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests }
-                    ? IsProbe(args.Context)
+                args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden }
+                    ? shared && IsProbe(args.Context)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
             options.CircuitBreaker.OnHalfOpened = args =>
