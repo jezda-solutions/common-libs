@@ -38,8 +38,60 @@ public class TrelloTaskProviderTests
 
         Assert.True(result.IsValid);
         Assert.Single(_handler.SentRequests);
-        Assert.Contains("key=mykey", _handler.SentRequests[0].RequestUri!.ToString());
-        Assert.Contains("token=mytoken", _handler.SentRequests[0].RequestUri!.ToString());
+        var request = _handler.SentRequests[0];
+        Assert.Equal("OAuth", request.Headers.Authorization?.Scheme);
+        Assert.Equal("oauth_consumer_key=\"mykey\", oauth_token=\"mytoken\"", request.Headers.Authorization?.Parameter);
+        Assert.Equal(string.Empty, request.RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task EveryCall_KeepsTheKeyAndTokenOutOfTheUrl()
+    {
+        var accessToken = TrelloTaskProvider.FormatAccessToken("mykey", "mytoken");
+        _handler.EnqueueResponse(HttpStatusCode.OK, Array.Empty<object>());
+        _handler.EnqueueResponse(HttpStatusCode.OK, Array.Empty<object>());
+
+        await _provider.GetProjectsAsync(accessToken);
+        await _provider.GetTasksAsync(accessToken, "board1");
+
+        Assert.All(_handler.SentRequests, request =>
+        {
+            Assert.DoesNotContain("mykey", request.RequestUri!.ToString());
+            Assert.DoesNotContain("mytoken", request.RequestUri!.ToString());
+            Assert.Equal("OAuth", request.Headers.Authorization?.Scheme);
+        });
+    }
+
+    [Theory]
+    [InlineData("key:tok\"en")]
+    [InlineData("key:tok\\en")]
+    [InlineData("k\u201Cey:token")]
+    [InlineData("key:tok\nen")]
+    public async Task ValidateConnectionAsync_KeyOrTokenThatCannotGoInTheHeader_ReturnsNotSendable(string accessToken)
+    {
+        var result = await _provider.ValidateConnectionAsync(accessToken);
+
+        Assert.False(result.IsValid);
+        Assert.Equal(TokenRejectionReason.NotSendable, result.Reason);
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_KeyOrTokenThatCannotGoInTheHeader_ThrowsWithoutSending()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetTasksAsync("key:tok\"en", "board1"));
+
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_EscapesTheBoardIdInThePath()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, Array.Empty<object>());
+
+        await _provider.GetTasksAsync("key:token", "a/b?c");
+
+        Assert.Equal("/1/boards/a%2Fb%3Fc/cards", _handler.SentRequests[0].RequestUri!.AbsolutePath);
     }
 
     [Fact]

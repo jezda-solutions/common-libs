@@ -4,7 +4,7 @@ Trello integration for the Jezda Common Libraries. Provides an `IExternalTaskPro
 
 ## Authentication
 
-Trello uses API Key + Token authentication via query parameters. Format the access token using the helper:
+Trello uses API Key + Token authentication, sent in the header `Authorization: OAuth oauth_consumer_key="<key>", oauth_token="<token>"`, never in the URL, where proxy and request logs would keep them. Format the access token using the helper:
 
 ```csharp
 var accessToken = TrelloTaskProvider.FormatAccessToken("your-api-key", "your-api-token");
@@ -31,4 +31,8 @@ other failure propagates, so an outage or a rate limit is not shown to the user 
 
 `IExternalTaskProvider` keeps one circuit breaker per token: every caller is on `api.trello.com`, so
 one caller whose requests keep failing does not cut off the others. The breaker key holds a hash of
-the `token` query parameter, never the token.
+the `Authorization` header, never the key or token.
+
+A key or token with a character that cannot go in the header (outside printable ASCII, a quote mark or a
+backslash) returns `NotSendable` from `ValidateConnectionAsync` and throws `ArgumentException` from the other
+calls, without a request.
