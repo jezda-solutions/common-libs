@@ -59,7 +59,36 @@ public sealed class JiraTaskProvider(
         JiraHttp.ThrowIfNotApiResponse(response);
         response.EnsureSuccessStatusCode();
 
+        // Any JSON API, or a gateway answering 200 with {"error":"login required"}, would pass the
+        // content-type check whatever the token is. Jira Cloud's myself always names the account.
+        if (!await HasAccountIdAsync(response, cancellationToken))
+        {
+            throw new HttpRequestException(
+                $"The server answered {(int)response.StatusCode} on rest/api/3/myself without an accountId, so the token was not checked. "
+                + "The base URL likely points at a JSON API or a gateway that is not Jira Cloud.",
+                null,
+                response.StatusCode);
+        }
+
         return ConnectionValidationResult.Accepted;
+    }
+
+    private static async Task<bool> HasAccountIdAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadFromUtf8JsonAsync<JsonElement>(JsonOptions, cancellationToken);
+
+            return body.ValueKind == JsonValueKind.Object
+                   && body.TryGetProperty("accountId", out var accountId)
+                   && accountId.ValueKind == JsonValueKind.String
+                   && !string.IsNullOrWhiteSpace(accountId.GetString());
+        }
+        catch (JsonException)
+        {
+            // Labelled JSON but not JSON: not Jira either.
+            return false;
+        }
     }
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
