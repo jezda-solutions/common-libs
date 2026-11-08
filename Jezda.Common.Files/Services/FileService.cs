@@ -26,7 +26,7 @@ public class FileService : IFileService
     }
 
     /// <inheritdoc />
-    public async Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? tenantId = null, CancellationToken cancellationToken = default)
+    public async Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
         // Validate file, including ZIP safety, executable detection, etc.
         var validation = await _validator.ValidateAsync(content, fileName, overrides: null, ct: cancellationToken);
@@ -41,8 +41,8 @@ public class FileService : IFileService
         // Normalize file name via policy (Unicode-friendly)
         var (_, normalizedName) = _namePolicy.ValidateAndNormalize(fileName);
 
-        // Sub-path strategy: tenant/yyy/MM/dd (tenant optional)
-        var subPath = string.IsNullOrWhiteSpace(tenantId) ? null : tenantId;
+        // Storage lays files out as subPath/yyyy/MM/dd; a blank subPath means none
+        var targetSubPath = string.IsNullOrWhiteSpace(subPath) ? null : subPath;
 
         // Reset stream position after validation when possible
         if (content.CanSeek)
@@ -50,7 +50,7 @@ public class FileService : IFileService
             content.Seek(0, SeekOrigin.Begin);
         }
 
-        var descriptor = await _storage.SaveAsync(content, normalizedName, subPath, cancellationToken);
+        var descriptor = await _storage.SaveAsync(content, normalizedName, targetSubPath, cancellationToken);
         descriptor.MimeType = validation.MimeType;
         return descriptor;
     }

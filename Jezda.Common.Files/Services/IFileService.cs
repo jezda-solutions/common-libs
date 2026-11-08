@@ -16,11 +16,14 @@ public interface IFileService
     /// </summary>
     /// <param name="content">The file content stream to upload.</param>
     /// <param name="fileName">The original file name.</param>
-    /// <param name="tenantId">Optional tenant identifier for multi-tenant file organization.</param>
+    /// <param name="subPath">
+    /// Optional sub-path under the storage root that groups the file, e.g. a tenant ID or
+    /// <c>work-items/{id}</c>. Passed through to <see cref="IFileStorage.SaveAsync"/>.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the uploaded file.</returns>
     /// <exception cref="InvalidOperationException">Thrown when file validation fails.</exception>
-    Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? tenantId = null, CancellationToken cancellationToken = default);
+    Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Opens a file for reading from storage.
