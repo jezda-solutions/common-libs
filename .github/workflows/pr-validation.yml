@@ -7,6 +7,10 @@ on:
   push:
     branches:
       - master
+  schedule:
+    # Weekly: advisories are published after merge, so a clean PR can turn vulnerable later.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,6 +32,16 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore
+
+      - name: Check for vulnerable packages
+        # Explicit bash runs with -o pipefail, so a failing `dotnet list` is not hidden by `tee`.
+        shell: bash
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee "$RUNNER_TEMP/vulnerable.txt"
+          if grep -q "has the following vulnerable packages" "$RUNNER_TEMP/vulnerable.txt"; then
+            echo "::error::Vulnerable NuGet packages found (see the list above)."
+            exit 1
+          fi
 
       - name: Build solution
         run: dotnet build --configuration Release --no-restore
