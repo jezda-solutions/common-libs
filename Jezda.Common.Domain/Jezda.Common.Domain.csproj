@@ -12,8 +12,14 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.13" />
-		<PackageReference Include="FastEndpoints" Version="8.3.0" />
+		<!-- Only [QueryParam]/[BindFrom] are used (PagingInfo); the attributes package keeps
+		     consumers free to stay on any FastEndpoints major. -->
+		<PackageReference Include="FastEndpoints.Attributes" Version="8.3.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- [FromQuery] in PagingInfo comes from ASP.NET Core MVC. -->
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
 	<ItemGroup>
