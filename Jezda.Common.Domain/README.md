@@ -17,7 +17,8 @@ dotnet add package Jezda.Common.Domain
 
 ### Domain Models
 
-- **`PagingInfo`** - Pagination request parameters (PageNumber, PageSize, SortColumn, SortDirection, SearchTerm)
+- **`PagingInfo`** - Pagination request parameters (CurrentPage, PageSize, SortColumn, SortDescending, SearchTermJson, GlobalSearch); `TryGetSearchTerm` reads `search_term` without throwing
+- **`InvalidPagingParameterException`** - A caller-supplied `search_term` or `sort_column` that cannot be applied; map it to 400
 - **`PagedList<T>`** - Paginated response wrapper with metadata (TotalCount, TotalPages, HasNextPage, etc.)
 
 ### Enums & Value Objects

@@ -67,10 +67,75 @@ public class PagedListExtensionsTests : SqliteTestBase
     }
 
     [Fact]
-    public void ApplySorting_UnknownColumn_Throws()
+    public void ApplySorting_UnknownColumn_ThrowsInvalidPagingParameter()
     {
         var query = Context.Products.AsQueryable();
 
-        Assert.Throws<ArgumentException>(() => query.ApplySorting("Nonexistent", false));
+        var exception = Assert.Throws<InvalidPagingParameterException>(() => query.ApplySorting("Nonexistent", false));
+
+        Assert.Equal(PagingParameter.SortColumn, exception.Parameter);
+        Assert.Equal("Nonexistent", exception.Column);
+    }
+
+    [Fact]
+    public async Task ApplyPagingAndFilteringAsync_UnknownSortColumn_ThrowsInvalidPagingParameter()
+    {
+        var paging = new PagingInfo { SortColumn = "Nme" };
+
+        var exception = await Assert.ThrowsAsync<InvalidPagingParameterException>(() => Context.Products
+            .Select(x => new ProductDto { Name = x.Name, Price = x.Price })
+            .ApplyPagingAndFilteringAsync(paging, defaultSortColumn: "Name"));
+
+        Assert.Equal(PagingParameter.SortColumn, exception.Parameter);
+        Assert.Equal("Nme", exception.Column);
+    }
+
+    [Fact]
+    public async Task ApplyPagingAndFilteringAsync_UnknownDefaultSortColumn_StaysAProgrammingError()
+    {
+        // The consumer's own default is not the caller's mistake, so it must not become a 400.
+        var paging = new PagingInfo();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => Context.Products
+            .Select(x => new ProductDto { Name = x.Name, Price = x.Price })
+            .ApplyPagingAndFilteringAsync(paging, defaultSortColumn: "Id"));
+
+        Assert.IsNotType<InvalidPagingParameterException>(exception);
+    }
+
+    [Fact]
+    public async Task ApplyPagingAndFilteringAsync_WithoutSortColumn_SortsByDefaultColumn()
+    {
+        await SeedDefaultAsync();
+
+        var result = await Context.Products
+            .Select(x => new ProductDto { Name = x.Name, Price = x.Price })
+            .ApplyPagingAndFilteringAsync(new PagingInfo(), defaultSortColumn: "Price");
+
+        Assert.Equal(["Bravo", "Charlie", "Alpha", "Delta"], result.Items.Select(x => x.Name).ToArray());
+    }
+
+    [Theory]
+    [InlineData("Nme")]
+    [InlineData("Name.Length.Nope")]
+    public void ApplySearchFilters_UnknownColumn_ThrowsInvalidPagingParameter(string column)
+    {
+        var query = Context.Products.AsQueryable();
+
+        var exception = Assert.Throws<InvalidPagingParameterException>(
+            () => query.ApplySearchFilters(new Dictionary<string, string> { [column] = "x" }));
+
+        Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
+        Assert.Equal(column, exception.Column);
+    }
+
+    [Fact]
+    public void ApplySearchFilters_ColumnNameIgnoresCase()
+    {
+        var query = Context.Products.AsQueryable();
+
+        var filtered = query.ApplySearchFilters(new Dictionary<string, string> { ["nAmE"] = "x" });
+
+        Assert.NotSame(query, filtered);
     }
 }

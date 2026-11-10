@@ -145,4 +145,32 @@ public class GenericRepositoryTests : SqliteTestBase
         Assert.Equal(2, page.TotalCount);
         Assert.All(page.Items, x => Assert.Contains("Apple", x.Name));
     }
+
+    [Fact]
+    public async Task GetPagedProjection_UnknownSearchColumn_ThrowsInvalidPagingParameter()
+    {
+        var paging = new PagingInfo { SearchTermJson = "{\"nme\":\"x\"}" };
+
+        var exception = await Assert.ThrowsAsync<InvalidPagingParameterException>(() => Repository.GetPagedProjection(
+            paging,
+            projection: x => new { x.Name, x.Price },
+            defaultSortColumn: "Name"));
+
+        Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
+        Assert.Equal("nme", exception.Column);
+    }
+
+    [Fact]
+    public async Task GetPagedProjection_UnreadableSearchTerm_ThrowsInvalidPagingParameter()
+    {
+        var paging = new PagingInfo { SearchTermJson = "alpha" };
+
+        var exception = await Assert.ThrowsAsync<InvalidPagingParameterException>(() => Repository.GetPagedProjection(
+            paging,
+            projection: x => new { x.Name, x.Price },
+            defaultSortColumn: "Name"));
+
+        Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
+        Assert.Null(exception.Column);
+    }
 }

@@ -29,12 +29,7 @@ public static class PagedListExtensions
             query = query.ApplyGlobalSearchFilter(pagingInfo.GlobalSearch);
         }
 
-        // Sortiranje na osnovu kolone
-        query = query.ApplySorting(!string.IsNullOrEmpty(pagingInfo.SortColumn)
-            ? pagingInfo.SortColumn
-            : defaultSortColumn, pagingInfo.SortDescending);
-
-        // Pretvaranje query-a u paging list
+        // Pretvaranje query-a u paging list (sortira po sort_column ili po defaultSortColumn)
         return await query.ToPagedListAsync(pagingInfo, defaultSortColumn, cancellationToken);
     }
 
@@ -188,7 +183,7 @@ public static class PagedListExtensions
                     // Trazimo polje na osnovu imena
                     var propertyInfo = propertyExpression.Type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
                         .FirstOrDefault(p => string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                        ?? throw new ArgumentException($"Property '{propertyName}' not found on type '{propertyExpression.Type.Name}'.");
+                        ?? throw UnknownSearchColumn(key, propertyName, propertyExpression.Type);
 
                     propertyExpression = Expression.PropertyOrField(propertyExpression, propertyInfo.Name);
 
@@ -197,7 +192,10 @@ public static class PagedListExtensions
                         propertyInfo.PropertyType != typeof(string))
                     {
                         var collectionType = propertyInfo.PropertyType.GetGenericArguments().FirstOrDefault()
-                            ?? throw new ArgumentException($"Unable to determine collection element type for property '{propertyName}'.");
+                            ?? throw new InvalidPagingParameterException(
+                                PagingParameter.SearchTerm,
+                                key,
+                                $"search_term column '{key}' cannot be searched: the element type of '{propertyName}' is unknown.");
 
                         var collectionParameter = Expression.Parameter(collectionType, "y");
 
@@ -207,7 +205,7 @@ public static class PagedListExtensions
                         {
                             var innerPropertyName = properties[j];
                             var innerPropertyInfo = collectionExpression.Type.GetProperty(innerPropertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
-                                ?? throw new ArgumentException($"Property '{innerPropertyName}' not found on type '{collectionExpression.Type.Name}'.");
+                                ?? throw UnknownSearchColumn(key, innerPropertyName, collectionExpression.Type);
 
                             collectionExpression = Expression.PropertyOrField(collectionExpression, innerPropertyInfo.Name);
                         }
@@ -294,8 +292,18 @@ public static class PagedListExtensions
         return Expression.Call(toStringExpression, containsMethod!, Expression.Constant(value.ToString(), typeof(string)));
     }
 
+    private static InvalidPagingParameterException UnknownSearchColumn(string column, string propertyName, Type type) =>
+        new(PagingParameter.SearchTerm, column, $"search_term column '{column}' does not exist: '{propertyName}' is not a property of '{type.Name}'.");
+
+    /// <summary>
+    /// Orders <paramref name="query"/> by <paramref name="sortColumn"/>, a column name sent by the caller.
+    /// </summary>
+    /// <exception cref="InvalidPagingParameterException">No public property of <typeparamref name="T"/> has that name.</exception>
+    public static IQueryable<T> ApplySorting<T>(this IQueryable<T> query, string sortColumn, bool sortDescending) =>
+        query.ApplySorting(sortColumn, sortDescending, callerSupplied: true);
+
     // Sortiranje
-    public static IQueryable<T> ApplySorting<T>(this IQueryable<T> query, string sortColumn, bool sortDescending)
+    private static IQueryable<T> ApplySorting<T>(this IQueryable<T> query, string sortColumn, bool sortDescending, bool callerSupplied)
     {
         // Ako nema sortiranja, ne sortiramo
         if (string.IsNullOrWhiteSpace(sortColumn)) return query;
@@ -303,7 +311,14 @@ public static class PagedListExtensions
         var parameter = Expression.Parameter(typeof(T), "x");
         var property
             = typeof(T).GetProperty(sortColumn, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new ArgumentException($"Property '{sortColumn}' does not exist on type {typeof(T).Name}");
+            ?? throw (callerSupplied
+                // sort_column from the request: the caller's mistake.
+                ? new InvalidPagingParameterException(
+                    PagingParameter.SortColumn,
+                    sortColumn,
+                    $"sort_column '{sortColumn}' does not exist on type {typeof(T).Name}.")
+                // defaultSortColumn from the consumer's code: a programming error.
+                : new ArgumentException($"Property '{sortColumn}' does not exist on type {typeof(T).Name}"));
         var propertyAccess = Expression.Property(parameter, property);
         var orderByExpression = Expression.Lambda(propertyAccess, parameter);
 
@@ -336,13 +351,14 @@ public static class PagedListExtensions
         // Ukupan broj itema
         var totalRecords = await query.CountAsync(cancellationToken);
 
-        var sortColumn = string.IsNullOrEmpty(pagingInfo.SortColumn)
-            ? defaultSortColumn
-            : pagingInfo.SortColumn;
+        var callerSupplied = !string.IsNullOrEmpty(pagingInfo.SortColumn);
+        var sortColumn = callerSupplied
+            ? pagingInfo.SortColumn!
+            : defaultSortColumn;
 
         // Primena paginacije i sortiranja
         var items = await query
-            .ApplySorting(sortColumn, pagingInfo.SortDescending)
+            .ApplySorting(sortColumn, pagingInfo.SortDescending, callerSupplied)
             .Skip((pagingInfo.CurrentPage - 1) * pagingInfo.PageSize)
             .Take(pagingInfo.PageSize)
             .ToListAsync(cancellationToken);

@@ -144,11 +144,12 @@ var product = await _repository.GetFirstOrDefaultAsync<Product>(
 // Using PagedList (with sorting and filtering)
 var pagingInfo = new PagingInfo
 {
-    PageNumber = 1,
+    CurrentPage = 1,
     PageSize = 20,
     SortColumn = "Name",
-    SortDirection = "asc",
-    SearchTerm = "laptop"
+    SortDescending = false,
+    SearchTermJson = "{\"name\":\"laptop\"}", // ?search_term= — a JSON map of column → value
+    GlobalSearch = "laptop"                       // ?global_search= — free text over all columns
 };
 
 var pagedProducts = await _repository.GetPagedItemsAsync(
@@ -161,6 +162,11 @@ var pagedProducts = await _repository.GetPagedItemsAsync(
 // pagedProducts.TotalCount - total records
 // pagedProducts.TotalPages - total pages
 // pagedProducts.HasNextPage, HasPreviousPage - navigation info
+
+// A search_term that is not a JSON object of strings, or a search_term/sort_column that names a
+// column the list does not have, throws InvalidPagingParameterException (an ArgumentException).
+// It is the caller's mistake: map that one type to 400. PagingInfo.TryGetSearchTerm checks
+// search_term without throwing. A wrong defaultSortColumn stays a plain ArgumentException.
 
 // Simple pagination (skip/take)
 var products = await _repository.GetPageAsync(
