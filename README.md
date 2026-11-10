@@ -168,7 +168,8 @@ var pagedProducts = await _repository.GetPagedItemsAsync(
 // It is the caller's mistake: map that one type to 400. PagingInfo.TryGetSearchTerm checks
 // search_term without throwing; a blank value means no filter. Column names match ignoring case and
 // underscores (member_count → MemberCount); a navigation property is not a column. A wrong
-// defaultSortColumn stays a plain ArgumentException.
+// defaultSortColumn stays a plain ArgumentException. In GetPagedProjection, search_term and
+// sort_column name columns of the projection the caller receives, never hidden entity fields.
 
 // Simple pagination (skip/take)
 var products = await _repository.GetPageAsync(
