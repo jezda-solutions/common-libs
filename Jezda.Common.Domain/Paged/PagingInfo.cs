@@ -1,4 +1,6 @@
 ﻿using FastEndpoints;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -51,9 +53,54 @@ public class PagingInfo
 
     /// <summary>
     /// Parses the SearchTermJson into a dictionary. (key: column name, value: search term)
+    /// An absent or blank value and the JSON literal <c>null</c> read as an empty map.
     /// </summary>
-    public Dictionary<string, string> SearchTerm =>
-        JsonSerializer.Deserialize<Dictionary<string, string>>(SearchTermJson ?? "{}") ?? [];
+    /// <exception cref="InvalidPagingParameterException">
+    /// <c>search_term</c> is not a JSON object of strings. Use <see cref="TryGetSearchTerm"/> to check without throwing.
+    /// </exception>
+    /// <remarks>
+    /// Binders and validators skip it; the raw value arrives through <see cref="SearchTermJson"/>.
+    /// </remarks>
+    [BindNever, ValidateNever]
+    [DontBind(Source.QueryParam | Source.RouteParam | Source.FormField)]
+    public Dictionary<string, string> SearchTerm
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(SearchTermJson))
+            {
+                return [];
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(SearchTermJson) ?? [];
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidPagingParameterException(
+                    PagingParameter.SearchTerm, InvalidPagingParameterReason.Unreadable, innerException: exception);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads <see cref="SearchTerm"/> without throwing.
+    /// </summary>
+    /// <returns><see langword="false"/> when the value is not a JSON object of strings.</returns>
+    public bool TryGetSearchTerm(out Dictionary<string, string> searchTerm)
+    {
+        try
+        {
+            searchTerm = SearchTerm;
+            return true;
+        }
+        catch (InvalidPagingParameterException)
+        {
+            searchTerm = [];
+            return false;
+        }
+    }
 
     /// <summary>
     /// Total number of items in the result set. This is used to calculate the total number of pages.

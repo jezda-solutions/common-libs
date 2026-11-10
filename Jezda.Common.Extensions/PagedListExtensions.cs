@@ -29,13 +29,12 @@ public static class PagedListExtensions
             query = query.ApplyGlobalSearchFilter(pagingInfo.GlobalSearch);
         }
 
-        // Sortiranje na osnovu kolone
-        query = query.ApplySorting(!string.IsNullOrEmpty(pagingInfo.SortColumn)
-            ? pagingInfo.SortColumn
-            : defaultSortColumn, pagingInfo.SortDescending);
+        // Sorted before counting, so a wrong sort_column fails without a database round trip.
+        var sorted = string.IsNullOrEmpty(pagingInfo.SortColumn)
+            ? query.ApplyDefaultSorting(defaultSortColumn, pagingInfo.SortDescending)
+            : query.ApplySorting(pagingInfo.SortColumn, pagingInfo.SortDescending);
 
-        // Pretvaranje query-a u paging list
-        return await query.ToPagedListAsync(pagingInfo, defaultSortColumn, cancellationToken);
+        return await sorted.ToPagedListAsync(pagingInfo, cancellationToken);
     }
 
     public static IQueryable<T> ApplyGlobalSearchFilter<T>(this IQueryable<T> query, string? search)
@@ -186,9 +185,8 @@ public static class PagedListExtensions
                     var propertyName = properties[i];
 
                     // Trazimo polje na osnovu imena
-                    var propertyInfo = propertyExpression.Type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                        .FirstOrDefault(p => string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                        ?? throw new ArgumentException($"Property '{propertyName}' not found on type '{propertyExpression.Type.Name}'.");
+                    var propertyInfo = FindProperty(propertyExpression.Type, propertyName)
+                        ?? throw UnknownColumn(PagingParameter.SearchTerm, key);
 
                     propertyExpression = Expression.PropertyOrField(propertyExpression, propertyInfo.Name);
 
@@ -197,7 +195,7 @@ public static class PagedListExtensions
                         propertyInfo.PropertyType != typeof(string))
                     {
                         var collectionType = propertyInfo.PropertyType.GetGenericArguments().FirstOrDefault()
-                            ?? throw new ArgumentException($"Unable to determine collection element type for property '{propertyName}'.");
+                            ?? throw UnknownColumn(PagingParameter.SearchTerm, key);
 
                         var collectionParameter = Expression.Parameter(collectionType, "y");
 
@@ -206,11 +204,14 @@ public static class PagedListExtensions
                         for (int j = i + 1; j < properties.Length; j++)
                         {
                             var innerPropertyName = properties[j];
-                            var innerPropertyInfo = collectionExpression.Type.GetProperty(innerPropertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
-                                ?? throw new ArgumentException($"Property '{innerPropertyName}' not found on type '{collectionExpression.Type.Name}'.");
+                            var innerPropertyInfo = FindProperty(collectionExpression.Type, innerPropertyName)
+                                ?? throw UnknownColumn(PagingParameter.SearchTerm, key);
 
                             collectionExpression = Expression.PropertyOrField(collectionExpression, innerPropertyInfo.Name);
                         }
+
+                        if (!IsScalar(collectionExpression.Type))
+                            throw UnknownColumn(PagingParameter.SearchTerm, key);
 
                         Expression filterExpression = CreateFilterExpression(collectionExpression, value);
 
@@ -233,6 +234,10 @@ public static class PagedListExtensions
                 // Ako nije kolekcija ili je string, filtriramo direktno
                 if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(propertyExpression.Type) || propertyExpression.Type == typeof(string))
                 {
+                    // A navigation or other complex property is not a column: EF cannot translate it.
+                    if (!IsScalar(propertyExpression.Type))
+                        throw UnknownColumn(PagingParameter.SearchTerm, key);
+
                     Expression filterExpression = CreateFilterExpression(propertyExpression, value);
                     var lambda = Expression.Lambda<Func<T, bool>>(filterExpression, parameter);
                     query = query.Where(lambda);
@@ -294,24 +299,40 @@ public static class PagedListExtensions
         return Expression.Call(toStringExpression, containsMethod!, Expression.Constant(value.ToString(), typeof(string)));
     }
 
-    // Sortiranje
+    /// <summary>
+    /// Orders <paramref name="query"/> by <paramref name="sortColumn"/>, a column name sent by the caller.
+    /// </summary>
+    /// <exception cref="InvalidPagingParameterException">No sortable public property of <typeparamref name="T"/> has that name.</exception>
     public static IQueryable<T> ApplySorting<T>(this IQueryable<T> query, string sortColumn, bool sortDescending)
     {
-        // Ako nema sortiranja, ne sortiramo
         if (string.IsNullOrWhiteSpace(sortColumn)) return query;
 
-        var parameter = Expression.Parameter(typeof(T), "x");
-        var property
-            = typeof(T).GetProperty(sortColumn, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new ArgumentException($"Property '{sortColumn}' does not exist on type {typeof(T).Name}");
-        var propertyAccess = Expression.Property(parameter, property);
-        var orderByExpression = Expression.Lambda(propertyAccess, parameter);
+        var property = FindProperty(typeof(T), sortColumn);
+        if (property is null || !IsScalar(property.PropertyType))
+            throw UnknownColumn(PagingParameter.SortColumn, sortColumn);
 
-        //Biramo da li je descending ili ascending
-        var methodName = sortDescending ? "OrderByDescending" : "OrderBy";
+        return query.OrderByProperty(property, sortDescending);
+    }
+
+    // The consumer's own default column: a wrong one is a programming error, not the caller's.
+    private static IQueryable<T> ApplyDefaultSorting<T>(this IQueryable<T> query, string defaultSortColumn, bool sortDescending)
+    {
+        if (string.IsNullOrWhiteSpace(defaultSortColumn)) return query;
+
+        var property = FindProperty(typeof(T), defaultSortColumn)
+            ?? throw new ArgumentException($"Property '{defaultSortColumn}' does not exist on type {typeof(T).Name}");
+
+        return query.OrderByProperty(property, sortDescending);
+    }
+
+    private static IQueryable<T> OrderByProperty<T>(this IQueryable<T> query, PropertyInfo property, bool sortDescending)
+    {
+        var parameter = Expression.Parameter(typeof(T), "x");
+        var orderByExpression = Expression.Lambda(Expression.Property(parameter, property), parameter);
+
         var resultExpression = Expression.Call(
             typeof(Queryable),
-            methodName,
+            sortDescending ? "OrderByDescending" : "OrderBy",
             [typeof(T), property.PropertyType],
             query.Expression,
             Expression.Quote(orderByExpression));
@@ -320,34 +341,53 @@ public static class PagedListExtensions
     }
 
     /// <summary>
-    /// Ova metoda pretvara IQueryable u PagedList sa paginacijom i sortiranjem.
+    /// The public property a column name refers to. Case is ignored, and so are underscores, because
+    /// clients send the snake_case names the API serialises (<c>member_count</c> for <c>MemberCount</c>).
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    /// <param name="query"></param>
-    /// <param name="pagingInfo"></param>
-    /// <param name="defaultSortColumn"></param>
-    /// <returns></returns>
+    private static PropertyInfo? FindProperty(Type type, string column)
+    {
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        return properties.FirstOrDefault(p => string.Equals(p.Name, column, StringComparison.OrdinalIgnoreCase))
+            ?? properties.FirstOrDefault(p => string.Equals(p.Name, column.Replace("_", string.Empty), StringComparison.OrdinalIgnoreCase));
+    }
+
+    // What a database column can hold: sortable and comparable by EF. Navigations and owned types are not.
+    private static bool IsScalar(Type type)
+    {
+        var underlying = Nullable.GetUnderlyingType(type) ?? type;
+
+        return underlying.IsPrimitive
+            || underlying.IsEnum
+            || underlying == typeof(string)
+            || underlying == typeof(decimal)
+            || underlying == typeof(Guid)
+            || underlying == typeof(DateTime)
+            || underlying == typeof(DateTimeOffset)
+            || underlying == typeof(DateOnly)
+            || underlying == typeof(TimeOnly)
+            || underlying == typeof(TimeSpan);
+    }
+
+    private static InvalidPagingParameterException UnknownColumn(PagingParameter parameter, string column) =>
+        new(parameter, InvalidPagingParameterReason.UnknownColumn, column);
+
+    /// <summary>
+    /// Counts <paramref name="query"/> and returns the page <paramref name="pagingInfo"/> asks for.
+    /// The query is already sorted.
+    /// </summary>
     private static async Task<PagedResult<T>> ToPagedListAsync<T>(
         this IQueryable<T> query,
         PagingInfo pagingInfo,
-        string defaultSortColumn,
         CancellationToken cancellationToken)
     {
-        // Ukupan broj itema
         var totalRecords = await query.CountAsync(cancellationToken);
 
-        var sortColumn = string.IsNullOrEmpty(pagingInfo.SortColumn)
-            ? defaultSortColumn
-            : pagingInfo.SortColumn;
-
-        // Primena paginacije i sortiranja
         var items = await query
-            .ApplySorting(sortColumn, pagingInfo.SortDescending)
             .Skip((pagingInfo.CurrentPage - 1) * pagingInfo.PageSize)
             .Take(pagingInfo.PageSize)
             .ToListAsync(cancellationToken);
 
-        // Kreiranje PagedList
         return new PagedResult<T>(items, totalRecords, pagingInfo.CurrentPage, pagingInfo.PageSize);
     }
 }
