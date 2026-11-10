@@ -235,6 +235,10 @@ public interface IGenericRepository<T> where T : class
     /// <summary>
     /// Gets a paged list of projected entities.
     /// </summary>
+    /// <remarks>
+    /// <c>search_term</c> and <c>sort_column</c> name columns of <typeparamref name="TProjection"/>, the
+    /// shape the caller receives; a field the projection leaves out is an unknown column.
+    /// </remarks>
     /// <param name="pagingInfo"><see cref="PagingInfo"/> request.</param>
     /// <param name="projection">Expression that projects entities of type T to type TProjection.</param>
     /// <param name="where">Predicate expression.</param>

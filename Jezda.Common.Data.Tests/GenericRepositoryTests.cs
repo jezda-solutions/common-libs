@@ -174,4 +174,45 @@ public class GenericRepositoryTests : SqliteTestBase
         Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
         Assert.Equal(InvalidPagingParameterReason.Unreadable, exception.Reason);
     }
+
+    // Member-init projection: EF translates filters through it (see PagedListExtensionsTests).
+    private sealed class ProductTitle
+    {
+        public string Title { get; init; } = string.Empty;
+
+        public decimal Price { get; init; }
+    }
+
+    [Fact]
+    public async Task GetPagedProjection_SearchTerm_FiltersTheProjectedColumns()
+    {
+        await SeedProductsAsync(("Red Apple", 1m), ("Green Apple", 2m), ("Banana", 3m));
+
+        var paging = new PagingInfo { CurrentPage = 1, PageSize = 10, SearchTermJson = "{\"title\":\"apple\"}" };
+
+        var page = await Repository.GetPagedProjection(
+            paging,
+            projection: x => new ProductTitle { Title = x.Name, Price = x.Price },
+            defaultSortColumn: "Title");
+
+        Assert.Equal(["Green Apple", "Red Apple"], page.Items.Select(x => x.Title).ToArray());
+    }
+
+    [Theory]
+    [InlineData("is_active")]
+    [InlineData("name")]
+    public async Task GetPagedProjection_SearchTermOnAFieldTheProjectionHides_IsAnUnknownColumn(string column)
+    {
+        // The entity has IsActive and Name; the response does not. Filtering by them let a caller guess
+        // hidden values from result counts.
+        var paging = new PagingInfo { SearchTermJson = $"{{\"{column}\":\"x\"}}" };
+
+        var exception = await Assert.ThrowsAsync<InvalidPagingParameterException>(() => Repository.GetPagedProjection(
+            paging,
+            projection: x => new ProductTitle { Title = x.Name, Price = x.Price },
+            defaultSortColumn: "Title"));
+
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, exception.Reason);
+        Assert.Equal(column, exception.Column);
+    }
 }

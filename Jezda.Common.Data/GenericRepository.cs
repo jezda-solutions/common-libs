@@ -640,9 +640,10 @@ public abstract class GenericRepository<T>(DbContext context) : IGenericReposito
         if (include != null)
             query = include(query);
 
-        query = query.ApplySearchFilters(pagingInfo.SearchTerm);
-
-        var projectedQuery = query.Select(projection);
+        // search_term filters the projection, not the entity: a caller may filter only by the columns
+        // the response returns. Filtering by entity fields the projection hides let a caller guess
+        // their values by comparing result counts.
+        var projectedQuery = query.Select(projection).ApplySearchFilters(pagingInfo.SearchTerm);
 
         return await projectedQuery.ApplyPagingAndFilteringAsync(
             pagingInfo,
