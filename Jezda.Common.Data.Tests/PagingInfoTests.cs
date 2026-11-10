@@ -15,6 +15,8 @@ public class PagingInfoTests
 {
     [Theory]
     [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
     [InlineData("null")]
     [InlineData("{}")]
     public void TryGetSearchTerm_AbsentOrEmpty_ReadsAsEmptyMap(string? json)
@@ -39,7 +41,6 @@ public class PagingInfoTests
 
     [Theory]
     [InlineData("alpha")]
-    [InlineData("")]
     [InlineData("[\"name\"]")]
     [InlineData("{\"name\":1}")]
     [InlineData("{\"name\":")]
@@ -52,6 +53,7 @@ public class PagingInfoTests
 
         var exception = Assert.Throws<InvalidPagingParameterException>(() => paging.SearchTerm);
         Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
+        Assert.Equal(InvalidPagingParameterReason.Unreadable, exception.Reason);
         Assert.Null(exception.Column);
         Assert.IsType<JsonException>(exception.InnerException, exactMatch: false);
     }
@@ -61,7 +63,20 @@ public class PagingInfoTests
     {
         // Consumers that already catch ArgumentException keep working.
         Assert.IsAssignableFrom<ArgumentException>(
-            new InvalidPagingParameterException(PagingParameter.SortColumn, "x", "message"));
+            new InvalidPagingParameterException(PagingParameter.SortColumn, InvalidPagingParameterReason.UnknownColumn, "x"));
+    }
+
+    [Fact]
+    public void InvalidPagingParameterException_KeepsControlCharactersOutOfTheMessage()
+    {
+        // The message is logged; the caller's column must not forge log lines.
+        var exception = new InvalidPagingParameterException(
+            PagingParameter.SortColumn, InvalidPagingParameterReason.UnknownColumn, "x\r\n[ERR] fake" + new string('y', 500));
+
+        Assert.DoesNotContain('\n', exception.Message);
+        Assert.DoesNotContain('\r', exception.Message);
+        Assert.True(exception.Message.Length < 200);
+        Assert.StartsWith("x\r\n", exception.Column);
     }
 
     [Theory]

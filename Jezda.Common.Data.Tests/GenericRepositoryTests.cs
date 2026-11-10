@@ -157,6 +157,7 @@ public class GenericRepositoryTests : SqliteTestBase
             defaultSortColumn: "Name"));
 
         Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, exception.Reason);
         Assert.Equal("nme", exception.Column);
     }
 
@@ -171,6 +172,6 @@ public class GenericRepositoryTests : SqliteTestBase
             defaultSortColumn: "Name"));
 
         Assert.Equal(PagingParameter.SearchTerm, exception.Parameter);
-        Assert.Null(exception.Column);
+        Assert.Equal(InvalidPagingParameterReason.Unreadable, exception.Reason);
     }
 }

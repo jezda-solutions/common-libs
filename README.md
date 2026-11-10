@@ -166,7 +166,9 @@ var pagedProducts = await _repository.GetPagedItemsAsync(
 // A search_term that is not a JSON object of strings, or a search_term/sort_column that names a
 // column the list does not have, throws InvalidPagingParameterException (an ArgumentException).
 // It is the caller's mistake: map that one type to 400. PagingInfo.TryGetSearchTerm checks
-// search_term without throwing. A wrong defaultSortColumn stays a plain ArgumentException.
+// search_term without throwing; a blank value means no filter. Column names match ignoring case and
+// underscores (member_count → MemberCount); a navigation property is not a column. A wrong
+// defaultSortColumn stays a plain ArgumentException.
 
 // Simple pagination (skip/take)
 var products = await _repository.GetPageAsync(

@@ -74,6 +74,7 @@ public class PagedListExtensionsTests : SqliteTestBase
         var exception = Assert.Throws<InvalidPagingParameterException>(() => query.ApplySorting("Nonexistent", false));
 
         Assert.Equal(PagingParameter.SortColumn, exception.Parameter);
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, exception.Reason);
         Assert.Equal("Nonexistent", exception.Column);
     }
 
@@ -129,13 +130,56 @@ public class PagedListExtensionsTests : SqliteTestBase
         Assert.Equal(column, exception.Column);
     }
 
-    [Fact]
-    public void ApplySearchFilters_ColumnNameIgnoresCase()
+
+    private sealed class Owner
     {
-        var query = Context.Products.AsQueryable();
+        public string Name { get; init; } = string.Empty;
+    }
 
-        var filtered = query.ApplySearchFilters(new Dictionary<string, string> { ["nAmE"] = "x" });
+    private sealed class TeamRow
+    {
+        public string Name { get; init; } = string.Empty;
 
-        Assert.NotSame(query, filtered);
+        public int MemberCount { get; init; }
+
+        public Owner Owner { get; init; } = new();
+    }
+
+    private static IQueryable<TeamRow> Teams() => new[]
+    {
+        new TeamRow { Name = "Alpha", MemberCount = 12 },
+        new TeamRow { Name = "Bravo", MemberCount = 3 },
+        new TeamRow { Name = "Charlie", MemberCount = 7 },
+    }.AsQueryable();
+
+    [Theory]
+    [InlineData("member_count")]
+    [InlineData("MEMBERCOUNT")]
+    public void ApplySorting_SnakeCaseOrAnyCase_FindsTheProperty(string column)
+    {
+        // Clients send the snake_case names the API serialises.
+        var sorted = Teams().ApplySorting(column, sortDescending: true);
+
+        Assert.Equal([12, 7, 3], sorted.Select(x => x.MemberCount).ToArray());
+    }
+
+    [Fact]
+    public void ApplySearchFilters_SnakeCaseColumn_Filters()
+    {
+        var filtered = Teams().ApplySearchFilters(new Dictionary<string, string> { ["member_count"] = "7" });
+
+        Assert.Equal(["Charlie"], filtered.Select(x => x.Name).ToArray());
+    }
+
+    [Fact]
+    public void NavigationProperty_IsNotAColumn()
+    {
+        // EF cannot sort or compare a navigation; it used to fail at translation instead.
+        var sort = Assert.Throws<InvalidPagingParameterException>(() => Teams().ApplySorting("owner", false));
+        var search = Assert.Throws<InvalidPagingParameterException>(
+            () => Teams().ApplySearchFilters(new Dictionary<string, string> { ["owner"] = "x" }));
+
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, sort.Reason);
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, search.Reason);
     }
 }
