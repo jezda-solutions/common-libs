@@ -182,4 +182,42 @@ public class PagedListExtensionsTests : SqliteTestBase
         Assert.Equal(InvalidPagingParameterReason.UnknownColumn, sort.Reason);
         Assert.Equal(InvalidPagingParameterReason.UnknownColumn, search.Reason);
     }
+
+    // A response class with a member the projection does not assign, as when it is filled after the query.
+    private sealed class ProductWithLateField
+    {
+        public string Name { get; init; } = string.Empty;
+
+        public decimal Price { get; init; }
+
+        public string? OwnerName { get; set; }
+    }
+
+    private IQueryable<ProductWithLateField> ProjectedWithLateField() =>
+        Context.Products.Select(x => new ProductWithLateField { Name = x.Name, Price = x.Price });
+
+    [Fact]
+    public async Task GlobalSearch_SkipsMembersTheProjectionDoesNotAssign()
+    {
+        // EF cannot translate a filter on OwnerName: it is not in the SELECT. Searching it failed the query.
+        await SeedDefaultAsync();
+
+        var result = await ProjectedWithLateField()
+            .ApplyPagingAndFilteringAsync(new PagingInfo { GlobalSearch = "alp" }, defaultSortColumn: "Name");
+
+        Assert.Equal(["Alpha"], result.Items.Select(x => x.Name).ToArray());
+    }
+
+    [Fact]
+    public void SearchAndSortOnAMemberTheProjectionDoesNotAssign_AreUnknownColumns()
+    {
+        var search = Assert.Throws<InvalidPagingParameterException>(() => ProjectedWithLateField()
+            .ApplySearchFilters(new Dictionary<string, string> { ["owner_name"] = "x" }));
+        var sort = Assert.Throws<InvalidPagingParameterException>(() => ProjectedWithLateField()
+            .Where(x => x.Price > 0)
+            .ApplySorting("owner_name", false));
+
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, search.Reason);
+        Assert.Equal(InvalidPagingParameterReason.UnknownColumn, sort.Reason);
+    }
 }

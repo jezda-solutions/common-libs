@@ -44,8 +44,10 @@ public static class PagedListExtensions
 
         var searchLower = search.ToLower();
         var parameter = Expression.Parameter(typeof(T), "x");
+        var assigned = AssignedMembers(query.Expression);
         var properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && p.GetMethod != null && IsSearchableProperty(p))
+            .Where(p => assigned is null || assigned.Contains(p.Name))
             .ToList();
 
         if (properties.Count == 0)
@@ -176,6 +178,7 @@ public static class PagedListExtensions
             {
                 var properties = key.Split('.'); // Ako je polje u formatu 'Entitet.Child...'
                 var parameter = Expression.Parameter(typeof(T), "x");
+                var assigned = AssignedMembers(query.Expression);
 
                 Expression propertyExpression = parameter;
 
@@ -187,6 +190,9 @@ public static class PagedListExtensions
                     // Trazimo polje na osnovu imena
                     var propertyInfo = FindProperty(propertyExpression.Type, propertyName)
                         ?? throw UnknownColumn(PagingParameter.SearchTerm, key);
+
+                    if (i == 0 && assigned is not null && !assigned.Contains(propertyInfo.Name))
+                        throw UnknownColumn(PagingParameter.SearchTerm, key);
 
                     propertyExpression = Expression.PropertyOrField(propertyExpression, propertyInfo.Name);
 
@@ -308,7 +314,8 @@ public static class PagedListExtensions
         if (string.IsNullOrWhiteSpace(sortColumn)) return query;
 
         var property = FindProperty(typeof(T), sortColumn);
-        if (property is null || !IsScalar(property.PropertyType))
+        var assigned = AssignedMembers(query.Expression);
+        if (property is null || !IsScalar(property.PropertyType) || (assigned is not null && !assigned.Contains(property.Name)))
             throw UnknownColumn(PagingParameter.SortColumn, sortColumn);
 
         return query.OrderByProperty(property, sortDescending);
@@ -350,6 +357,40 @@ public static class PagedListExtensions
 
         return properties.FirstOrDefault(p => string.Equals(p.Name, column, StringComparison.OrdinalIgnoreCase))
             ?? properties.FirstOrDefault(p => string.Equals(p.Name, column.Replace("_", string.Empty), StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The members a member-init projection at the end of <paramref name="expression"/> assigns
+    /// (<c>Select(x => new Dto { A = …, B = … })</c>, possibly followed by Where/OrderBy), or
+    /// <see langword="null"/> when there is no such projection. A member the projection leaves out is
+    /// not a column: it only holds its default, and EF cannot translate a filter or sort on it.
+    /// </summary>
+    private static HashSet<string>? AssignedMembers(Expression expression)
+    {
+        while (expression is MethodCallExpression call && call.Method.DeclaringType == typeof(Queryable))
+        {
+            switch (call.Method.Name)
+            {
+                case nameof(Queryable.Select):
+                    var selector = call.Arguments[1] is UnaryExpression { NodeType: ExpressionType.Quote } quote
+                        ? quote.Operand
+                        : call.Arguments[1];
+                    return selector is LambdaExpression { Body: MemberInitExpression init }
+                        ? init.Bindings.Select(b => b.Member.Name).ToHashSet()
+                        : null;
+                case nameof(Queryable.Where):
+                case nameof(Queryable.OrderBy):
+                case nameof(Queryable.OrderByDescending):
+                case nameof(Queryable.ThenBy):
+                case nameof(Queryable.ThenByDescending):
+                    expression = call.Arguments[0];
+                    break;
+                default:
+                    return null;
+            }
+        }
+
+        return null;
     }
 
     // What a database column can hold: sortable and comparable by EF. Navigations and owned types are not.
