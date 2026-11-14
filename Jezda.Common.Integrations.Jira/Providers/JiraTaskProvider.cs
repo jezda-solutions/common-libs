@@ -90,12 +90,13 @@ public sealed class JiraTaskProvider(
     }
 
     /// <summary>
-    /// Lists a project's issues.
+    /// Lists all of a project's issues, following Jira's page tokens to the last page.
     /// </summary>
     /// <remarks>
     /// Each issue is asked to carry its project, which supplies the durable id whichever of id or key
     /// <paramref name="projectId"/> was. A bare number is the project id in JQL; a key is quoted, and
-    /// cannot be all digits.
+    /// cannot be all digits. If no issue carries the project, a key is resolved to the id with one
+    /// more request, so <see cref="ExternalTaskDto.ProjectId"/> is never a key an admin can change.
     /// </remarks>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
@@ -105,34 +106,93 @@ public sealed class JiraTaskProvider(
 
         using var client = CreateClient(accessToken, baseUrl);
 
-        var projectClause = projectId.All(char.IsAsciiDigit)
+        var isNumericId = projectId.All(char.IsAsciiDigit);
+        var projectClause = isNumericId
             ? projectId
             : $"\"{projectId.Replace("\"", "\\\"")}\"";
 
-        var searchRequest = new JiraSearchRequest
+        var issues = await SearchAllAsync(client, $"project = {projectClause}", cancellationToken);
+        if (issues.Count == 0)
         {
-            Jql = $"project = {projectClause}",
-            StartAt = 0,
-            MaxResults = 50,
-            Fields = ["summary", "status", "project"]
-        };
+            return [];
+        }
 
-        using var response = await client.PostAsJsonAsync("rest/api/3/search", searchRequest, JsonOptions, cancellationToken);
-        JiraHttp.ThrowIfNotApiResponse(response);
-        response.EnsureSuccessStatusCode();
-
-        var searchResponse = await response.Content.ReadFromUtf8JsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);
+        // The query names one project, so every issue belongs to it.
+        var durableProjectId = issues.Select(i => i.Fields?.Project?.Id).FirstOrDefault(id => !string.IsNullOrEmpty(id))
+                               ?? (isNumericId ? projectId : await GetProjectIdAsync(client, projectId, cancellationToken));
         var site = client.BaseAddress!;
 
-        return [.. (searchResponse?.Issues ?? []).Select(i => new ExternalTaskDto
+        return [.. issues.Select(i => new ExternalTaskDto
         {
             Id = i.Key,
             Title = i.Fields?.Summary ?? string.Empty,
             Status = i.Fields?.Status?.Name,
             Url = new Uri(site, $"browse/{i.Key}").AbsoluteUri,
-            ProjectId = i.Fields?.Project?.Id ?? projectId,
+            ProjectId = durableProjectId,
             Provider = ExternalProvider.Jira
         })];
+    }
+
+    /// <summary>
+    /// Pages through <c>POST rest/api/3/search/jql</c>. The offset-based <c>rest/api/3/search</c> is
+    /// gone (410); this one has no offset and no total, only a token for the next page.
+    /// </summary>
+    private static async Task<List<JiraIssue>> SearchAllAsync(HttpClient client, string jql, CancellationToken cancellationToken)
+    {
+        var all = new List<JiraIssue>();
+        var seenTokens = new HashSet<string>(StringComparer.Ordinal);
+        string? nextPageToken = null;
+
+        do
+        {
+            var searchRequest = new JiraSearchRequest
+            {
+                Jql = jql,
+                NextPageToken = nextPageToken,
+                // Jira's cap when issue fields are requested.
+                MaxResults = 100,
+                Fields = ["summary", "status", "project"]
+            };
+
+            using var response = await client.PostAsJsonAsync("rest/api/3/search/jql", searchRequest, JsonOptions, cancellationToken);
+            JiraHttp.ThrowIfNotApiResponse(response);
+            response.EnsureSuccessStatusCode();
+
+            var page = await response.Content.ReadFromUtf8JsonAsync<JiraSearchResponse>(JsonOptions, cancellationToken);
+            all.AddRange(page?.Issues ?? []);
+
+            nextPageToken = page is { IsLast: not true } ? page.NextPageToken : null;
+
+            // A token Jira already gave would page forever.
+            if (nextPageToken is not null && !seenTokens.Add(nextPageToken))
+            {
+                throw new HttpRequestException(
+                    "Jira returned the same page token twice; the issue list would never end.",
+                    null,
+                    response.StatusCode);
+            }
+        }
+        while (!string.IsNullOrEmpty(nextPageToken));
+
+        return all;
+    }
+
+    private static async Task<string> GetProjectIdAsync(HttpClient client, string projectKey, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync($"rest/api/3/project/{Uri.EscapeDataString(projectKey)}", cancellationToken);
+        JiraHttp.ThrowIfNotApiResponse(response);
+        response.EnsureSuccessStatusCode();
+
+        var project = await response.Content.ReadFromUtf8JsonAsync<JiraProject>(JsonOptions, cancellationToken);
+        if (string.IsNullOrEmpty(project?.Id))
+        {
+            throw new HttpRequestException(
+                $"Jira returned project '{projectKey}' without an id.",
+                null,
+                response.StatusCode);
+        }
+
+        return project.Id;
     }
 
     private HttpClient CreateClient(string accessToken, string baseUrl)

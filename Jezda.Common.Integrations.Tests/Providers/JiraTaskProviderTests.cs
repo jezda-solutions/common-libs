@@ -360,7 +360,7 @@ public class JiraTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, new
         {
-            issues = new[] { new { id = "10001", key = "PROJ-1", fields = new { summary = "Fix bug" } } }
+            issues = new[] { new { id = "10001", key = "PROJ-1", fields = new { summary = "Fix bug", project = new { id = "10001" } } } }
         });
 
         var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://admin:base-secret@test.atlassian.net/");
@@ -374,9 +374,7 @@ public class JiraTaskProviderTests
     {
         var searchResponse = new
         {
-            startAt = 0,
-            maxResults = 50,
-            total = 2,
+            isLast = true,
             issues = new[]
             {
                 new { id = "10001", key = "PROJ-1", fields = new { summary = "Fix bug", status = new { name = "In Progress" } } },
@@ -384,6 +382,8 @@ public class JiraTaskProviderTests
             }
         };
         _handler.EnqueueResponse(HttpStatusCode.OK, searchResponse);
+        // No issue carried its project, so the key is resolved to the durable id.
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { id = "10001", key = "PROJ", name = "Project One" });
 
         var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/");
 
@@ -392,9 +392,131 @@ public class JiraTaskProviderTests
         Assert.Equal("Fix bug", result[0].Title);
         Assert.Equal("In Progress", result[0].Status);
         Assert.Equal("https://test.atlassian.net/browse/PROJ-1", result[0].Url);
-        Assert.Equal("PROJ", result[0].ProjectId);
+        Assert.Equal("10001", result[0].ProjectId);
+        Assert.Equal("10001", result[1].ProjectId);
         Assert.Equal(ExternalProvider.Jira, result[0].Provider);
+
+        Assert.Equal(2, _handler.SentRequests.Count);
+        Assert.Equal(HttpMethod.Post, _handler.SentRequests[0].Method);
+        Assert.Equal("/rest/api/3/search/jql", _handler.SentRequests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/rest/api/3/project/PROJ", _handler.SentRequests[1].RequestUri!.AbsolutePath);
     }
+
+    [Fact]
+    public async Task GetTasksAsync_NumericIdWithoutProjectOnIssues_KeepsTheIdWithoutALookup()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { new { id = "1", key = "PROJ-1", fields = new { summary = "Fix bug" } } }
+        });
+
+        var result = await _provider.GetTasksAsync("user@test.com:token", "10001", "https://test.atlassian.net/");
+
+        Assert.Equal("10001", Assert.Single(result).ProjectId);
+        Assert.Single(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_NoIssues_ReturnsEmptyWithoutALookup()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { issues = Array.Empty<object>(), isLast = true });
+
+        var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/");
+
+        Assert.Empty(result);
+        Assert.Single(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_FollowsPageTokensToTheLastPage()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { Issue("PROJ-1"), Issue("PROJ-2") },
+            nextPageToken = "page-2",
+            isLast = false
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { Issue("PROJ-3") },
+            nextPageToken = "page-3",
+            isLast = false
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { Issue("PROJ-4") },
+            isLast = true
+        });
+
+        var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/");
+
+        Assert.Equal(["PROJ-1", "PROJ-2", "PROJ-3", "PROJ-4"], result.Select(t => t.Id));
+        Assert.Equal(3, _handler.SentRequests.Count);
+
+        var bodies = new List<System.Text.Json.JsonElement>();
+        foreach (var request in _handler.SentRequests)
+        {
+            bodies.Add(System.Text.Json.JsonDocument.Parse(await request.Content!.ReadAsStringAsync()).RootElement);
+        }
+
+        // The first page sends no token at all; null would be a malformed token.
+        Assert.False(bodies[0].TryGetProperty("nextPageToken", out _));
+        Assert.Equal("page-2", bodies[1].GetProperty("nextPageToken").GetString());
+        Assert.Equal("page-3", bodies[2].GetProperty("nextPageToken").GetString());
+        Assert.All(bodies, b => Assert.Equal("project = \"PROJ\"", b.GetProperty("jql").GetString()));
+        Assert.All(bodies, b => Assert.False(b.TryGetProperty("startAt", out _)));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_IsLastWithAToken_Stops()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { Issue("PROJ-1") },
+            nextPageToken = "ignored",
+            isLast = true
+        });
+
+        var result = await _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/");
+
+        Assert.Single(result);
+        Assert.Single(_handler.SentRequests);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_SameTokenTwice_ThrowsInsteadOfLooping()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { issues = new[] { Issue("PROJ-1") }, nextPageToken = "same" });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { issues = new[] { Issue("PROJ-2") }, nextPageToken = "same" });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/"));
+
+        Assert.Contains("same page token", ex.Message);
+        Assert.Equal(2, _handler.SentRequests.Count);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_KeyLookupWithoutId_Throws()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, new
+        {
+            issues = new[] { new { id = "1", key = "PROJ-1", fields = new { summary = "Fix bug" } } }
+        });
+        _handler.EnqueueResponse(HttpStatusCode.OK, new { key = "PROJ" });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.GetTasksAsync("user@test.com:token", "PROJ", "https://test.atlassian.net/"));
+
+        Assert.Contains("without an id", ex.Message);
+    }
+
+    private static object Issue(string key) => new
+    {
+        id = key,
+        key,
+        fields = new { summary = key, project = new { id = "10001", key = "PROJ" } }
+    };
 
     [Fact]
     public async Task GetProjectsAsync_MapsWhatTheListReports()
