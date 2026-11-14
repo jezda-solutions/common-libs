@@ -57,7 +57,9 @@ public static class HttpResilienceDefaults
     /// <remarks>
     /// For a provider whose callers do not all fail together: every organisation on one host, or
     /// every token on one address (<see cref="IntegrationPipelineKeys.AddressAndAuthorization"/>).
-    /// The number of pipelines is bounded as for the default key.
+    /// The number of pipelines is bounded as for the default key. This overload treats the key as
+    /// <see cref="PipelineKeyScope.SharedByTokens"/>; a key that holds the token goes through the overload
+    /// that takes a <see cref="PipelineKeyScope"/>.
     /// </remarks>
     public static IHttpClientBuilder AddIntegrationResilience(
         this IHttpClientBuilder builder,
