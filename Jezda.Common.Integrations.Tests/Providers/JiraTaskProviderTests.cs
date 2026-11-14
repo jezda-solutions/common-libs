@@ -217,9 +217,29 @@ public class JiraTaskProviderTests
     [InlineData("application/vnd.api+json")]
     public async Task ValidateConnectionAsync_AnyJsonType_ReturnsTrue(string mediaType)
     {
-        _handler.EnqueueResponse(() => Page(mediaType));
+        _handler.EnqueueResponse(() => Page(mediaType, """{"accountId":"5b10a2844c20165700ede21g"}"""));
 
         Assert.True((await _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/")).IsValid);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"error":"login required"}""")]
+    [InlineData("""{"accountId":""}""")]
+    [InlineData("""{"accountId":123}""")]
+    [InlineData("""[{"accountId":"abc"}]""")]
+    [InlineData("null")]
+    [InlineData("not json")]
+    public async Task ValidateConnectionAsync_JsonWithoutAccountId_ThrowsBecauseTheTokenWasNotChecked(string body)
+    {
+        // Another JSON API, or a gateway answering 200, says nothing about the token.
+        _handler.EnqueueResponse(() => Page("application/json", body));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            _provider.ValidateConnectionAsync("user:token", "https://test.atlassian.net/"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("without an accountId", ex.Message);
     }
 
     [Fact]
@@ -298,9 +318,9 @@ public class JiraTaskProviderTests
         return response;
     }
 
-    private static HttpResponseMessage Page(string? mediaType)
+    private static HttpResponseMessage Page(string? mediaType, string body = "{}")
     {
-        var content = new ByteArrayContent("{}"u8.ToArray());
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(body));
 
         if (mediaType is not null)
         {

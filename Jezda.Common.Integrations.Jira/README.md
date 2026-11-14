@@ -84,6 +84,11 @@ token was not checked; the user has to sign in through the Jira website. Every o
 including a 403, which can come from an IP allow list or a gateway, so an outage is not shown to the user as
 a bad token.
 
+A 200 counts as an accepted token only when the body is a JSON object with a non-empty `accountId`, which Jira
+Cloud's `myself` always returns. Any other 200, such as another JSON API or a gateway answering
+`{"error":"login required"}`, throws `HttpRequestException` with that status, because the token was not
+checked.
+
 The email and API token are sent as UTF-8, so an email with a character outside ASCII reaches Jira intact.
 
 Two answers say nothing about the token, so every call on `IJiraClient` and the `IExternalTaskProvider` for Jira
