@@ -36,3 +36,5 @@ the `Authorization` header, never the key or token.
 A key or token with a character that cannot go in the header (outside printable ASCII, a quote mark or a
 backslash) returns `NotSendable` from `ValidateConnectionAsync` and throws `ArgumentException` from the other
 calls, without a request.
+
+`GetTasksAsync` also throws `ArgumentException` for a null or blank `projectId`, without a request.
