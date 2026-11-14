@@ -25,10 +25,30 @@ public class HttpResponseDataExtensionTests
         Assert.Equal(new Item(1, "Šećer"), item);
     }
 
-    [Fact]
-    public async Task ReadApiResponseDataAsync_FailedResponse_ReturnsDefault()
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task ReadApiResponseDataAsync_FailedResponse_ThrowsWithTheStatus(HttpStatusCode status)
     {
-        using var response = new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{}") };
+        using var response = new HttpResponseMessage(status) { Content = new StringContent("{}") };
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<Item>());
+
+        Assert.Equal(status, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponseForAValueType_ThrowsInsteadOfReturningZero()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("0") };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<int>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_JsonNull_ReturnsNull()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("null") };
 
         Assert.Null(await response.ReadApiResponseDataAsync<Item>());
     }
