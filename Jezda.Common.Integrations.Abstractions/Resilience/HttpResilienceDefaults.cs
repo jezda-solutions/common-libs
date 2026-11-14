@@ -98,7 +98,7 @@ public static class HttpResilienceDefaults
             // the open breaker and hand the caller BrokenCircuitException instead of the 429.
             options.Retry.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests } response
-                    ? !(shared && IsProbe(args.Context)) && AsksForAShortPause(response)
+                    ? !(IsShared(shared, response) && IsProbe(args.Context)) && AsksForAShortPause(response)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
 
@@ -125,7 +125,7 @@ public static class HttpResilienceDefaults
             // is up and may close it; the caller then gets the 429 with its retry time.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden }
-                    ? shared && IsProbe(args.Context)
+                    ? IsShared(shared, args.Outcome.Result) && IsProbe(args.Context)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
             options.CircuitBreaker.OnHalfOpened = args =>
@@ -153,6 +153,10 @@ public static class HttpResilienceDefaults
 
     /// <summary>Set on the execution that carries a half-open breaker's probe.</summary>
     private static readonly ResiliencePropertyKey<bool> HalfOpenProbe = new("Jezda.Integrations.HalfOpenProbe");
+
+    // The overflow pipeline is shared by tokens even under a per-token registration.
+    private static bool IsShared(bool shared, HttpResponseMessage response) =>
+        shared || response.RequestMessage?.Options.TryGetValue(PipelineKeyBudget.OverflowRequest, out var overflow) == true && overflow;
 
     private static bool IsProbe(ResilienceContext context) =>
         context.Properties.TryGetValue(HalfOpenProbe, out var probe) && probe;

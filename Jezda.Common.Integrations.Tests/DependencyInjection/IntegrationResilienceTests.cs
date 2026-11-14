@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using Jezda.Common.Integrations.Abstractions.Resilience;
 using Jezda.Common.Integrations.AzureDevOps.Extensions;
 using Jezda.Common.Integrations.AzureDevOps.Providers;
@@ -279,6 +280,40 @@ public class IntegrationResilienceTests
 
         using var limited = await client.GetAsync("items");
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_OnTheOverflowPipeline_OfAPerTokenKey_AnsweredTooManyRequests_KeepsTheBreakerOpen()
+    {
+        // Past the budget, tokens share the overflow pipeline: its probe speaks for one token only.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time, PipelineKeyScope.PerToken);
+
+        _handler.RespondTo("/items", HttpStatusCode.Unauthorized);
+        for (var i = 0; i < PipelineKeyBudget.MaxUnprovenKeys; i++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "items");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"token-{i}");
+            using var refused = await client.SendAsync(request);
+        }
+
+        // No Authorization header is a new key, so it lands on the overflow pipeline, whose breaker
+        // already counted some of the refusals above and so opens a little sooner.
+        _handler.RespondTo("/items", ServiceUnavailable);
+        await Assert.ThrowsAsync<BrokenCircuitException>(async () =>
+        {
+            for (var i = 0; i < 100; i++)
+            {
+                using var failed = await client.GetAsync("items");
+            }
+        });
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: null));
+        using var probe = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.TooManyRequests, probe.StatusCode);
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
     }
 
     [Fact]

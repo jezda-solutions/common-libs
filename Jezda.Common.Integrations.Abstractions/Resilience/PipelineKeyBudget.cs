@@ -35,6 +35,13 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     public const string OverflowKey = "overflow";
 
     /// <summary>
+    /// Set on a request that <see cref="Select"/> sent to <see cref="OverflowKey"/>. The pipeline there is
+    /// shared by tokens whatever the registration's scope says, so its breaker reads answers as it does
+    /// for a shared key.
+    /// </summary>
+    public static readonly HttpRequestOptionsKey<bool> OverflowRequest = new("Jezda.Integrations.PipelineOverflow");
+
+    /// <summary>
     /// The key <see cref="Select"/> computed, carried on the request to <see cref="RecordSuccess"/>:
     /// a redirect rewrites the URI and drops the <c>Authorization</c> header, so computing it again
     /// there would prove the wrong key. Per instance, so a second budget on the same request cannot
@@ -64,6 +71,18 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     /// takes one unproven place, never more.
     /// </remarks>
     public string Select(HttpRequestMessage request)
+    {
+        var key = SelectKey(request);
+
+        if (key == OverflowKey)
+        {
+            request.Options.Set(OverflowRequest, true);
+        }
+
+        return key;
+    }
+
+    private string SelectKey(HttpRequestMessage request)
     {
         var key = pipelineKey(request);
         request.Options.Set(_requestKey, key);
