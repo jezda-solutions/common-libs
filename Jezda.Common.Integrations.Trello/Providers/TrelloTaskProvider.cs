@@ -5,6 +5,7 @@ using Jezda.Common.Integrations.Http;
 using Jezda.Common.Integrations.Trello.Models;
 using Microsoft.Extensions.Logging;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace Jezda.Common.Integrations.Trello.Providers;
@@ -31,10 +32,16 @@ public sealed class TrelloTaskProvider(
 
     public async Task<ConnectionValidationResult> ValidateConnectionAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
         var (key, token) = ParseAccessToken(accessToken);
 
-        using var response = await client.GetAsync($"members/me?key={key}&token={token}", cancellationToken);
+        if (!CanGoInHeader(key, token))
+        {
+            logger.LogWarning("Trello key or token has characters that cannot go in a header, so it was not sent");
+            return ConnectionValidationResult.Rejected(TokenRejectionReason.NotSendable);
+        }
+
+        using var client = CreateClient(accessToken);
+        using var response = await client.GetAsync("members/me", cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
@@ -49,11 +56,10 @@ public sealed class TrelloTaskProvider(
 
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
-        var (key, token) = ParseAccessToken(accessToken);
+        using var client = CreateClient(accessToken);
 
         var boards = await client.GetFromUtf8JsonAsync<List<TrelloBoard>>(
-            $"members/me/boards?key={key}&token={token}", JsonOptions, cancellationToken)
+            "members/me/boards", JsonOptions, cancellationToken)
             ?? [];
 
         return [.. boards.Select(b => new ExternalProjectDto
@@ -74,11 +80,12 @@ public sealed class TrelloTaskProvider(
 
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
-        var (key, token) = ParseAccessToken(accessToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
+
+        using var client = CreateClient(accessToken);
 
         var cards = await client.GetFromUtf8JsonAsync<List<TrelloCard>>(
-            $"boards/{projectId}/cards?key={key}&token={token}", JsonOptions, cancellationToken)
+            $"boards/{Uri.EscapeDataString(projectId)}/cards", JsonOptions, cancellationToken)
             ?? [];
 
         return [.. cards.Select(c => new ExternalTaskDto
@@ -92,10 +99,36 @@ public sealed class TrelloTaskProvider(
         })];
     }
 
-    private HttpClient CreateClient()
+    /// <summary>
+    /// A client that sends the key and token in Trello's OAuth header form, never in the URL, where
+    /// proxy and request logs would keep them.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// The key or token is malformed or has a character that cannot go in the header. Thrown before
+    /// any request, so it is neither retried nor counted by the circuit breaker.
+    /// </exception>
+    private HttpClient CreateClient(string accessToken)
     {
-        return httpClientFactory.CreateClient(HttpClientName);
+        var (key, token) = ParseAccessToken(accessToken);
+
+        if (!CanGoInHeader(key, token))
+        {
+            throw new ArgumentException(
+                "The Trello key or token has characters that cannot go in a request header, such as a pasted smart quote, quote mark or line break.",
+                nameof(accessToken));
+        }
+
+        var client = httpClientFactory.CreateClient(HttpClientName);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "OAuth", $"oauth_consumer_key=\"{key}\", oauth_token=\"{token}\"");
+
+        return client;
     }
+
+    // A quote mark or backslash would end or escape the quoted header value.
+    private static bool CanGoInHeader(string key, string token) =>
+        AccessTokenRules.CanGoInHeader(key) && AccessTokenRules.CanGoInHeader(token)
+        && key.IndexOfAny(['"', '\\']) < 0 && token.IndexOfAny(['"', '\\']) < 0;
 
     private static (string Key, string Token) ParseAccessToken(string accessToken)
     {
