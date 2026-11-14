@@ -8,7 +8,6 @@ using Jezda.Common.Integrations.GitHub.Extensions;
 using Jezda.Common.Integrations.GitHub.Providers;
 using Jezda.Common.Integrations.Monday.Extensions;
 using Jezda.Common.Integrations.Monday.Providers;
-using Jezda.Common.Integrations.Trello;
 using Jezda.Common.Integrations.Trello.Extensions;
 using Jezda.Common.Integrations.Trello.Providers;
 using Jezda.Common.Integrations.Tests.Helpers;
@@ -28,7 +27,7 @@ public class IntegrationResilienceTests
 
     private readonly MockHttpMessageHandler _handler = new();
 
-    private HttpClient CreateClient(TimeProvider? time = null)
+    private HttpClient CreateClient(TimeProvider? time = null, PipelineKeyScope? scope = null)
     {
         var services = new ServiceCollection();
         if (time is not null)
@@ -36,9 +35,17 @@ public class IntegrationResilienceTests
             services.AddSingleton(time);
         }
 
-        services.AddHttpClient(ClientName, c => c.BaseAddress = new Uri("https://api.example.test/"))
-            .ConfigurePrimaryHttpMessageHandler(() => _handler)
-            .AddIntegrationResilience();
+        var builder = services.AddHttpClient(ClientName, c => c.BaseAddress = new Uri("https://api.example.test/"))
+            .ConfigurePrimaryHttpMessageHandler(() => _handler);
+
+        if (scope is { } keyScope)
+        {
+            builder.AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization, keyScope);
+        }
+        else
+        {
+            builder.AddIntegrationResilience();
+        }
 
         return services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>().CreateClient(ClientName);
     }
@@ -223,6 +230,118 @@ public class IntegrationResilienceTests
         Assert.Equal(HttpStatusCode.OK, after.StatusCode);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task HalfOpenProbe_OnASharedKey_AnsweredWithATokenRefusal_KeepsTheBreakerOpen(HttpStatusCode refusal)
+    {
+        // The probe may carry a revoked or under-scoped token; other tokens may still get 5xx.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", refusal);
+        using var probe = await client.GetAsync("items");
+        Assert.Equal(refusal, probe.StatusCode);
+
+        _handler.RespondTo("/items", HttpStatusCode.OK);
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("items"));
+    }
+
+    [Fact]
+    public async Task TokenRefusals_OutsideTheProbe_DoNotOpenTheSharedBreaker()
+    {
+        var client = CreateClient();
+        _handler.RespondTo("/items", HttpStatusCode.Unauthorized);
+
+        for (var i = 0; i < 120; i++)
+        {
+            using var refused = await client.GetAsync("items");
+            Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_OnAPerTokenKey_AnsweredTooManyRequests_ClosesTheBreaker()
+    {
+        // The probe carries the key's own token: a 429 shows the provider is up, and the caller should
+        // get the rate limit with its retry time, not BrokenCircuitException until the window ends.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time, PipelineKeyScope.PerToken);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: null));
+        using var probe = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.TooManyRequests, probe.StatusCode);
+
+        using var limited = await client.GetAsync("items");
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_OnAPerTokenKey_AnsweredTooManyRequestsWithShortRetryAfter_IsRetried()
+    {
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time, PipelineKeyScope.PerToken);
+        await OpenOnServerErrorsAsync(client);
+
+        time.Shift = BreakDurationPassed;
+        var calls = 0;
+        _handler.RespondTo("/items", () => Interlocked.Increment(ref calls) == 1
+            ? TooManyRequests(retryAfterSeconds: 1)
+            : new HttpResponseMessage(HttpStatusCode.OK));
+
+        using var response = await client.GetAsync("items");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task HalfOpenProbeMark_IsClearedBeforeTheNextAttempt()
+    {
+        // A: the probe gets 503 and reopens the breaker, then waits its Retry-After. Meanwhile B's probe
+        // closes the breaker. A's next attempt gets a 429 with a short Retry-After: no longer a probe,
+        // it must be retried like any other, not handed to the caller.
+        var time = new ShiftedTimeProvider();
+        var client = CreateClient(time);
+        await OpenOnServerErrorsAsync(client);
+
+        var probeAnswered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        _handler.RespondTo("/items", () =>
+        {
+            switch (Interlocked.Increment(ref calls))
+            {
+                case 1:
+                    var unavailable = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                    unavailable.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+                    probeAnswered.SetResult();
+                    return unavailable;
+                case 3:
+                    return TooManyRequests(retryAfterSeconds: 1);
+                default:
+                    return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+        });
+
+        time.Shift = BreakDurationPassed;
+        var a = client.GetAsync("items");
+        await probeAnswered.Task;
+
+        time.Shift = BreakDurationPassed * 2;
+        using (var b = await client.GetAsync("items"))
+        {
+            Assert.Equal(HttpStatusCode.OK, b.StatusCode);
+        }
+
+        using var aResponse = await a;
+        Assert.Equal(HttpStatusCode.OK, aResponse.StatusCode);
+        Assert.Equal(4, calls);
+    }
+
     /// <summary>Past the breaker's default break duration of 5 s.</summary>
     private static readonly TimeSpan BreakDurationPassed = TimeSpan.FromSeconds(6);
 
@@ -289,6 +408,7 @@ public class IntegrationResilienceTests
     // One fixed host for every customer, the token in the Authorization header.
     [InlineData(MondayTaskProvider.HttpClientName, "https://api.monday.com/v2")]
     [InlineData(ClickUpTaskProvider.HttpClientName, "https://api.clickup.com/api/v2/team")]
+    [InlineData(TrelloTaskProvider.HttpClientName, "https://api.trello.com/1/members/me/boards")]
     public async Task OneFailingToken_DoesNotOpenTheBreakerForAnotherToken(string clientName, string url)
     {
         var client = CreateProviderClient(clientName);
@@ -299,22 +419,6 @@ public class IntegrationResilienceTests
         using var other = Request(url, token: "token-b");
         using var response = await client.SendAsync(other);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task OneFailingTrelloToken_DoesNotOpenTheBreakerForAnotherToken()
-    {
-        // Trello takes the token in the query string, not a header.
-        var client = CreateProviderClient(TrelloTaskProvider.HttpClientName);
-        _handler.RespondTo("/1/members/me/boards", ServiceUnavailable);
-
-        await OpenBreakerAsync(client, "https://api.trello.com/1/members/me/boards?key=k&token=token-a");
-
-        using var response = await client.GetAsync("https://api.trello.com/1/members/me/boards?key=k&token=token-b");
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-
-        await Assert.ThrowsAsync<BrokenCircuitException>(
-            () => client.GetAsync("https://api.trello.com/1/members/me/boards?key=k&token=token-a"));
     }
 
     [Fact]
@@ -387,27 +491,6 @@ public class IntegrationResilienceTests
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/search/issues");
 
         Assert.Equal("https://api.github.com", IntegrationPipelineKeys.AddressAndAuthorization(request));
-    }
-
-    [Fact]
-    public void TrelloPipelineKey_HoldsAHashOfTheToken_NeverTheToken()
-    {
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get, "https://api.trello.com/1/members/me?key=api-key&token=trello-secret-token");
-
-        var key = TrelloHttp.PipelineKey(request);
-
-        Assert.StartsWith("https://api.trello.com#", key);
-        Assert.Equal("https://api.trello.com#".Length + 16, key.Length);
-        Assert.DoesNotContain("secret", key);
-    }
-
-    [Fact]
-    public void TrelloPipelineKey_WithoutToken_IsTheAddress()
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.trello.com/1/members/me");
-
-        Assert.Equal("https://api.trello.com", TrelloHttp.PipelineKey(request));
     }
 
     [Fact]

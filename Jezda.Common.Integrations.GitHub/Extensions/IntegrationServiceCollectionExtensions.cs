@@ -42,7 +42,7 @@ public static class IntegrationServiceCollectionExtensions
             client.BaseAddress = new Uri("https://api.github.com/");
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Jezda-Common-Integration-Client");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
-        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization);
+        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization, PipelineKeyScope.PerToken);
 
         services.AddSingleton<IExternalTaskProvider, GitHubTaskProvider>();
 

@@ -15,7 +15,8 @@ public static class IntegrationServiceCollectionExtensions
         {
             client.BaseAddress = new Uri("https://api.trello.com/1/");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddIntegrationResilience(TrelloHttp.PipelineKey);
+            // One circuit breaker per key and token: every caller is on api.trello.com.
+        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization, PipelineKeyScope.PerToken);
 
         services.AddSingleton<IExternalTaskProvider, TrelloTaskProvider>();
 

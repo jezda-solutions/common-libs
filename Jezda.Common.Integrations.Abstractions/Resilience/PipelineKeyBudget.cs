@@ -16,7 +16,9 @@ namespace Jezda.Common.Integrations.Abstractions.Resilience;
 /// request shares <see cref="OverflowKey"/>, a name reserved for that. A key whose request succeeds
 /// through the shared pipeline is proven and gets its own on its next request, so a working site
 /// keeps its own breaker even after mistyped or probed addresses have used up the unproven part.
-/// Admitted keys are never dropped, because the registry cannot drop their pipelines.
+/// Admitted keys are never dropped, because the registry cannot drop their pipelines. With
+/// per-token keys every distinct token takes a place until the process restarts, which is fine for
+/// long-lived tokens; rotating ones would need idle keys evicted (issue #230).
 /// <para />
 /// Each limit logs one warning per client the first time it sends a request to the shared pipeline,
 /// so a filled budget can be told apart from an ordinary outage.
