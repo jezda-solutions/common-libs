@@ -298,7 +298,7 @@ public class MondayTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, body);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+        var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
 
         Assert.Contains(reason, ex.Message);
     }
@@ -311,7 +311,7 @@ public class MondayTaskProviderTests
     {
         _handler.EnqueueResponse(HttpStatusCode.OK, body);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+        var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
 
         Assert.Contains(reason, ex.Message);
     }
@@ -368,5 +368,246 @@ public class MondayTaskProviderTests
         var result = await _provider.GetTasksAsync("token", "123");
 
         Assert.Empty(result);
+    }
+    private async Task<System.Text.Json.JsonElement> SentBody(int index)
+    {
+        var json = await _handler.SentRequests[index].Content!.ReadAsStringAsync();
+        return System.Text.Json.JsonDocument.Parse(json).RootElement;
+    }
+
+    private static string BoardsPage(int from, int count) =>
+        "{\"data\":{\"boards\":[" + string.Join(",", Enumerable.Range(from, count).Select(i => $"{{\"id\":\"{i}\",\"name\":\"B{i}\"}}")) + "]}}";
+
+    [Fact]
+    public async Task GetProjectsAsync_FullPage_ReadsTheNextOne()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, BoardsPage(1, 100));
+        _handler.EnqueueResponse(HttpStatusCode.OK, BoardsPage(101, 3));
+
+        var result = await _provider.GetProjectsAsync("token");
+
+        Assert.Equal(103, result.Count);
+        Assert.Equal(2, _handler.SentRequests.Count);
+        Assert.Equal(1, (await SentBody(0)).GetProperty("variables").GetProperty("page").GetInt32());
+        Assert.Equal(2, (await SentBody(1)).GetProperty("variables").GetProperty("page").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_PageRepeatsBoards_ThrowsInsteadOfLooping()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, BoardsPage(1, 100));
+        _handler.EnqueueResponse(HttpStatusCode.OK, BoardsPage(1, 100));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Contains("again", ex.Message);
+        Assert.Equal(2, _handler.SentRequests.Count);
+    }
+
+    [Theory]
+    [InlineData("""{"data":{}}""")]
+    [InlineData("""{"data":{"boards":null}}""")]
+    public async Task GetProjectsAsync_NoBoardList_ThrowsInsteadOfReturningEmpty(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_FollowsTheCursorToTheLastPage()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK,
+            """{"data":{"boards":[{"items_page":{"cursor":"c1","items":[{"id":"1","name":"One","state":"active"}]}}]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK,
+            """{"data":{"next_items_page":{"cursor":"c2","items":[{"id":"2","name":"Two","state":"active"}]}}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK,
+            """{"data":{"next_items_page":{"cursor":null,"items":[{"id":"3","name":"Three","state":"active"}]}}}""");
+
+        var result = await _provider.GetTasksAsync("token", "123");
+
+        Assert.Equal(["1", "2", "3"], result.Select(t => t.Id));
+        Assert.All(result, t => Assert.Equal("123", t.ProjectId));
+
+        var first = await SentBody(0);
+        Assert.Equal("123", first.GetProperty("variables").GetProperty("board")[0].GetString());
+        Assert.DoesNotContain("123", first.GetProperty("query").GetString());
+
+        var second = await SentBody(1);
+        Assert.Contains("next_items_page", second.GetProperty("query").GetString());
+        Assert.Equal("c1", second.GetProperty("variables").GetProperty("cursor").GetString());
+        Assert.Equal("c2", (await SentBody(2)).GetProperty("variables").GetProperty("cursor").GetString());
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_SameCursorTwice_ThrowsInsteadOfLooping()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK,
+            """{"data":{"boards":[{"items_page":{"cursor":"same","items":[]}}]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK,
+            """{"data":{"next_items_page":{"cursor":"same","items":[]}}}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+
+        Assert.Contains("same cursor", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("""{"data":{"boards":[]}}""")]
+    [InlineData("""{"data":{"boards":null}}""")]
+    [InlineData("""{"data":{}}""")]
+    public async Task GetTasksAsync_BoardNotReturned_ThrowsNotFoundInsteadOfReturningEmpty(string body)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("123) { id } me(")]
+    [InlineData("12 3")]
+    public async Task GetTasksAsync_NotABoardId_ThrowsWithoutSending(string projectId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _provider.GetTasksAsync("token", projectId));
+
+        Assert.Empty(_handler.SentRequests);
+    }
+
+    [Theory]
+    [InlineData("COMPLEXITY_BUDGET_EXHAUSTED")]
+    [InlineData("maxConcurrencyExceeded")]
+    [InlineData("API_TEMPORARILY_BLOCKED")]
+    [InlineData("DAILY_LIMIT_EXCEEDED")]
+    public async Task GetTasksAsync_RateLimitCode_ThrowsRateLimitWithRetryAt(string code)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK,
+            $$$"""{"errors":[{"message":"Limit","extensions":{"code":"{{{code}}}","retry_in_seconds":30}}]}""");
+
+        var before = DateTimeOffset.UtcNow;
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetTasksAsync("token", "123"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+        Assert.Contains(code, ex.Message);
+        Assert.InRange(ex.RetryAt!.Value, before.AddSeconds(29), DateTimeOffset.UtcNow.AddSeconds(31));
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_Status429WithRetryAfter_ThrowsRateLimitWithThatDelay()
+    {
+        _handler.EnqueueResponse(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"errors":[{"message":"Rate Limit Exceeded"}]}""", System.Text.Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(20));
+            return response;
+        });
+
+        var before = DateTimeOffset.UtcNow;
+        var ex = await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Contains("Rate Limit Exceeded", ex.Message);
+        Assert.InRange(ex.RetryAt!.Value, before.AddSeconds(19), DateTimeOffset.UtcNow.AddSeconds(21));
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_Status429WithoutBody_ThrowsRateLimit()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.TooManyRequests, "not json");
+
+        await Assert.ThrowsAsync<IntegrationRateLimitException>(() => _provider.GetProjectsAsync("token"));
+    }
+
+    [Theory]
+    [InlineData("""{"errors":[{"message":"No","extensions":{"code":"UserUnauthorizedException","status_code":403}}]}""", HttpStatusCode.Forbidden)]
+    [InlineData("""{"errors":[{"message":"No","extensions":{"code":"USER_ACCESS_DENIED"}}]}""", HttpStatusCode.Forbidden)]
+    [InlineData("""{"errors":[{"message":"Unauthorized","extensions":{"code":"Unauthorized"}}]}""", HttpStatusCode.Unauthorized)]
+    [InlineData("""{"errors":[{"message":"No","extensions":{"code":"InvalidBoardIdException"}}]}""", HttpStatusCode.NotFound)]
+    [InlineData("""{"errors":[{"message":"No","extensions":{"code":"ResourceNotFoundException"}}]}""", HttpStatusCode.NotFound)]
+    [InlineData("""{"errors":[{"message":"No","extensions":{"code":"RecordInvalidException","status_code":422}}]}""", HttpStatusCode.UnprocessableEntity)]
+    [InlineData("""{"errors":[{"message":"Parse error on x"}]}""", HttpStatusCode.OK)]
+    public async Task GetTasksAsync_GraphQlError_CarriesAStatusTheCallerCanActOn(string body, HttpStatusCode expected)
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, body);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+
+        Assert.Equal(expected, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ErrorOnUnauthorizedStatus_KeepsTheCode()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.Unauthorized,
+            """{"errors":[{"message":"Unauthorized","extensions":{"code":"Unauthorized"}}]}""");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetTasksAsync("token", "123"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+        Assert.Contains("Unauthorized", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_HtmlOnSuccess_ThrowsHttpRequestException()
+    {
+        _handler.EnqueueResponse(() => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<html>login</html>", System.Text.Encoding.UTF8, "text/html")
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(HttpStatusCode.OK, ex.StatusCode);
+        Assert.Contains("not a GraphQL answer", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_ServerErrorWithoutJson_ThrowsWithThatStatus()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.BadGateway, "<html>bad gateway</html>");
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _provider.GetProjectsAsync("token"));
+
+        Assert.Equal(HttpStatusCode.BadGateway, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_SkipsABoardOutOfReachAndKeepsTheOthers()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[{"id":"1","name":"A"},{"id":"2","name":"B"},{"id":"3","name":"C"}]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[{"items_page":{"items":[{"id":"11","name":"fix login","state":"active"}]}}]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"errors":[{"message":"No","extensions":{"code":"UserUnauthorizedException","status_code":403}}]}""");
+
+        var result = await ((IExternalTaskProvider)_provider).SearchTasksAsync("token", "login");
+
+        Assert.Equal("11", Assert.Single(result).Id);
+        Assert.Equal(4, _handler.SentRequests.Count);
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_RateLimitOnABoard_FailsTheSearch()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[{"id":"1","name":"A"},{"id":"2","name":"B"}]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"errors":[{"message":"Limit","extensions":{"code":"COMPLEXITY_BUDGET_EXHAUSTED"}}]}""");
+
+        await Assert.ThrowsAsync<IntegrationRateLimitException>(() =>
+            ((IExternalTaskProvider)_provider).SearchTasksAsync("token", "login"));
+    }
+
+    [Fact]
+    public async Task SearchTasksAsync_StopsOnceTheLimitIsReached()
+    {
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[{"id":"1","name":"A"},{"id":"2","name":"B"}]}}""");
+        _handler.EnqueueResponse(HttpStatusCode.OK, """{"data":{"boards":[{"items_page":{"items":[{"id":"11","name":"login a","state":"active"},{"id":"12","name":"login b","state":"active"}]}}]}}""");
+
+        var result = await ((IExternalTaskProvider)_provider).SearchTasksAsync("token", "login", limit: 1);
+
+        Assert.Single(result);
+        Assert.Equal(2, _handler.SentRequests.Count);
     }
 }

@@ -120,14 +120,50 @@ public sealed class MondayTaskProvider(
         _ => TokenRejectionReason.InvalidToken
     };
 
+    private const int BoardsPageSize = 100;
+
+    // The most Monday.com allows per items_page and next_items_page.
+    private const int ItemsPageSize = 500;
+
+    private const string ItemFields = "cursor items { id name state }";
+
     public async Task<IReadOnlyList<ExternalProjectDto>> GetProjectsAsync(string accessToken, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
         using var client = CreateClient(accessToken);
 
-        var data = await ExecuteGraphQlAsync<MondayBoardsData>(
-            client, "{ boards(limit:100) { id name description } }", cancellationToken);
+        var boards = new List<MondayBoard>();
+        var seenIds = new HashSet<string>(StringComparer.Ordinal);
 
-        var boards = data.Boards ?? [];
+        for (var page = 1; ; page++)
+        {
+            var data = await ExecuteGraphQlAsync<MondayBoardsData>(
+                client,
+                $"query ($page: Int!) {{ boards(limit: {BoardsPageSize}, page: $page) {{ id name description }} }}",
+                new { page },
+                cancellationToken);
+
+            var pageBoards = data.Boards ?? throw new HttpRequestException(
+                "Monday.com answered without a board list and without reporting an error.",
+                null,
+                HttpStatusCode.OK);
+
+            // A page that repeats boards already read would page forever.
+            if (pageBoards.Count > 0 && !seenIds.Add(pageBoards[0].Id))
+            {
+                throw new HttpRequestException(
+                    $"Monday.com returned board {pageBoards[0].Id} again on page {page}; the board list would never end.",
+                    null,
+                    HttpStatusCode.OK);
+            }
+
+            seenIds.UnionWith(pageBoards.Select(b => b.Id));
+            boards.AddRange(pageBoards);
+
+            if (pageBoards.Count < BoardsPageSize)
+            {
+                break;
+            }
+        }
 
         return [.. boards.Select(b => new ExternalProjectDto
         {
@@ -140,15 +176,71 @@ public sealed class MondayTaskProvider(
         })];
     }
 
+    /// <summary>
+    /// Lists all items of a board, following Monday.com's cursor to the last page.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="projectId"/> is not a board id (digits only).</exception>
+    /// <exception cref="HttpRequestException">
+    /// With <see cref="HttpStatusCode.NotFound"/> when Monday.com does not return the board: deleted,
+    /// archived, never existed, or the token cannot see it. Never an empty list for that case, because a
+    /// sync would read it as every task gone.
+    /// </exception>
     public async Task<IReadOnlyList<ExternalTaskDto>> GetTasksAsync(string accessToken, string projectId, string? baseUrl = null, CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
+
+        if (!projectId.All(char.IsAsciiDigit))
+        {
+            throw new ArgumentException($"A Monday.com board id is a number, not '{projectId}'.", nameof(projectId));
+        }
+
         using var client = CreateClient(accessToken);
 
-        var query = $$"""{ boards(ids:{{projectId}}) { items_page { items { id name state } } } }""";
         var data = await ExecuteGraphQlAsync<MondayBoardItemsData>(
-            client, query, cancellationToken);
+            client,
+            $"query ($board: [ID!]) {{ boards(ids: $board) {{ items_page(limit: {ItemsPageSize}) {{ {ItemFields} }} }} }}",
+            new { board = new[] { projectId } },
+            cancellationToken);
 
-        var items = data.Boards?.FirstOrDefault()?.ItemsPage?.Items ?? [];
+        if (data.Boards is not { Count: > 0 } boards)
+        {
+            throw new HttpRequestException(
+                $"Monday.com did not return board {projectId}: it was deleted or archived, never existed, or the token cannot see it.",
+                null,
+                HttpStatusCode.NotFound);
+        }
+
+        var page = boards[0].ItemsPage ?? throw new HttpRequestException(
+            $"Monday.com returned board {projectId} without its items and without reporting an error.",
+            null,
+            HttpStatusCode.OK);
+
+        var items = new List<MondayItem>(page.Items ?? []);
+        var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+
+        while (!string.IsNullOrEmpty(page.Cursor))
+        {
+            if (!seenCursors.Add(page.Cursor))
+            {
+                throw new HttpRequestException(
+                    "Monday.com returned the same cursor twice; the item list would never end.",
+                    null,
+                    HttpStatusCode.OK);
+            }
+
+            var next = await ExecuteGraphQlAsync<MondayNextItemsPageData>(
+                client,
+                $"query ($cursor: String!) {{ next_items_page(limit: {ItemsPageSize}, cursor: $cursor) {{ {ItemFields} }} }}",
+                new { cursor = page.Cursor },
+                cancellationToken);
+
+            page = next.NextItemsPage ?? throw new HttpRequestException(
+                $"Monday.com answered the next page of board {projectId} without items and without reporting an error.",
+                null,
+                HttpStatusCode.OK);
+
+            items.AddRange(page.Items ?? []);
+        }
 
         return [.. items.Select(i => new ExternalTaskDto
         {
@@ -161,6 +253,55 @@ public sealed class MondayTaskProvider(
         })];
     }
 
+    /// <summary>
+    /// The fan-out search, except that a board Monday.com does not return or refuses (404 or 403) is
+    /// skipped with a warning instead of failing the whole search. A rejected token on the board list,
+    /// a rate limit or an outage still fails it.
+    /// </summary>
+    public async Task<IReadOnlyList<ExternalTaskDto>> SearchTasksAsync(
+        string accessToken,
+        string searchTerm,
+        int limit = 20,
+        string? baseUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm) || limit <= 0)
+        {
+            return [];
+        }
+
+        var term = searchTerm.Trim();
+        var projects = await GetProjectsAsync(accessToken, baseUrl, cancellationToken);
+        var matches = new List<ExternalTaskDto>();
+
+        foreach (var project in projects)
+        {
+            if (matches.Count >= limit)
+            {
+                break;
+            }
+
+            IReadOnlyList<ExternalTaskDto> tasks;
+
+            try
+            {
+                tasks = await GetTasksAsync(accessToken, project.Id, baseUrl, cancellationToken);
+            }
+            // The board list came back, so the token works: a 403 here is about this one board.
+            catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
+            {
+                logger.LogWarning("Monday.com search skipped board {BoardId}: {Reason}", project.Id, ex.Message);
+                continue;
+            }
+
+            matches.AddRange(tasks.Where(t =>
+                t.Title.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || t.Id.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return matches.Count > limit ? matches[..limit] : matches;
+    }
+
     private HttpClient CreateClient(string accessToken)
     {
         AccessTokenRules.ThrowIfCannotGoInHeader(accessToken);
@@ -170,30 +311,131 @@ public sealed class MondayTaskProvider(
         return client;
     }
 
+    private static readonly HashSet<string?> RateLimitCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "COMPLEXITY_BUDGET_EXHAUSTED",
+        "RATE_LIMIT_EXCEEDED",
+        "Rate Limit Exceeded",
+        "Minute limit rate exceeded",
+        "maxConcurrencyExceeded",
+        "IP_RATE_LIMIT_EXCEEDED",
+        "DAILY_LIMIT_EXCEEDED",
+        "API_TEMPORARILY_BLOCKED"
+    };
+
+    // Monday.com's answers when the board asked for is gone or out of reach.
+    private static readonly HashSet<string?> BoardUnavailableCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "InvalidBoardIdException",
+        "ResourceNotFoundException"
+    };
+
+    /// <summary>
+    /// Sends a query and returns its data, or throws an exception that says what went wrong:
+    /// <see cref="IntegrationRateLimitException"/> for a rate limit, budget or temporary block;
+    /// <see cref="HttpRequestException"/> with 401 or 403 for a refused token, 404 for a board out
+    /// of reach, and the response's status for anything else.
+    /// </summary>
     private static async Task<T> ExecuteGraphQlAsync<T>(
-        HttpClient client, string query, CancellationToken cancellationToken)
+        HttpClient client, string query, object? variables, CancellationToken cancellationToken)
         where T : class
     {
-        var request = new MondayGraphQlRequest { Query = query };
+        var request = new MondayGraphQlRequest { Query = query, Variables = variables };
         using var response = await client.PostAsJsonAsync("", request, JsonOptions, cancellationToken);
-        response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromUtf8JsonAsync<MondayGraphQlResponse<JsonElement>>(JsonOptions, cancellationToken);
+        var result = await ReadGraphQlResponseAsync(response, cancellationToken);
 
         // Monday reports application errors with status 200, and can send them next to partial data.
         // Callers read these lists as complete, so a list that may have gaps is a failure too.
         if (result?.Errors is { Count: > 0 } errors)
         {
-            throw new HttpRequestException(
-                $"Monday.com answered with errors: {DescribeErrors(errors)}.",
-                null,
-                response.StatusCode);
+            throw ToException(response, errors);
         }
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            throw new IntegrationRateLimitException(
+                "Monday.com answered 429 without saying which limit was reached.",
+                RetryAt(response, []));
+        }
+
+        response.EnsureSuccessStatusCode();
 
         return ReadData<T>(result) ?? throw new HttpRequestException(
             "Monday.com answered without data and without reporting an error.",
             null,
             response.StatusCode);
+    }
+
+    /// <summary>
+    /// Reads the body whatever the status, because Monday.com puts the error code there for 4xx too.
+    /// A success that is not JSON came from something other than the API, such as a proxy.
+    /// </summary>
+    private static async Task<MondayGraphQlResponse<JsonElement>?> ReadGraphQlResponseAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var body = await response.Content.ReadAsUtf8StringAsync(cancellationToken);
+
+        try
+        {
+            return JsonSerializer.Deserialize<MondayGraphQlResponse<JsonElement>>(body, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var mediaType = response.Content.Headers.ContentType?.MediaType ?? "no content type";
+
+            throw new HttpRequestException(
+                $"Monday.com answered {(int)response.StatusCode} with {mediaType} that is not a GraphQL answer; a proxy or a login page likely answered in its place.",
+                null,
+                response.StatusCode);
+        }
+    }
+
+    private static HttpRequestException ToException(HttpResponseMessage response, IReadOnlyList<MondayGraphQlError> errors)
+    {
+        var description = $"Monday.com answered with errors: {DescribeErrors(errors)}.";
+        var codes = errors.Select(error => error.Extensions?.Code ?? error.Message).ToList();
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests || codes.Any(RateLimitCodes.Contains))
+        {
+            return new IntegrationRateLimitException(description, RetryAt(response, errors));
+        }
+
+        if (codes.FirstOrDefault(RejectedTokenCodes.Contains) is { } rejected)
+        {
+            var status = errors.Select(error => error.Extensions?.StatusCode).FirstOrDefault(code => code is 401 or 403)
+                         ?? (ReasonFor(rejected) == TokenRejectionReason.InvalidToken ? 401 : 403);
+
+            return new HttpRequestException(description, null, (HttpStatusCode)status);
+        }
+
+        if (codes.Any(BoardUnavailableCodes.Contains))
+        {
+            return new HttpRequestException(description, null, HttpStatusCode.NotFound);
+        }
+
+        var reported = errors.Select(error => error.Extensions?.StatusCode).FirstOrDefault(code => code is >= 400 and < 600);
+
+        return new HttpRequestException(description, null, reported is { } code ? (HttpStatusCode)code : response.StatusCode);
+    }
+
+    private static DateTimeOffset? RetryAt(HttpResponseMessage response, IEnumerable<MondayGraphQlError> errors)
+    {
+        var seconds = errors.Select(error => error.Extensions?.RetryInSeconds).Where(s => s is > 0).Max();
+
+        if (seconds is { } fromBody)
+        {
+            return DateTimeOffset.UtcNow.AddSeconds(fromBody);
+        }
+
+        var retryAfter = response.Headers.RetryAfter;
+
+        return retryAfter?.Delta is { } delta ? DateTimeOffset.UtcNow.Add(delta) : retryAfter?.Date;
     }
 
     // An error-only answer can carry "data": [], so the data is read only once it is known to be an object.
