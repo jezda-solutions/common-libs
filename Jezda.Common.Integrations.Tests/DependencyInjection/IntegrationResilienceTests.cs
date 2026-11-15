@@ -309,7 +309,8 @@ public class IntegrationResilienceTests
         });
 
         time.Shift = BreakDurationPassed;
-        _handler.RespondTo("/items", () => TooManyRequests(retryAfterSeconds: null));
+        // A plain status response leaves RequestMessage unset, as a custom primary handler may.
+        _handler.RespondTo("/items", HttpStatusCode.TooManyRequests);
         using var probe = await client.GetAsync("items");
         Assert.Equal(HttpStatusCode.TooManyRequests, probe.StatusCode);
 

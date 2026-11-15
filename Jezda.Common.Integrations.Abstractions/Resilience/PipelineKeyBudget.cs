@@ -202,6 +202,10 @@ internal sealed class PipelineKeyBudgetHandler(PipelineKeyBudget budget) : Deleg
     {
         var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
+        // A custom primary handler may leave it unset; the resilience handler outside reads the
+        // request's options from it.
+        response.RequestMessage ??= request;
+
         if (response.IsSuccessStatusCode)
         {
             budget.RecordSuccess(request);
