@@ -46,7 +46,7 @@ public static class IntegrationServiceCollectionExtensions
             client.DefaultRequestHeaders.Add(AzureDevOpsHttp.FedAuthRedirectHeader, AzureDevOpsHttp.FedAuthRedirectSuppress);
         })
         .DisableAutoRedirect()
-        .AddIntegrationResilience(AzureDevOpsHttp.PipelineKey);
+        .AddIntegrationResilience(AzureDevOpsHttp.PipelineKey, PipelineKeyScope.SharedByTokens, AzureDevOpsHttp.IsSignInPage);
 
         services.AddSingleton<IExternalTaskProvider, AzureDevOpsTaskProvider>();
 
