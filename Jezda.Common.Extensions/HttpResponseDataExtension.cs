@@ -1,4 +1,7 @@
-﻿using System.Net.Http;
+﻿using System;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,21 +21,61 @@ public static class HttpResponseMessageExtensions
     /// for one .NET will not decode, such as <c>utf-7</c> or an unknown name.
     /// </remarks>
     /// <returns>
-    /// The body; null when the body is the JSON literal <c>null</c> and <typeparamref name="T"/> is a
-    /// reference type, <c>default</c> for a value type.
+    /// The body; null when the body is the JSON literal <c>null</c> or empty (a 204, or a 2xx without
+    /// content) and <typeparamref name="T"/> is a reference or nullable type, <c>default</c> for a value type
+    /// when the body is the literal <c>null</c>. An empty body for a non-nullable value type is an error,
+    /// so it never reads as zero or <c>false</c>.
     /// </returns>
-    /// <exception cref="HttpRequestException">
-    /// The status is not a success; <see cref="HttpRequestException.StatusCode"/> carries it.
+    /// <exception cref="ApiResponseException">
+    /// The status is not a success; <see cref="HttpRequestException.StatusCode"/> carries it and
+    /// <see cref="ApiResponseException.ResponseBody"/> the start of the error body.
     /// </exception>
-    /// <exception cref="JsonException">The body is empty or is not valid JSON for <typeparamref name="T"/>.</exception>
+    /// <exception cref="JsonException">
+    /// The body is not valid JSON for <typeparamref name="T"/>, or is empty and <typeparamref name="T"/> is a
+    /// non-nullable value type.
+    /// </exception>
     public static async Task<T?> ReadApiResponseDataAsync<T>(
         this HttpResponseMessage response,
         CancellationToken ct = default)
     {
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+            throw new ApiResponseException(response.StatusCode, await ReadErrorBodyAsync(response, ct));
+
+        // Buffered, so the length is known and an empty body can be told from malformed JSON
+        await response.Content.LoadIntoBufferAsync(ct);
+        if (response.StatusCode == HttpStatusCode.NoContent || response.Content.Headers.ContentLength == 0)
+        {
+            if (!typeof(T).IsValueType || Nullable.GetUnderlyingType(typeof(T)) is not null)
+                return default;
+
+            throw new JsonException("The response body is empty.");
+        }
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
 
         return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct);
+    }
+
+    // Best effort: a body that cannot be read must not hide the status.
+    private static async Task<string?> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            var buffer = new byte[ApiResponseException.MaxBodyLength * 4];
+            var read = 0;
+            int n;
+            while (read < buffer.Length && (n = await stream.ReadAsync(buffer.AsMemory(read), ct)) > 0)
+                read += n;
+            if (read == 0)
+                return null;
+
+            var text = Encoding.UTF8.GetString(buffer, 0, read);
+            return text.Length > ApiResponseException.MaxBodyLength ? text[..ApiResponseException.MaxBodyLength] : text;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 }

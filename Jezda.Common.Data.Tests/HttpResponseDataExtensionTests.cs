@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Jezda.Common.Extensions;
 using Xunit;
 
@@ -32,7 +33,7 @@ public class HttpResponseDataExtensionTests
     {
         using var response = new HttpResponseMessage(status) { Content = new StringContent("{}") };
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<Item>());
+        var ex = await Assert.ThrowsAnyAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<Item>());
 
         Assert.Equal(status, ex.StatusCode);
     }
@@ -42,7 +43,7 @@ public class HttpResponseDataExtensionTests
     {
         using var response = new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("0") };
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<int>());
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<int>());
     }
 
     [Fact]
@@ -51,5 +52,77 @@ public class HttpResponseDataExtensionTests
         using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("null") };
 
         Assert.Null(await response.ReadApiResponseDataAsync<Item>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponse_KeepsTheBodyOnTheException()
+    {
+        const string problem = """{"type":"about:blank","status":409,"code":"duplicate_name"}""";
+        using var response = new HttpResponseMessage(HttpStatusCode.Conflict) { Content = new StringContent(problem) };
+
+        var ex = await Assert.ThrowsAsync<ApiResponseException>(() => response.ReadApiResponseDataAsync<Item>());
+
+        Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
+        Assert.Equal(problem, ex.ResponseBody);
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponse_StillCatchableAsHttpRequestException()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{}") };
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() => response.ReadApiResponseDataAsync<Item>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponse_BodyIsCapped()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(new string('x', 100_000)) };
+
+        var ex = await Assert.ThrowsAsync<ApiResponseException>(() => response.ReadApiResponseDataAsync<Item>());
+
+        Assert.Equal(ApiResponseException.MaxBodyLength, ex.ResponseBody!.Length);
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponseWithoutBody_HasNullBody()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.BadGateway);
+
+        var ex = await Assert.ThrowsAsync<ApiResponseException>(() => response.ReadApiResponseDataAsync<Item>());
+
+        Assert.Null(ex.ResponseBody);
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_NoContent_ReturnsNull()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+
+        Assert.Null(await response.ReadApiResponseDataAsync<Item>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_EmptyOkBody_ReturnsNull()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("") };
+
+        Assert.Null(await response.ReadApiResponseDataAsync<Item>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_EmptyOkBody_ForANullableValueType_ReturnsNull()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("") };
+
+        Assert.Null(await response.ReadApiResponseDataAsync<int?>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_EmptyOkBody_ForAValueType_ThrowsInsteadOfReturningZero()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("") };
+
+        await Assert.ThrowsAsync<JsonException>(() => response.ReadApiResponseDataAsync<int>());
     }
 }
