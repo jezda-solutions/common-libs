@@ -113,7 +113,6 @@ public class FileServiceTests
     [InlineData(" work-items/42 ", "work-items/42")]
     [InlineData("work-items/42/", "work-items/42")]
     [InlineData("work-items\\42\\", "work-items\\42")]
-    [InlineData(" / ", null)]
     public async Task UploadAsync_SubPath_IsTrimmed(string subPath, string? expected)
     {
         var storage = new RecordingStorage();
@@ -123,6 +122,22 @@ public class FileServiceTests
         await service.UploadAsync(stream, "doc.txt", subPath);
 
         Assert.Equal(expected, storage.LastSubPath);
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("\\")]
+    [InlineData(" / ")]
+    [InlineData("//")]
+    public async Task UploadAsync_SeparatorOnlySubPath_IsRejected_NotStored(string subPath)
+    {
+        var storage = new RecordingStorage();
+        var service = new FileService(new AcceptingValidator(), storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UploadAsync(stream, "doc.txt", subPath));
+
+        Assert.Null(storage.Saved);
     }
 
     private sealed class AcceptingValidator : IFileValidator

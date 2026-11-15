@@ -18,14 +18,14 @@ public interface IFileService
     /// <param name="fileName">The original file name.</param>
     /// <param name="subPath">
     /// Optional sub-path under the storage root that groups the file, e.g. a tenant ID or
-    /// <c>work-items/{id}</c>. Surrounding whitespace and trailing separators are trimmed. Passed through to <see cref="IFileStorage.SaveAsync"/>.
+    /// <c>work-items/{id}</c>. Surrounding whitespace and trailing separators are trimmed; null or blank means none. Passed through to <see cref="IFileStorage.SaveAsync"/>.
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the uploaded file.</returns>
     /// <exception cref="InvalidOperationException">Thrown when file validation fails or the file name is rejected by the name policy.</exception>
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="content"/> is not seekable (validation reads it, and storage must get the same bytes),
-    /// when <paramref name="subPath"/> is rooted or contains a <c>..</c> segment, when the file name has a
+    /// when <paramref name="subPath"/> is not blank but consists of separators only, is rooted or contains a <c>..</c> segment, when the file name has a
     /// directory part, or when either resolves outside the storage root.
     /// </exception>
     Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);

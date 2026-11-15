@@ -66,8 +66,17 @@ public class FileService : IFileService
 
     private static string? NormalizeSubPath(string? subPath)
     {
-        var trimmed = subPath?.Trim().TrimEnd('/', '\\').TrimEnd();
-        return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+        if (string.IsNullOrWhiteSpace(subPath))
+            return null;
+
+        var trimmed = subPath.Trim().TrimEnd('/', '\\').TrimEnd();
+
+        // "/" or " / " is not "no subPath": it is typically a path built from an empty tenant id,
+        // and storing it in the shared root would hide that mistake.
+        if (trimmed.Length == 0)
+            throw new ArgumentException("The subPath must not consist of separators only.", nameof(subPath));
+
+        return trimmed;
     }
 
     /// <inheritdoc />
