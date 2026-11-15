@@ -125,4 +125,43 @@ public class HttpResponseDataExtensionTests
 
         await Assert.ThrowsAsync<JsonException>(() => response.ReadApiResponseDataAsync<int>());
     }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_NoContent_ForAValueType_Throws()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+
+        await Assert.ThrowsAsync<JsonException>(() => response.ReadApiResponseDataAsync<int>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_NullLiteral_ForAValueType_Throws()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("null") };
+
+        await Assert.ThrowsAsync<JsonException>(() => response.ReadApiResponseDataAsync<int>());
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponse_CutBodyEndsOnWholeCharacters()
+    {
+        // 😀 is a surrogate pair: an odd cap would split it
+        using var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("a" + string.Concat(Enumerable.Repeat("😀", 5000))) };
+
+        var ex = await Assert.ThrowsAsync<ApiResponseException>(() => response.ReadApiResponseDataAsync<Item>());
+
+        Assert.False(char.IsHighSurrogate(ex.ResponseBody![^1]));
+        Assert.DoesNotContain('\uFFFD', ex.ResponseBody);
+    }
+
+    [Fact]
+    public async Task ReadApiResponseDataAsync_FailedResponse_BomIsNotKept()
+    {
+        var bytes = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes("{}")).ToArray();
+        using var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new ByteArrayContent(bytes) };
+
+        var ex = await Assert.ThrowsAsync<ApiResponseException>(() => response.ReadApiResponseDataAsync<Item>());
+
+        Assert.Equal("{}", ex.ResponseBody);
+    }
 }
