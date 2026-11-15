@@ -53,12 +53,14 @@ public class FileServiceTests
                 new FileValidationError { Code = FileValidationErrorCode.InvalidExtension, Message = "Extension blocked." }
             ]
         });
-        var service = new FileService(validator, new RecordingStorage());
+        var storage = new RecordingStorage();
+        var service = new FileService(validator, storage);
 
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UploadAsync(stream, "doc.txt"));
 
         Assert.Equal("File too big.; Extension blocked.", ex.Message);
+        Assert.Null(storage.Saved);
     }
 
     [Fact]
@@ -71,6 +73,14 @@ public class FileServiceTests
         await Assert.ThrowsAsync<ArgumentException>(() => service.UploadAsync(stream, "doc.txt"));
 
         Assert.Null(storage.Saved);
+    }
+
+    [Fact]
+    public async Task UploadAsync_NullStream_ThrowsArgumentNullException()
+    {
+        var service = new FileService(new AcceptingValidator(), new RecordingStorage());
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.UploadAsync(null!, "doc.txt"));
     }
 
     [Fact]

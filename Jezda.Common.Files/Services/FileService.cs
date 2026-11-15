@@ -29,6 +29,8 @@ public class FileService : IFileService
     /// <inheritdoc />
     public async Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(content);
+
         // The validator and storage both read the stream; without Seek the bytes the validator
         // consumed are gone before storage sees the stream, so a non-seekable one is refused.
         if (!content.CanSeek)
