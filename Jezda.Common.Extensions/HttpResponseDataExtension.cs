@@ -17,11 +17,14 @@ public static class HttpResponseMessageExtensions
     /// requires of JSON. <c>ReadFromJsonAsync</c> decodes by the declared charset instead, and throws
     /// for one .NET will not decode, such as <c>utf-7</c> or an unknown name.
     /// </remarks>
-    /// <returns>The body, or null when the body is the JSON literal <c>null</c>.</returns>
+    /// <returns>
+    /// The body; null when the body is the JSON literal <c>null</c> and <typeparamref name="T"/> is a
+    /// reference type, <c>default</c> for a value type.
+    /// </returns>
     /// <exception cref="HttpRequestException">
-    /// The status is not a success; <see cref="HttpRequestException.StatusCode"/> carries it. Returning
-    /// default instead made a 500 read as <c>0</c>, <c>false</c> or an empty result.
+    /// The status is not a success; <see cref="HttpRequestException.StatusCode"/> carries it.
     /// </exception>
+    /// <exception cref="JsonException">The body is empty or is not valid JSON for <typeparamref name="T"/>.</exception>
     public static async Task<T?> ReadApiResponseDataAsync<T>(
         this HttpResponseMessage response,
         CancellationToken ct = default)
