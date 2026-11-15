@@ -78,14 +78,39 @@ public static class HttpResilienceDefaults
     /// <see cref="IntegrationPipelineKeys.AddressAndAuthorization"/> does. It decides what the single
     /// probe of a half-open breaker may conclude: on a key several tokens share, a probe answered 429,
     /// 401 or 403 speaks only for its own token and keeps the breaker open; on a per-token key any
-    /// answer shows the provider is up and may close it.
+    /// answer shows the provider is up and may close it. A provider that refuses a token with another
+    /// answer passes a predicate to the overload that takes <c>refusesToken</c>.
     /// </param>
     public static IHttpClientBuilder AddIntegrationResilience(
         this IHttpClientBuilder builder,
         Func<HttpRequestMessage, string> pipelineKey,
-        PipelineKeyScope scope)
+        PipelineKeyScope scope) =>
+        builder.AddIntegrationResilience(pipelineKey, scope, static _ => false);
+
+    /// <summary>
+    /// Adds the same resilience handler as
+    /// <see cref="AddIntegrationResilience(IHttpClientBuilder, Func{HttpRequestMessage, string}, PipelineKeyScope)"/>,
+    /// for a provider that refuses a token with an answer the status code does not show.
+    /// </summary>
+    /// <param name="builder">The client to add the handler to.</param>
+    /// <param name="pipelineKey">The key of a request's pipeline; the same rules apply.</param>
+    /// <param name="scope">What the single probe of a half-open breaker may conclude; the same rules apply.</param>
+    /// <param name="refusesToken">
+    /// Whether a response refuses the caller's token although its status is not 401 or 403, as Azure
+    /// DevOps does with a 203 sign-in page. On a key several tokens share, such an answer to the single
+    /// probe of a half-open breaker keeps the breaker open, like a 401 or 403. A 408 or 5xx is never
+    /// judged by it: it stays a failure of the provider. It has no effect on a
+    /// <see cref="PipelineKeyScope.PerToken"/> key, where the probe carries the key's own token. Called
+    /// on every response, so it must be cheap and must not read the body.
+    /// </param>
+    public static IHttpClientBuilder AddIntegrationResilience(
+        this IHttpClientBuilder builder,
+        Func<HttpRequestMessage, string> pipelineKey,
+        PipelineKeyScope scope,
+        Func<HttpResponseMessage, bool> refusesToken)
     {
         ArgumentNullException.ThrowIfNull(pipelineKey);
+        ArgumentNullException.ThrowIfNull(refusesToken);
         var shared = scope == PipelineKeyScope.SharedByTokens;
 
         var budget = new PipelineKeyBudget(builder.Name, pipelineKey);
@@ -124,7 +149,9 @@ public static class HttpResilienceDefaults
             // per-token key the probe carries the key's own token, so any answer shows the provider
             // is up and may close it; the caller then gets the 429 with its retry time.
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
-                args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden }
+                args.Outcome.Result is { } answer
+                && (answer.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                    || (!HttpClientResiliencePredicates.IsTransient(args.Outcome) && refusesToken(answer)))
                     ? IsShared(shared, args.Outcome.Result) && IsProbe(args.Context)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
