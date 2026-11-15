@@ -15,7 +15,7 @@ public static class IntegrationServiceCollectionExtensions
         {
             client.BaseAddress = new Uri("https://api.monday.com/v2");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization);
+        }).AddIntegrationResilience(IntegrationPipelineKeys.AddressAndAuthorization, PipelineKeyScope.PerToken);
 
         services.AddSingleton<IExternalTaskProvider, MondayTaskProvider>();
 

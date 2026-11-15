@@ -16,7 +16,9 @@ namespace Jezda.Common.Integrations.Abstractions.Resilience;
 /// request shares <see cref="OverflowKey"/>, a name reserved for that. A key whose request succeeds
 /// through the shared pipeline is proven and gets its own on its next request, so a working site
 /// keeps its own breaker even after mistyped or probed addresses have used up the unproven part.
-/// Admitted keys are never dropped, because the registry cannot drop their pipelines.
+/// Admitted keys are never dropped, because the registry cannot drop their pipelines. With
+/// per-token keys every distinct token takes a place until the process restarts, which is fine for
+/// long-lived tokens; rotating ones would need idle keys evicted (issue #230).
 /// <para />
 /// Each limit logs one warning per client the first time it sends a request to the shared pipeline,
 /// so a filled budget can be told apart from an ordinary outage.
@@ -31,6 +33,13 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
 
     /// <summary>The key every request beyond the budget shares. Holds no address or token.</summary>
     public const string OverflowKey = "overflow";
+
+    /// <summary>
+    /// Set on a request that <see cref="Select"/> sent to <see cref="OverflowKey"/>. The pipeline there is
+    /// shared by tokens whatever the registration's scope says, so its breaker reads answers as it does
+    /// for a shared key.
+    /// </summary>
+    public static readonly HttpRequestOptionsKey<bool> OverflowRequest = new("Jezda.Integrations.PipelineOverflow");
 
     /// <summary>
     /// The key <see cref="Select"/> computed, carried on the request to <see cref="RecordSuccess"/>:
@@ -62,6 +71,18 @@ internal sealed class PipelineKeyBudget(string clientName, Func<HttpRequestMessa
     /// takes one unproven place, never more.
     /// </remarks>
     public string Select(HttpRequestMessage request)
+    {
+        var key = SelectKey(request);
+
+        if (key == OverflowKey)
+        {
+            request.Options.Set(OverflowRequest, true);
+        }
+
+        return key;
+    }
+
+    private string SelectKey(HttpRequestMessage request)
     {
         var key = pipelineKey(request);
         request.Options.Set(_requestKey, key);
@@ -180,6 +201,10 @@ internal sealed class PipelineKeyBudgetHandler(PipelineKeyBudget budget) : Deleg
         CancellationToken cancellationToken)
     {
         var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+        // A custom primary handler may leave it unset; the resilience handler outside reads the
+        // request's options from it.
+        response.RequestMessage ??= request;
 
         if (response.IsSuccessStatusCode)
         {
