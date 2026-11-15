@@ -74,10 +74,8 @@ public static class HttpResponseMessageExtensions
             if (text.Length > ApiResponseException.MaxBodyLength)
                 text = text[..ApiResponseException.MaxBodyLength];
 
-            // The cut may have split a surrogate pair or a multi-byte character; drop that last half
-            return text.Length > 0 && (char.IsHighSurrogate(text[^1]) || (read == buffer.Length && text[^1] == '\uFFFD'))
-                ? text[..^1]
-                : text;
+            // The cut may have split a surrogate pair; drop that last half
+            return text.Length > 0 && char.IsHighSurrogate(text[^1]) ? text[..^1] : text;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
