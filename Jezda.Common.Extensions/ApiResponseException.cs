@@ -20,7 +20,7 @@ public sealed class ApiResponseException : HttpRequestException
     }
 
     /// <summary>
-    /// The error body, read as UTF-8 and cut to <see cref="MaxBodyLength"/> characters, for example an
+    /// The error body, as <c>ReadApiResponseDataAsync</c> reads it: UTF-8, cut to <see cref="MaxBodyLength"/> characters, for example an
     /// RFC 9457 problem+json whose <c>code</c> a caller can branch on. Null when there is no body or it
     /// could not be read. Never part of <see cref="Exception.Message"/>, so logging the message or
     /// <see cref="Exception.ToString"/> does not write it. A tool that also records an exception's public
