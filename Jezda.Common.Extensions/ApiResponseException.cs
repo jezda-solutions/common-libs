@@ -22,7 +22,10 @@ public sealed class ApiResponseException : HttpRequestException
     /// <summary>
     /// The error body, read as UTF-8 and cut to <see cref="MaxBodyLength"/> characters, for example an
     /// RFC 9457 problem+json whose <c>code</c> a caller can branch on. Null when there is no body or it
-    /// could not be read. Never part of <see cref="Exception.Message"/>, so it does not reach logs by itself.
+    /// could not be read. Never part of <see cref="Exception.Message"/>, so logging the message or
+    /// <see cref="Exception.ToString"/> does not write it. A tool that also records an exception's public
+    /// properties (a structured-logging destructurer, an error-reporting SDK) does write it, and an error body
+    /// can echo request data, so mask or exclude this property in such a tool's configuration.
     /// </summary>
     public string? ResponseBody { get; }
 }
