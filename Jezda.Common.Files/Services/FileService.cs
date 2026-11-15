@@ -36,6 +36,10 @@ public class FileService : IFileService
         if (!content.CanSeek)
             throw new ArgumentException("The content stream must be seekable.", nameof(content));
 
+        // Storage lays files out as subPath/yyyy/MM/dd; a blank subPath means none. A bad one
+        // fails here, before the validator reads the stream.
+        var targetSubPath = NormalizeSubPath(subPath);
+
         var startPosition = content.Position;
 
         // Validate file, including ZIP safety, executable detection, etc.
@@ -53,9 +57,6 @@ public class FileService : IFileService
         if (!isValidName)
             throw new InvalidOperationException("Invalid file name.");
 
-        // Storage lays files out as subPath/yyyy/MM/dd; a blank subPath means none
-        var targetSubPath = NormalizeSubPath(subPath);
-
         // Store from where the caller's stream started, not from byte 0
         content.Seek(startPosition, SeekOrigin.Begin);
 
@@ -69,7 +70,10 @@ public class FileService : IFileService
         if (string.IsNullOrWhiteSpace(subPath))
             return null;
 
-        var trimmed = subPath.Trim().TrimEnd('/', '\\').TrimEnd();
+        // Drop trailing separators and the whitespace between them, so "a/ /" ends as "a"
+        var trimmed = subPath.Trim();
+        while (trimmed.Length > 0 && (trimmed[^1] is '/' or '\\' || char.IsWhiteSpace(trimmed[^1])))
+            trimmed = trimmed[..^1];
 
         // "/" or " / " is not "no subPath": it is typically a path built from an empty tenant id,
         // and storing it in the shared root would hide that mistake.
