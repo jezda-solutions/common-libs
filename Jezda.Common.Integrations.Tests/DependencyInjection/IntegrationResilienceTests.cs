@@ -450,6 +450,49 @@ public class IntegrationResilienceTests
     }
 
     [Fact]
+    public async Task HalfOpenProbe_OnAnAzureDevOpsOrganisation_AnsweredWithARedirectToSignIn_KeepsTheBreakerOpen()
+    {
+        var time = new ShiftedTimeProvider();
+        var client = CreateProviderClient(AzureDevOpsTaskProvider.HttpClientName, time);
+        _handler.RespondTo("/orgA/items", ServiceUnavailable);
+        await OpenBreakerAsync(client, "https://dev.azure.com/orgA/items");
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/orgA/items", () =>
+        {
+            var redirect = new HttpResponseMessage(HttpStatusCode.Found);
+            redirect.Headers.Location = new Uri("https://spsprodweu1.vssps.visualstudio.com/_signin?realm=dev.azure.com");
+            return redirect;
+        });
+        using var probe = await client.GetAsync("https://dev.azure.com/orgA/items");
+        Assert.Equal(HttpStatusCode.Found, probe.StatusCode);
+
+        _handler.RespondTo("/orgA/items", HttpStatusCode.OK);
+        await Assert.ThrowsAsync<BrokenCircuitException>(() => client.GetAsync("https://dev.azure.com/orgA/items"));
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_OnAnAzureDevOpsOrganisation_AnsweredWithAJson203_ClosesTheBreaker()
+    {
+        var time = new ShiftedTimeProvider();
+        var client = CreateProviderClient(AzureDevOpsTaskProvider.HttpClientName, time);
+        _handler.RespondTo("/orgA/items", ServiceUnavailable);
+        await OpenBreakerAsync(client, "https://dev.azure.com/orgA/items");
+
+        time.Shift = BreakDurationPassed;
+        _handler.RespondTo("/orgA/items", () => new HttpResponseMessage(HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
+        });
+        using var probe = await client.GetAsync("https://dev.azure.com/orgA/items");
+        Assert.Equal(HttpStatusCode.NonAuthoritativeInformation, probe.StatusCode);
+
+        _handler.RespondTo("/orgA/items", HttpStatusCode.OK);
+        using var next = await client.GetAsync("https://dev.azure.com/orgA/items");
+        Assert.Equal(HttpStatusCode.OK, next.StatusCode);
+    }
+
+    [Fact]
     public async Task OneFailingGitHubToken_DoesNotOpenTheBreakerForAnotherToken()
     {
         // Every GitHub caller is on api.github.com.

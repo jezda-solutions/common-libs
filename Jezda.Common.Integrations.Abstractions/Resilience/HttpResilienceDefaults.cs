@@ -78,7 +78,8 @@ public static class HttpResilienceDefaults
     /// <see cref="IntegrationPipelineKeys.AddressAndAuthorization"/> does. It decides what the single
     /// probe of a half-open breaker may conclude: on a key several tokens share, a probe answered 429,
     /// 401 or 403 speaks only for its own token and keeps the breaker open; on a per-token key any
-    /// answer shows the provider is up and may close it.
+    /// answer shows the provider is up and may close it. A provider that refuses a token with another
+    /// answer passes a predicate to the overload that takes <c>refusesToken</c>.
     /// </param>
     public static IHttpClientBuilder AddIntegrationResilience(
         this IHttpClientBuilder builder,
@@ -97,8 +98,10 @@ public static class HttpResilienceDefaults
     /// <param name="refusesToken">
     /// Whether a response refuses the caller's token although its status is not 401 or 403, as Azure
     /// DevOps does with a 203 sign-in page. On a key several tokens share, such an answer to the single
-    /// probe of a half-open breaker keeps the breaker open, like a 401 or 403. Called on every
-    /// response, so it must be cheap and must not read the body.
+    /// probe of a half-open breaker keeps the breaker open, like a 401 or 403. A 408 or 5xx is never
+    /// judged by it: it stays a failure of the provider. It has no effect on a
+    /// <see cref="PipelineKeyScope.PerToken"/> key, where the probe carries the key's own token. Called
+    /// on every response, so it must be cheap and must not read the body.
     /// </param>
     public static IHttpClientBuilder AddIntegrationResilience(
         this IHttpClientBuilder builder,
@@ -148,7 +151,7 @@ public static class HttpResilienceDefaults
             options.CircuitBreaker.ShouldHandle = args => ValueTask.FromResult(
                 args.Outcome.Result is { } answer
                 && (answer.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                    || refusesToken(answer))
+                    || (!HttpClientResiliencePredicates.IsTransient(args.Outcome) && refusesToken(answer)))
                     ? IsShared(shared, args.Outcome.Result) && IsProbe(args.Context)
                     : HttpClientResiliencePredicates.IsTransient(args.Outcome)
                       || IsConnectTimeout(args.Outcome.Exception, args.Context.CancellationToken));
