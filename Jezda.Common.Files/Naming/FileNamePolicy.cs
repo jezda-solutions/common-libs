@@ -39,6 +39,28 @@ public sealed class FileNamePolicy
     /// </summary>
     public char ReplacementChar { get; set; } = '_';
 
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON","PRN","AUX","NUL","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+        "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
+    };
+
+    // One compiled regex per policy, rebuilt only when AllowedPattern changes; the pair is
+    // swapped as a single reference so concurrent calls never see a pattern with another's regex.
+    private (string Pattern, Regex Regex)? _cachedRegex;
+
+    private Regex GetRegex()
+    {
+        var pattern = AllowedPattern;
+        var cached = _cachedRegex;
+        if (cached is { } c && c.Pattern == pattern)
+            return c.Regex;
+
+        var regex = new Regex(pattern, RegexOptions.Compiled);
+        _cachedRegex = (pattern, regex);
+        return regex;
+    }
+
     /// <summary>
     /// Validates and normalizes a file name according to the policy rules.
     /// </summary>
@@ -56,7 +78,7 @@ public sealed class FileNamePolicy
         if (name.Length > MaxFileNameLength)
             name = name[..MaxFileNameLength];
 
-        var regex = new Regex(AllowedPattern, RegexOptions.Compiled);
+        var regex = GetRegex();
         if (!regex.IsMatch(name))
         {
             if (!ReplaceInvalidChars)
@@ -72,12 +94,7 @@ public sealed class FileNamePolicy
         }
 
         // Avoid special/reserved names
-        var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "CON","PRN","AUX","NUL","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
-            "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"
-        };
-        if (reserved.Contains(Path.GetFileNameWithoutExtension(name)))
+        if (ReservedNames.Contains(Path.GetFileNameWithoutExtension(name)))
             name = $"_{name}";
 
         return (true, name);
