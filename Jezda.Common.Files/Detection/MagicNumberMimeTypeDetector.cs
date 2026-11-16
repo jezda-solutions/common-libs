@@ -17,6 +17,8 @@ namespace Jezda.Common.Files.Detection;
 /// </summary>
 public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
 {
+    private const int TextProbeLength = 512;
+
     private static readonly FileSignature[] Signatures =
     [
         new() { MimeType = "image/png",  Signature = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A } },
@@ -35,8 +37,9 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
     {
         if (!stream.CanRead) return null;
 
+        // Large enough for every signature and for the 512-byte plain-text probe below.
         var maxLen = Signatures.Max(s => s.Signature.Length + s.Offset);
-        var buffer = new byte[Math.Max(16, maxLen)];
+        var buffer = new byte[Math.Max(TextProbeLength, maxLen)];
 
         var pos = stream.CanSeek ? stream.Position : 0;
         try
@@ -95,7 +98,7 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
             }
 
             // Plain text heuristic: ASCII heavy and no null bytes in first 512 bytes
-            var textProbeLen = Math.Min(read, 512);
+            var textProbeLen = Math.Min(read, TextProbeLength);
             var nullFound = false;
             var asciiLikely = 0;
             for (int i = 0; i < textProbeLen; i++)

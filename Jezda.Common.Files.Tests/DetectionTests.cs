@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
@@ -78,5 +79,37 @@ public class DetectionTests
         var det = new MagicNumberMimeTypeDetector();
         var mime = await det.DetectAsync(ms);
         Assert.Equal("application/vnd.openxmlformats-officedocument.wordprocessingml.document", mime);
+    }
+
+    [Fact]
+    public async Task BinaryWithAsciiHeader_IsNotText()
+    {
+        // 32 ASCII bytes, then binary data with null bytes: the text probe must look past the header.
+        using var ms = new MemoryStream([.. Encoding.ASCII.GetBytes("CUSTOMFMT v1.0 header 0123456789"), .. new byte[64]]);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Null(mime);
+        Assert.Equal(0, ms.Position);
+    }
+
+    [Fact]
+    public async Task AsciiText_LongerThanSignatureBuffer_IsText()
+    {
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("plain text line\n", 64))));
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    [Fact]
+    public async Task ShortAsciiText_IsText()
+    {
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes("hi\n"));
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
     }
 }
