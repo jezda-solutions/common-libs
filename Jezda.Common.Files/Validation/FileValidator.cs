@@ -96,7 +96,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         }
 
         // Zip safety
-        if (merged.EnableZipSafetyChecks && string.Equals(mime, "application/zip", StringComparison.OrdinalIgnoreCase))
+        if (merged.EnableZipSafetyChecks && IsZipContainer(mime))
         {
             var safe = ZipSafetyChecker.IsSafe(fileStream, new ZipSafetyChecker.ZipSafetyOptions(merged.ZipMaxDepth, merged.ZipMaxEntries, merged.ZipMaxCompressionRatio));
             if (!safe)
@@ -132,6 +132,12 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         result.IsValid = errors.Count == 0;
         return result;
     }
+
+    // The detector refines a ZIP to an Office Open XML type, but it is still a ZIP container and
+    // must go through the same safety limits as a plain archive.
+    private static bool IsZipContainer(string? mime)
+        => string.Equals(mime, "application/zip", StringComparison.OrdinalIgnoreCase)
+           || (mime is not null && mime.StartsWith("application/vnd.openxmlformats-officedocument.", StringComparison.OrdinalIgnoreCase));
 
     private static FileValidationOptions MergeOptions(FileValidationOptions options, FileValidationOverrides? overrides)
     {
