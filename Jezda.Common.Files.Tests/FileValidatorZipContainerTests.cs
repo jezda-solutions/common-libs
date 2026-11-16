@@ -57,6 +57,24 @@ public class FileValidatorZipContainerTests
     }
 
     [Fact]
+    public async Task ValidateAsync_OfficeZipOverCompressionRatio_IsRejected()
+    {
+        var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("word/document.xml", CompressionLevel.SmallestSize).Open());
+            writer.Write(new string('a', 2_000_000));
+        }
+        ms.Position = 0;
+        using var _ = ms;
+
+        var result = await CreateValidator(maxEntries: 10).ValidateAsync(ms, "a.docx");
+
+        Assert.Equal("application/vnd.openxmlformats-officedocument.wordprocessingml.document", result.MimeType);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ZipBombSuspected);
+    }
+
+    [Fact]
     public async Task ValidateAsync_OfficeZipWithinLimits_Passes()
     {
         using var ms = BuildZip("word/document.xml", extraEntries: 2);
