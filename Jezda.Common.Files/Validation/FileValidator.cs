@@ -45,9 +45,8 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         long size = 0;
         if (fileStream.CanSeek)
         {
-            var pos = fileStream.Position;
-            size = Math.Max(0, fileStream.Length - pos);
-            fileStream.Seek(pos, SeekOrigin.Begin);
+            // Size is what remains from the current position, the same bytes the storage will write.
+            size = Math.Max(0, fileStream.Length - fileStream.Position);
         }
         else
         {
