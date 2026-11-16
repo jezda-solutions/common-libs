@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.IO.Compression;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
 using Jezda.Common.Files.Security;
@@ -68,14 +69,17 @@ public class FileValidatorStartPositionTests
         using var inner = new MemoryStream();
         using (var zip = new ZipArchive(inner, ZipArchiveMode.Create, leaveOpen: true))
         {
-            for (var i = -1; i < extraEntries; i++)
-            {
-                var entry = zip.CreateEntry(i < 0 ? entryName : $"extra/{i}.txt");
-                using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
-                writer.Write("<w:document/>");
-            }
+            AddEntry(zip, entryName);
+            for (var i = 0; i < extraEntries; i++)
+                AddEntry(zip, $"extra/{i}.txt");
         }
         return inner.ToArray();
+    }
+
+    private static void AddEntry(ZipArchive zip, string name)
+    {
+        using var writer = new StreamWriter(zip.CreateEntry(name).Open(), Encoding.UTF8);
+        writer.Write("<w:document/>");
     }
 
     [Fact]
@@ -111,8 +115,12 @@ public class FileValidatorStartPositionTests
         Assert.Equal(prefix.Length, ms.Position);
     }
 
-    [Fact]
-    public async Task ValidateAsync_ZipWithTooManyEntriesAtNonZeroStart_ReportsZipBomb()
+    // The 6-entry archive is safe under a limit of 6 and a bomb under 5: only the entry count
+    // decides, so an unreadable archive (reported as a bomb either way) cannot pass both cases.
+    [Theory]
+    [InlineData(6, true)]
+    [InlineData(5, false)]
+    public async Task ValidateAsync_ZipAtNonZeroStart_AppliesEntryLimit(int maxEntries, bool expectedValid)
     {
         var prefix = new byte[32];
         using var ms = new MemoryStream([.. prefix, .. BuildZip("word/document.xml", extraEntries: 5)]);
@@ -120,11 +128,12 @@ public class FileValidatorStartPositionTests
         var validator = new FileValidator(
             new MagicNumberMimeTypeDetector(),
             new NoopFileScanner(),
-            Options.Create(new FileValidationOptions { EnableZipSafetyChecks = true, ZipMaxEntries = 2, BlockExecutables = false }));
+            Options.Create(new FileValidationOptions { EnableZipSafetyChecks = true, ZipMaxEntries = maxEntries, BlockExecutables = false }));
 
         var result = await validator.ValidateAsync(ms, "a.docx");
 
-        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ZipBombSuspected);
+        Assert.Equal(expectedValid, result.IsValid);
+        Assert.Equal(!expectedValid, result.Errors.Any(e => e.Code == FileValidationErrorCode.ZipBombSuspected));
         Assert.Equal(prefix.Length, ms.Position);
     }
 
@@ -141,7 +150,7 @@ public class FileValidatorStartPositionTests
 
     private sealed class OneByteAtATimeStream(byte[] data) : MemoryStream(data)
     {
-        public override ValueTask<int> ReadAsync(Memory<byte> buffer, System.Threading.CancellationToken ct = default)
-            => base.ReadAsync(buffer[..System.Math.Min(1, buffer.Length)], ct);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+            => base.ReadAsync(buffer[..Math.Min(1, buffer.Length)], ct);
     }
 }
