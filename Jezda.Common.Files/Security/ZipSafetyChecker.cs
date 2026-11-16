@@ -22,7 +22,7 @@ public static class ZipSafetyChecker
     /// <summary>
     /// Determines whether a ZIP archive meets safety criteria to prevent ZIP bomb attacks.
     /// </summary>
-    /// <param name="stream">The ZIP archive stream to analyze. Position will be restored after analysis if the stream is seekable.</param>
+    /// <param name="stream">The ZIP archive stream to analyze. The archive is read from the stream's current position, so rewind it first if you have already read its header. Position will be restored after analysis if the stream is seekable.</param>
     /// <param name="options">The safety constraints to enforce.</param>
     /// <returns>True if the archive passes all safety checks; otherwise, false.</returns>
     public static bool IsSafe(Stream stream, ZipSafetyOptions options)
@@ -32,7 +32,7 @@ public static class ZipSafetyChecker
         var pos = stream.CanSeek ? stream.Position : 0;
         try
         {
-            using var view = new OffsetReadStream(stream);
+            using var view = new OffsetReadStream(stream, pos);
             using var archive = new ZipArchive(view, ZipArchiveMode.Read, leaveOpen: true);
             int entries = 0;
             long totalCompressed = 0;

@@ -71,8 +71,7 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
                         {
                             try
                             {
-                                stream.Seek(pos, SeekOrigin.Begin);
-                                using var view = new OffsetReadStream(stream);
+                                using var view = new OffsetReadStream(stream, pos);
                                 using var archive = new ZipArchive(view, ZipArchiveMode.Read, leaveOpen: true);
                                 var hasWord = archive.Entries.Any(e => e.FullName.StartsWith("word/", StringComparison.OrdinalIgnoreCase));
                                 var hasXl = archive.Entries.Any(e => e.FullName.StartsWith("xl/", StringComparison.OrdinalIgnoreCase));
