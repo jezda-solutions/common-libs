@@ -103,6 +103,35 @@ public class DetectionTests
         Assert.Equal("text/plain", mime);
     }
 
+    // UTF-8 text in Serbian: Latin with diacritics and Cyrillic are multi-byte, so the probe must
+    // count valid UTF-8 sequences as text, not only ASCII. Repeated past 512 bytes, so the probe
+    // also ends in the middle of a multi-byte character.
+    [Theory]
+    [InlineData("Naziv;Cena\nČokolada đumbir;120\nŠećer žuti;95\nĆevapčići;450\nĐak ćuti;10\n")]
+    [InlineData("Naziv;Cena\nЧоколада ђумбир;120\nШећер жути;95\nЋевапчићи;450\nЂак ћути;10\n")]
+    [InlineData("Назив;Цена\nЧоколада;120\nШећер;95\n")]
+    public async Task Utf8SerbianText_IsText(string sample)
+    {
+        var text = string.Concat(Enumerable.Repeat(sample, 20));
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(text));
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    [Fact]
+    public async Task InvalidUtf8HighBytes_IsNotText()
+    {
+        // Bytes >= 0x80 that do not form UTF-8 sequences, no nulls: binary, not text.
+        var data = Enumerable.Range(0, 256).Select(i => (byte)(0x80 + (i * 7) % 0x40)).ToArray();
+        using var ms = new MemoryStream(data);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Null(mime);
+    }
+
     [Fact]
     public async Task ShortAsciiText_IsText()
     {

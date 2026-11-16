@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.IO.Compression;
@@ -97,24 +98,33 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
                 }
             }
 
-            // Plain text heuristic: ASCII heavy and no null bytes in first 512 bytes
-            var textProbeLen = Math.Min(read, TextProbeLength);
-            var nullFound = false;
-            var asciiLikely = 0;
-            for (int i = 0; i < textProbeLen; i++)
-            {
-                var b = buffer[i];
-                if (b == 0) { nullFound = true; break; }
-                if (b == 0x09 || b == 0x0A || b == 0x0D || (b >= 0x20 && b <= 0x7E)) asciiLikely++;
-            }
-            if (!nullFound && asciiLikely > textProbeLen * 0.8)
-                return "text/plain";
-
-            return null;
+            return LooksLikeText(buffer.AsSpan(0, Math.Min(read, TextProbeLength))) ? "text/plain" : null;
         }
         finally
         {
             if (stream.CanSeek) stream.Seek(pos, SeekOrigin.Begin);
         }
+    }
+
+    /// <summary>
+    /// Plain-text heuristic over the probe: no null bytes, and more than 80% of the bytes belong to
+    /// printable UTF-8 characters (ASCII or multi-byte, e.g. č, ž, Cyrillic) or tab/LF/CR.
+    /// A multi-byte character cut off at the end of the probe is left out of the count.
+    /// </summary>
+    private static bool LooksLikeText(ReadOnlySpan<byte> probe)
+    {
+        var textBytes = 0;
+        var examined = 0;
+        while (examined < probe.Length)
+        {
+            var rest = probe[examined..];
+            if (rest[0] == 0) return false;
+            var status = Rune.DecodeFromUtf8(rest, out var rune, out var consumed);
+            if (status == OperationStatus.NeedMoreData) break;
+            if (status == OperationStatus.Done && (!Rune.IsControl(rune) || rune.Value is '\t' or '\n' or '\r'))
+                textBytes += consumed;
+            examined += consumed;
+        }
+        return examined > 0 && textBytes > examined * 0.8;
     }
 }
