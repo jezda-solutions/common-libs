@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Linq;
 using System.IO.Compression;
@@ -62,23 +63,85 @@ public class FileValidatorStartPositionTests
         Assert.Equal(prefix.Length, ms.Position);
     }
 
-    [Fact]
-    public async Task DetectAsync_ZipAtNonZeroStart_RestoresEntryPosition()
+    private static byte[] BuildZip(string entryName, int extraEntries = 0)
     {
         using var inner = new MemoryStream();
         using (var zip = new ZipArchive(inner, ZipArchiveMode.Create, leaveOpen: true))
         {
-            var entry = zip.CreateEntry("word/document.xml");
-            using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
-            writer.Write("<w:document/>");
+            for (var i = -1; i < extraEntries; i++)
+            {
+                var entry = zip.CreateEntry(i < 0 ? entryName : $"extra/{i}.txt");
+                using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+                writer.Write("<w:document/>");
+            }
         }
+        return inner.ToArray();
+    }
+
+    [Fact]
+    public async Task DetectAsync_OfficeZipAtNonZeroStart_DetectsOfficeTypeAndRestoresPosition()
+    {
         var prefix = new byte[32];
-        using var ms = new MemoryStream([.. prefix, .. inner.ToArray()]);
+        using var ms = new MemoryStream([.. prefix, .. BuildZip("word/document.xml")]);
         ms.Position = prefix.Length;
 
         var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
 
-        Assert.Equal("application/zip", mime);
+        Assert.Equal("application/vnd.openxmlformats-officedocument.wordprocessingml.document", mime);
         Assert.Equal(prefix.Length, ms.Position);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_SafeZipAtNonZeroStart_IsValidWithHashing()
+    {
+        var prefix = new byte[32];
+        using var ms = new MemoryStream([.. prefix, .. BuildZip("word/document.xml")]);
+        ms.Position = prefix.Length;
+        var validator = new FileValidator(
+            new MagicNumberMimeTypeDetector(),
+            new NoopFileScanner(),
+            Options.Create(new FileValidationOptions { EnableZipSafetyChecks = true, EnableHashing = true, BlockExecutables = false }));
+
+        var result = await validator.ValidateAsync(ms, "a.docx");
+
+        Assert.True(result.IsValid, string.Join(";", result.Errors.Select(e => e.Code)));
+        Assert.Equal("application/vnd.openxmlformats-officedocument.wordprocessingml.document", result.MimeType);
+        Assert.NotNull(result.Sha256);
+        Assert.Equal(ms.Length - prefix.Length, result.SizeBytes);
+        Assert.Equal(prefix.Length, ms.Position);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ZipWithTooManyEntriesAtNonZeroStart_ReportsZipBomb()
+    {
+        var prefix = new byte[32];
+        using var ms = new MemoryStream([.. prefix, .. BuildZip("word/document.xml", extraEntries: 5)]);
+        ms.Position = prefix.Length;
+        var validator = new FileValidator(
+            new MagicNumberMimeTypeDetector(),
+            new NoopFileScanner(),
+            Options.Create(new FileValidationOptions { EnableZipSafetyChecks = true, ZipMaxEntries = 2, BlockExecutables = false }));
+
+        var result = await validator.ValidateAsync(ms, "a.docx");
+
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ZipBombSuspected);
+        Assert.Equal(prefix.Length, ms.Position);
+    }
+
+    [Fact]
+    public async Task DetectAsync_ShortReads_StillDetectsPng()
+    {
+        byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0, 0, 0, 0, 0];
+        using var stream = new OneByteAtATimeStream(png);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(stream);
+
+        Assert.Equal("image/png", mime);
+    }
+
+    private sealed class OneByteAtATimeStream(byte[] data) : MemoryStream(data)
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, System.Threading.CancellationToken ct = default)
+            => base.ReadAsync(buffer[..System.Math.Min(1, buffer.Length)], ct);
     }
 }

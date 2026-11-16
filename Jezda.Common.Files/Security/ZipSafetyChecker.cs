@@ -32,7 +32,8 @@ public static class ZipSafetyChecker
         var pos = stream.CanSeek ? stream.Position : 0;
         try
         {
-            using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+            using var view = new OffsetReadStream(stream);
+            using var archive = new ZipArchive(view, ZipArchiveMode.Read, leaveOpen: true);
             int entries = 0;
             long totalCompressed = 0;
             long totalUncompressed = 0;

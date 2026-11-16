@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.IO.Compression;
 using System.Text;
+using Jezda.Common.Files.Security;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,7 +41,8 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
         var pos = stream.CanSeek ? stream.Position : 0;
         try
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
+            // A single ReadAsync may return fewer bytes than asked; fill the signature buffer or hit EOF.
+            var read = await stream.ReadAtLeastAsync(buffer.AsMemory(0, buffer.Length), buffer.Length, throwOnEndOfStream: false, ct);
             if (read <= 0) return null;
 
             foreach (var sig in Signatures)
@@ -63,15 +65,15 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
                     // If ZIP matched, try to refine to Office OOXML types when possible
                     if (sig.MimeType == "application/zip")
                     {
-                        // ZipArchive addresses entries by absolute offset, so a stream that starts
-                        // past 0 cannot be inspected without reading bytes outside the content.
-                        if (stream.CanSeek && pos == 0)
+                        // ZipArchive addresses entries by absolute offset, so inspect a view that
+                        // starts at the stream's current position.
+                        if (stream.CanSeek)
                         {
-                            var current = stream.Position;
                             try
                             {
-                                stream.Seek(0, SeekOrigin.Begin);
-                                using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+                                stream.Seek(pos, SeekOrigin.Begin);
+                                using var view = new OffsetReadStream(stream);
+                                using var archive = new ZipArchive(view, ZipArchiveMode.Read, leaveOpen: true);
                                 var hasWord = archive.Entries.Any(e => e.FullName.StartsWith("word/", StringComparison.OrdinalIgnoreCase));
                                 var hasXl = archive.Entries.Any(e => e.FullName.StartsWith("xl/", StringComparison.OrdinalIgnoreCase));
                                 var hasPpt = archive.Entries.Any(e => e.FullName.StartsWith("ppt/", StringComparison.OrdinalIgnoreCase));
@@ -85,10 +87,6 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
                             catch
                             {
                                 // Fall back to generic zip if inspection fails
-                            }
-                            finally
-                            {
-                                stream.Seek(current, SeekOrigin.Begin);
                             }
                         }
                         return "application/zip";
