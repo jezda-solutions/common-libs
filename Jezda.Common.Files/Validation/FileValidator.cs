@@ -46,7 +46,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         if (fileStream.CanSeek)
         {
             var pos = fileStream.Position;
-            size = fileStream.Length;
+            size = Math.Max(0, fileStream.Length - pos);
             fileStream.Seek(pos, SeekOrigin.Begin);
         }
         else
