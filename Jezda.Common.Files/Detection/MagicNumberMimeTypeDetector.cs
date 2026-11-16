@@ -63,7 +63,9 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
                     // If ZIP matched, try to refine to Office OOXML types when possible
                     if (sig.MimeType == "application/zip")
                     {
-                        if (stream.CanSeek)
+                        // ZipArchive addresses entries by absolute offset, so a stream that starts
+                        // past 0 cannot be inspected without reading bytes outside the content.
+                        if (stream.CanSeek && pos == 0)
                         {
                             var current = stream.Position;
                             try
