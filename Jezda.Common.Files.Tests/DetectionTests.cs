@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
@@ -78,5 +79,110 @@ public class DetectionTests
         var det = new MagicNumberMimeTypeDetector();
         var mime = await det.DetectAsync(ms);
         Assert.Equal("application/vnd.openxmlformats-officedocument.wordprocessingml.document", mime);
+    }
+
+    [Fact]
+    public async Task BinaryWithAsciiHeader_IsNotText()
+    {
+        // 32 ASCII bytes, then binary data with null bytes: the text probe must look past the header.
+        using var ms = new MemoryStream([.. Encoding.ASCII.GetBytes("CUSTOMFMT v1.0 header 0123456789"), .. new byte[64]]);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Null(mime);
+        Assert.Equal(0, ms.Position);
+    }
+
+    [Fact]
+    public async Task AsciiText_LongerThanSignatureBuffer_IsText()
+    {
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("plain text line\n", 64))));
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    // UTF-8 text in Serbian: Latin with diacritics and Cyrillic are multi-byte (non-ASCII) bytes,
+    // repeated well past the 512-byte probe, so the data rows are inside it, not just the header.
+    [Theory]
+    [InlineData("Naziv;Cena\nČokolada đumbir;120\nŠećer žuti;95\nĆevapčići;450\nĐak ćuti;10\n")]
+    [InlineData("Naziv;Cena\nЧоколада ђумбир;120\nШећер жути;95\nЋевапчићи;450\nЂак ћути;10\n")]
+    [InlineData("Назив;Цена\nЧоколада;120\nШећер;95\n")]
+    public async Task Utf8SerbianText_IsText(string sample)
+    {
+        var text = string.Concat(Enumerable.Repeat(sample, 20));
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(text));
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    // Legacy code pages (Excel saves CSV in the ANSI code page on a Serbian Windows): not valid
+    // UTF-8, still text.
+    [Theory]
+    [InlineData(1250, "Naziv;Cena\nČokolada đumbir;120\nŠećer žuti;95\nĆevapčići;450\n")]
+    [InlineData(1251, "Naziv;Cena\nЧоколада ђумбир;120\nШећер жути;95\nЋевапчићи;450\n")]
+    public async Task LegacyCodePageText_IsText(int codePage, string sample)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var bytes = Encoding.GetEncoding(codePage).GetBytes(string.Concat(Enumerable.Repeat(sample, 20)));
+        using var ms = new MemoryStream(bytes);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    [Fact]
+    public async Task BinaryWithoutNullBytes_IsNotText()
+    {
+        // Every byte value 1..255 twice: no null byte, but ~10% control bytes, as in binary data.
+        var data = Enumerable.Range(0, 510).Select(i => (byte)(i % 255 + 1)).ToArray();
+        using var ms = new MemoryStream(data);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Null(mime);
+    }
+
+    [Fact]
+    public async Task ShortRiff_IsNotWebp()
+    {
+        // "RIFF" with fewer than 12 bytes cannot carry the WEBP fourCC at offset 8. The detector's
+        // pooled buffer is first left holding a real WEBP header (MemoryStream reads complete
+        // synchronously, so both calls rent on this thread), so without the length guard the
+        // stale "WEBP" at offset 8 would match. No control bytes: the text fallback decides.
+        var detector = new MagicNumberMimeTypeDetector();
+        using (var webp = new MemoryStream([.. Encoding.ASCII.GetBytes("RIFF"), 12, 0, 0, 0, .. Encoding.ASCII.GetBytes("WEBP"), .. new byte[8]]))
+            Assert.Equal("image/webp", await detector.DetectAsync(webp));
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes("RIFFabcd"));
+
+        var mime = await detector.DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    [Theory]
+    [InlineData(new byte[] { (byte)'h', (byte)'i', 0x0D, 0x0A, 0x1A }, "text/plain")] // DOS Ctrl+Z at the end
+    [InlineData(new byte[] { (byte)'h', (byte)'i', 0x07, (byte)'!', 0x08 }, null)]    // two controls in a short file
+    public async Task ShortFile_AllowsOneStrayControlByte(byte[] data, string? expected)
+    {
+        using var ms = new MemoryStream(data);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal(expected, mime);
+    }
+
+    [Fact]
+    public async Task ShortAsciiText_IsText()
+    {
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes("hi\n"));
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
     }
 }
