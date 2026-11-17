@@ -19,10 +19,13 @@ namespace Jezda.Common.Files.Validation;
 public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner scanner, IOptions<FileValidationOptions> options) : IFileValidator
 {
     /// <inheritdoc />
-    public Task<FileValidationResult> ValidateAsync(IFormFile file, FileValidationOverrides? overrides = null, CancellationToken ct = default)
+    public async Task<FileValidationResult> ValidateAsync(IFormFile file, FileValidationOverrides? overrides = null, CancellationToken ct = default)
     {
-        using var stream = file.OpenReadStream();
-        return ValidateAsync(stream, file.FileName, overrides, ct);
+        ArgumentNullException.ThrowIfNull(file);
+
+        // Awaited so the stream stays open until validation finishes, even when a check completes asynchronously.
+        await using var stream = file.OpenReadStream();
+        return await ValidateAsync(stream, file.FileName, overrides, ct);
     }
 
     /// <inheritdoc />
@@ -115,7 +118,10 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         // Malware heuristics via scanner
         if (merged.EnableMalwareHeuristics)
         {
+            var start = fileStream.Position;
             var scan = await scanner.ScanAsync(fileStream, ct);
+            // The scanner is pluggable and need not rewind; the contract promises the position is restored.
+            fileStream.Seek(start, SeekOrigin.Begin);
             if (!scan.IsClean)
                 errors.Add(new FileValidationError { Code = FileValidationErrorCode.MalwareSuspected, Message = scan.Report ?? "Malware suspected." });
         }

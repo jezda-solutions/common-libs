@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
 using Jezda.Common.Files.Security;
 using Jezda.Common.Files.Validation;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -32,9 +33,44 @@ public class FileValidatorStartPositionTests
         Assert.Equal(0, stream.Position);
     }
 
-    private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
+    // The IFormFile overload must keep its stream open until validation finishes; a check that
+    // completes asynchronously must not find the stream already disposed.
+    [Fact]
+    public async Task ValidateAsync_FormFileReadAsynchronously_KeepsStreamOpen()
     {
-        public override bool CanSeek => false;
+        var data = Encoding.ASCII.GetBytes("hello world");
+        using var inner = new YieldingStream(data);
+        var file = new FormFile(inner, 0, data.Length, "file", "a.txt");
+
+        var result = await CreateValidator().ValidateAsync(file);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(data.Length, result.SizeBytes);
+    }
+
+    // A pluggable scanner need not rewind; the validator restores the start position itself.
+    [Fact]
+    public async Task ValidateAsync_ScannerReadsToEnd_RestoresStartPosition()
+    {
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes("xxhello world"));
+        ms.Position = 2;
+        var validator = new FileValidator(
+            new MagicNumberMimeTypeDetector(),
+            new DrainingScanner(),
+            Options.Create(new FileValidationOptions { MaxSizeBytes = 1024, EnableMalwareHeuristics = true }));
+
+        await validator.ValidateAsync(ms, "a.txt");
+
+        Assert.Equal(2, ms.Position);
+    }
+
+    private sealed class DrainingScanner : IFileScanner
+    {
+        public async Task<FileScanResult> ScanAsync(Stream stream, CancellationToken ct = default)
+        {
+            await stream.CopyToAsync(Stream.Null, ct);
+            return new FileScanResult { IsClean = true };
+        }
     }
 
     [Fact]

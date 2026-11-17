@@ -185,11 +185,6 @@ public class FileServiceTests
         }
     }
 
-    private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
-    {
-        public override bool CanSeek => false;
-    }
-
     private sealed class RecordingStorage : IFileStorage
     {
         public string? LastSubPath { get; private set; } = "not-called";

@@ -14,7 +14,7 @@ public interface IFileValidator
     /// <summary>
     /// Validates an uploaded form file.
     /// </summary>
-    /// <param name="file">The form file to validate.</param>
+    /// <param name="file">The form file to validate. Its <see cref="IFormFile.OpenReadStream"/> must return a seekable stream, as the ASP.NET Core implementation does; otherwise <see cref="System.ArgumentException"/> is thrown.</param>
     /// <param name="overrides">Optional validation rule overrides for this specific file.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task containing the validation result with errors and file metadata.</returns>
