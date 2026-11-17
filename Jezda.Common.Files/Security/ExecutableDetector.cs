@@ -25,7 +25,8 @@ public static class ExecutableDetector
         try
         {
             Span<byte> header = stackalloc byte[8];
-            var read = stream.Read(header);
+            // A single Read may return fewer bytes than are available; read until the signature fits or EOF.
+            var read = stream.ReadAtLeast(header, 4, throwOnEndOfStream: false);
             if (read >= 4)
             {
                 // PE (Windows): "MZ"

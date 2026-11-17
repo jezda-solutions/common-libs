@@ -10,6 +10,14 @@ internal sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
     public override bool CanSeek => false;
 }
 
+/// <summary>A seekable stream that returns at most one byte per read, as buffered or network-backed streams may.</summary>
+internal sealed class OneBytePerReadStream(byte[] bytes) : MemoryStream(bytes)
+{
+    public override int Read(System.Span<byte> buffer) => base.Read(buffer[..System.Math.Min(1, buffer.Length)]);
+
+    public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, System.Math.Min(1, count));
+}
+
 /// <summary>A seekable stream whose async reads always complete asynchronously, like a file-backed upload.</summary>
 internal sealed class YieldingStream(byte[] bytes) : MemoryStream(bytes)
 {

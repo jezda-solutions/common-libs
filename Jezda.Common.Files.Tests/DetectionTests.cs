@@ -12,6 +12,15 @@ namespace Jezda.Common.Files.Tests;
 public class DetectionTests
 {
     [Fact]
+    public void ExecutableDetector_ShortReads_StillDetectsHeader()
+    {
+        using var stream = new OneBytePerReadStream([0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00]);
+
+        Assert.True(Jezda.Common.Files.Security.ExecutableDetector.IsExecutable(stream, "a.bin"));
+        Assert.Equal(0, stream.Position);
+    }
+
+    [Fact]
     public async Task Detects_PNG()
     {
         var pngHeader = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
