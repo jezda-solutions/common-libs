@@ -21,6 +21,10 @@ public sealed class FileValidationResult
     /// <summary>
     /// Gets or sets the normalized file name after applying naming policy rules.
     /// </summary>
+    /// <remarks>
+    /// <c>FileService</c> stores the file under this name, so an <see cref="IFileValidator"/> must set it for every
+    /// non-blank file name; a valid result without it is refused as <see cref="FileValidationErrorCode.InvalidFileName"/>.
+    /// </remarks>
     public string? NormalizedFileName { get; set; }
 
     /// <summary>

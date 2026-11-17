@@ -1,13 +1,17 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Jezda.Common.Files.Detection;
 using Jezda.Common.Files.Naming;
+using Jezda.Common.Files.Security;
 using Jezda.Common.Files.Services;
 using Jezda.Common.Files.Storage;
 using Jezda.Common.Files.Validation;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Jezda.Common.Files.Tests;
@@ -57,11 +61,108 @@ public class FileServiceTests
         var service = new FileService(validator, storage);
 
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UploadAsync(stream, "doc.txt"));
+        var ex = await Assert.ThrowsAsync<FileValidationException>(() => service.UploadAsync(stream, "doc.txt"));
 
         Assert.Equal("File too big.; Extension blocked.", ex.Message);
         Assert.Null(storage.Saved);
     }
+
+    [Fact]
+    public async Task UploadAsync_ValidationFailure_CarriesTheErrorCodes()
+    {
+        var validator = new FixedValidator(new FileValidationResult
+        {
+            IsValid = false,
+            Errors =
+            [
+                new FileValidationError { Code = FileValidationErrorCode.TooLarge, Message = "File too big." },
+                new FileValidationError { Code = FileValidationErrorCode.InvalidExtension, Message = "Extension blocked." }
+            ]
+        });
+        var service = new FileService(validator, new RecordingStorage());
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
+        var ex = await Assert.ThrowsAsync<FileValidationException>(() => service.UploadAsync(stream, "doc.txt"));
+
+        Assert.Equal(
+            [FileValidationErrorCode.TooLarge, FileValidationErrorCode.InvalidExtension],
+            ex.Errors.Select(e => e.Code));
+    }
+
+    // Callers that caught the old bare exception keep working.
+    [Fact]
+    public async Task UploadAsync_ValidationFailure_IsStillAnInvalidOperationException()
+    {
+        var validator = new FixedValidator(new FileValidationResult { IsValid = false });
+        var service = new FileService(validator, new RecordingStorage());
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
+        var ex = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.UploadAsync(stream, "doc.txt"));
+
+        var validationEx = Assert.IsType<FileValidationException>(ex);
+        Assert.Equal("File validation failed.", validationEx.Message);
+        Assert.Empty(validationEx.Errors);
+    }
+
+    [Fact]
+    public async Task UploadAsync_StoresTheValidatorsNormalizedName()
+    {
+        var validator = new FixedValidator(new FileValidationResult { IsValid = true, NormalizedFileName = "normalized.txt" });
+        var storage = new RecordingStorage();
+        var service = new FileService(validator, storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
+        await service.UploadAsync(stream, "raw name.txt");
+
+        Assert.Equal("normalized.txt", storage.LastFileName);
+    }
+
+    // A host that configures FileValidationOptions.Policy gets that policy's name stored, not the default one's.
+    [Fact]
+    public async Task UploadAsync_CustomPolicyInValidationOptions_NamesTheStoredFile()
+    {
+        var options = new FileValidationOptions { Policy = new FileNamePolicy { ReplacementChar = '-' } };
+        var storage = new RecordingStorage();
+        var service = new FileService(RealValidator(options), storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("plain text content"));
+        await service.UploadAsync(stream, "a*b.txt");
+
+        Assert.Equal("a-b.txt", storage.LastFileName);
+    }
+
+    [Fact]
+    public async Task UploadAsync_NameThePolicyRejects_ThrowsInvalidFileName_NotStored()
+    {
+        var options = new FileValidationOptions { Policy = new FileNamePolicy { ReplaceInvalidChars = false } };
+        var storage = new RecordingStorage();
+        var service = new FileService(RealValidator(options), storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("plain text content"));
+        var ex = await Assert.ThrowsAsync<FileValidationException>(() => service.UploadAsync(stream, "bad*name.txt"));
+
+        Assert.Contains(ex.Errors, e => e.Code == FileValidationErrorCode.InvalidFileName);
+        Assert.Null(storage.Saved);
+    }
+
+    // The validator treats the name as optional and skips the name check for a blank one; storage needs a name.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UploadAsync_BlankFileName_ThrowsInvalidFileName_NotStored(string fileName)
+    {
+        var storage = new RecordingStorage();
+        var service = new FileService(RealValidator(new FileValidationOptions()), storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("plain text content"));
+        var ex = await Assert.ThrowsAsync<FileValidationException>(() => service.UploadAsync(stream, fileName));
+
+        Assert.Equal(FileValidationErrorCode.InvalidFileName, Assert.Single(ex.Errors).Code);
+        Assert.Null(storage.Saved);
+    }
+
+    private static FileValidator RealValidator(FileValidationOptions options)
+        => new(new MagicNumberMimeTypeDetector(), new NoopFileScanner(), Options.Create(options));
 
     [Fact]
     public async Task UploadAsync_NonSeekableStream_IsRejected_BeforeAnythingIsStored()
@@ -81,19 +182,6 @@ public class FileServiceTests
         var service = new FileService(new AcceptingValidator(), new RecordingStorage());
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => service.UploadAsync(null!, "doc.txt"));
-    }
-
-    [Fact]
-    public async Task UploadAsync_InvalidFileName_IsRejected_NotStored()
-    {
-        var storage = new RecordingStorage();
-        var policy = new FileNamePolicy { ReplaceInvalidChars = false };
-        var service = new FileService(new AcceptingValidator(), storage, policy);
-
-        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UploadAsync(stream, "bad*name.txt"));
-
-        Assert.Null(storage.Saved);
     }
 
     [Fact]
@@ -164,7 +252,7 @@ public class FileServiceTests
             => Task.FromResult(new FileValidationResult { IsValid = true, MimeType = "text/plain" });
 
         public Task<FileValidationResult> ValidateAsync(Stream fileStream, string? fileName = null, FileValidationOverrides? overrides = null, CancellationToken ct = default)
-            => Task.FromResult(new FileValidationResult { IsValid = true, MimeType = "text/plain" });
+            => Task.FromResult(new FileValidationResult { IsValid = true, MimeType = "text/plain", NormalizedFileName = fileName });
     }
 
     private sealed class FixedValidator(FileValidationResult result) : IFileValidator
@@ -185,18 +273,20 @@ public class FileServiceTests
         public async Task<FileValidationResult> ValidateAsync(Stream fileStream, string? fileName = null, FileValidationOverrides? overrides = null, CancellationToken ct = default)
         {
             await fileStream.CopyToAsync(Stream.Null, ct);
-            return new FileValidationResult { IsValid = true };
+            return new FileValidationResult { IsValid = true, NormalizedFileName = fileName };
         }
     }
 
     private sealed class RecordingStorage : IFileStorage
     {
         public string? LastSubPath { get; private set; } = "not-called";
+        public string? LastFileName { get; private set; }
         public byte[]? Saved { get; private set; }
 
         public Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
         {
             LastSubPath = subPath;
+            LastFileName = fileName;
             using var copy = new MemoryStream();
             content.CopyTo(copy);
             Saved = copy.ToArray();

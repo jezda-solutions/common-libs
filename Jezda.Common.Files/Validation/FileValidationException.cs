@@ -1,0 +1,29 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Jezda.Common.Files.Validation;
+
+/// <summary>
+/// A file that failed validation on upload. <see cref="Errors"/> carries the codes, so a caller can
+/// map them to a response, e.g. <see cref="FileValidationErrorCode.TooLarge"/> to 413.
+/// </summary>
+/// <remarks>
+/// Derives from <see cref="InvalidOperationException"/> so code that already catches that keeps working.
+/// </remarks>
+public sealed class FileValidationException : InvalidOperationException
+{
+    public FileValidationException(IReadOnlyList<FileValidationError> errors)
+        : base(BuildMessage(errors))
+    {
+        Errors = errors;
+    }
+
+    /// <summary>The validation errors, in the order the validator reported them; empty when it gave none.</summary>
+    public IReadOnlyList<FileValidationError> Errors { get; }
+
+    private static string BuildMessage(IReadOnlyList<FileValidationError>? errors)
+        => errors is { Count: > 0 }
+            ? string.Join("; ", errors.Select(e => e.Message))
+            : "File validation failed.";
+}
