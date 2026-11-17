@@ -28,6 +28,13 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
     /// <inheritdoc />
     public async Task<FileValidationResult> ValidateAsync(Stream fileStream, string? fileName = null, FileValidationOverrides? overrides = null, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(fileStream);
+
+        // Every check reads the stream and seeks back to the start position; without Seek the bytes
+        // the first check consumed are gone, and size, hash and executable detection see the wrong content.
+        if (!fileStream.CanSeek)
+            throw new ArgumentException("The file stream must be seekable.", nameof(fileStream));
+
         var merged = MergeOptions(options.Value, overrides);
         var errors = new List<FileValidationError>();
         var result = new FileValidationResult();
@@ -41,21 +48,11 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
             result.NormalizedFileName = normalizedName;
         }
 
-        // Size
-        long size = 0;
-        if (fileStream.CanSeek)
-        {
-            // Size is what remains from the current position, the same bytes the storage will write.
-            size = Math.Max(0, fileStream.Length - fileStream.Position);
-        }
-        else
-        {
-            // Fallback: measure while hashing if needed later
-            size = -1;
-        }
+        // Size is what remains from the current position, the same bytes the storage will write.
+        var size = Math.Max(0, fileStream.Length - fileStream.Position);
         if (size == 0)
             errors.Add(new FileValidationError { Code = FileValidationErrorCode.EmptyFile, Message = "File is empty." });
-        if (size > 0 && size > merged.MaxSizeBytes)
+        if (size > merged.MaxSizeBytes)
             errors.Add(new FileValidationError { Code = FileValidationErrorCode.TooLarge, Message = $"File exceeds max size of {merged.MaxSizeBytes} bytes." });
 
         // Early exit if already too large
@@ -63,7 +60,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         {
             result.Errors = errors;
             result.IsValid = false;
-            result.SizeBytes = size > 0 ? size : 0;
+            result.SizeBytes = size;
             return result;
         }
 
@@ -111,13 +108,9 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
                 errors.Add(new FileValidationError { Code = FileValidationErrorCode.InvalidImageDimensions, Message = "Image dimensions out of allowed bounds." });
         }
 
-        // Hashing & size measurement if required
-        if (merged.EnableHashing || size < 0)
-        {
-            var (sha256, measuredSize) = await ComputeSha256Async(fileStream, ct);
-            result.Sha256 = merged.EnableHashing ? sha256 : null;
-            if (size < 0) size = measuredSize;
-        }
+        // Hashing
+        if (merged.EnableHashing)
+            result.Sha256 = await ComputeSha256Async(fileStream, ct);
 
         // Malware heuristics via scanner
         if (merged.EnableMalwareHeuristics)
@@ -127,7 +120,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
                 errors.Add(new FileValidationError { Code = FileValidationErrorCode.MalwareSuspected, Message = scan.Report ?? "Malware suspected." });
         }
 
-        result.SizeBytes = size > 0 ? size : 0;
+        result.SizeBytes = size;
         result.Errors = errors;
         result.IsValid = errors.Count == 0;
         return result;
@@ -164,22 +157,20 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         };
     }
 
-    private static async Task<(string sha256, long size)> ComputeSha256Async(Stream stream, CancellationToken ct)
+    private static async Task<string> ComputeSha256Async(Stream stream, CancellationToken ct)
     {
         var pos = stream.CanSeek ? stream.Position : 0;
         try
         {
             using var sha = SHA256.Create();
-            long size = 0;
             var buffer = new byte[8192];
             int read;
             while ((read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
             {
                 sha.TransformBlock(buffer, 0, read, null, 0);
-                size += read;
             }
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            return (Convert.ToHexString(sha.Hash!).ToLowerInvariant(), size);
+            return Convert.ToHexString(sha.Hash!).ToLowerInvariant();
         }
         finally
         {

@@ -21,6 +21,22 @@ public class FileValidatorStartPositionTests
             new NoopFileScanner(),
             Options.Create(new FileValidationOptions { MaxSizeBytes = maxSizeBytes }));
 
+    // Every check reads the stream and seeks back; a non-seekable stream would lose the bytes the
+    // first check read, so size, hash and executable detection would run on the wrong content.
+    [Fact]
+    public async Task ValidateAsync_NonSeekableStream_IsRejected()
+    {
+        using var stream = new NonSeekableStream([0x4D, 0x5A, 0x90, 0x00]);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateValidator().ValidateAsync(stream, "a.txt"));
+        Assert.Equal(0, stream.Position);
+    }
+
+    private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
+    }
+
     [Fact]
     public async Task ValidateAsync_StreamAtEnd_ReportsEmptyFile()
     {
