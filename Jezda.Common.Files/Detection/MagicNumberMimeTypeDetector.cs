@@ -110,7 +110,7 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
     /// Plain-text heuristic over the probe, independent of the encoding: text has no null bytes and
     /// (almost) no control bytes other than tab, LF, CR, form feed and escape, in ASCII, UTF-8 or a
     /// legacy single-byte code page alike. Binary data is full of both, so more than 1% control
-    /// bytes counts as binary.
+    /// bytes counts as binary; one stray control byte (e.g. a DOS Ctrl+Z at the end) is always allowed.
     /// </summary>
     private static bool LooksLikeText(ReadOnlySpan<byte> probe)
     {
@@ -120,6 +120,6 @@ public sealed class MagicNumberMimeTypeDetector : IMimeTypeDetector
             if (b == 0) return false;
             if ((b < 0x20 && b is not (0x09 or 0x0A or 0x0C or 0x0D or 0x1B)) || b == 0x7F) controls++;
         }
-        return probe.Length > 0 && controls * 100 <= probe.Length;
+        return probe.Length > 0 && controls <= Math.Max(1, probe.Length / 100);
     }
 }

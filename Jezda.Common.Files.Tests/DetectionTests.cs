@@ -150,12 +150,25 @@ public class DetectionTests
     [Fact]
     public async Task ShortRiff_IsNotWebp()
     {
-        // "RIFF" with fewer than 12 bytes cannot carry the WEBP fourCC at offset 8.
-        using var ms = new MemoryStream([.. Encoding.ASCII.GetBytes("RIFF"), 0x01, 0x02]);
+        // "RIFF" with fewer than 12 bytes cannot carry the WEBP fourCC at offset 8. No control
+        // bytes, so the text fallback (not the text check failing) decides the result.
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes("RIFFabcd"));
 
         var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
 
-        Assert.NotEqual("image/webp", mime);
+        Assert.Equal("text/plain", mime);
+    }
+
+    [Theory]
+    [InlineData(new byte[] { (byte)'h', (byte)'i', 0x0D, 0x0A, 0x1A }, "text/plain")] // DOS Ctrl+Z at the end
+    [InlineData(new byte[] { (byte)'h', (byte)'i', 0x07, (byte)'!', 0x08 }, null)]    // two controls in a short file
+    public async Task ShortFile_AllowsOneStrayControlByte(byte[] data, string? expected)
+    {
+        using var ms = new MemoryStream(data);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal(expected, mime);
     }
 
     [Fact]
