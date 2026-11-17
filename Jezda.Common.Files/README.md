@@ -52,5 +52,6 @@ if (!result.IsValid)
 
 ## Napomene
 - Stream se koristi pažljivo (seek/reset) bez nepotrebnog učitavanja u memoriju.
+- `ValidateAsync(Stream)` zahteva seekable stream (stream koji nije seekable baca `ArgumentException`); sadržaj se čita od trenutne pozicije, a pozicija se vraća posle validacije. `IFormFile.OpenReadStream()` jeste seekable.
 - MIME detekcija primarno gleda sadržaj; ekstenzije su sekundarni signal.
 - Za AV integraciju, registrujte sopstveni `IFileScanner` preko DI.
