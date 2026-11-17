@@ -103,9 +103,8 @@ public class DetectionTests
         Assert.Equal("text/plain", mime);
     }
 
-    // UTF-8 text in Serbian: Latin with diacritics and Cyrillic are multi-byte, so the probe must
-    // count valid UTF-8 sequences as text, not only ASCII. Repeated past 512 bytes, so the probe
-    // also ends in the middle of a multi-byte character.
+    // UTF-8 text in Serbian: Latin with diacritics and Cyrillic are multi-byte (non-ASCII) bytes,
+    // repeated well past the 512-byte probe, so the data rows are inside it, not just the header.
     [Theory]
     [InlineData("Naziv;Cena\nČokolada đumbir;120\nŠećer žuti;95\nĆevapčići;450\nĐak ćuti;10\n")]
     [InlineData("Naziv;Cena\nЧоколада ђумбир;120\nШећер жути;95\nЋевапчићи;450\nЂак ћути;10\n")]
@@ -120,16 +119,43 @@ public class DetectionTests
         Assert.Equal("text/plain", mime);
     }
 
-    [Fact]
-    public async Task InvalidUtf8HighBytes_IsNotText()
+    // Legacy code pages (Excel saves CSV in the ANSI code page on a Serbian Windows): not valid
+    // UTF-8, still text.
+    [Theory]
+    [InlineData(1250, "Naziv;Cena\nČokolada đumbir;120\nŠećer žuti;95\nĆevapčići;450\n")]
+    [InlineData(1251, "Naziv;Cena\nЧоколада ђумбир;120\nШећер жути;95\nЋевапчићи;450\n")]
+    public async Task LegacyCodePageText_IsText(int codePage, string sample)
     {
-        // Bytes >= 0x80 that do not form UTF-8 sequences, no nulls: binary, not text.
-        var data = Enumerable.Range(0, 256).Select(i => (byte)(0x80 + (i * 7) % 0x40)).ToArray();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var bytes = Encoding.GetEncoding(codePage).GetBytes(string.Concat(Enumerable.Repeat(sample, 20)));
+        using var ms = new MemoryStream(bytes);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.Equal("text/plain", mime);
+    }
+
+    [Fact]
+    public async Task BinaryWithoutNullBytes_IsNotText()
+    {
+        // Every byte value 1..255 twice: no null byte, but ~10% control bytes, as in binary data.
+        var data = Enumerable.Range(0, 510).Select(i => (byte)(i % 255 + 1)).ToArray();
         using var ms = new MemoryStream(data);
 
         var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
 
         Assert.Null(mime);
+    }
+
+    [Fact]
+    public async Task ShortRiff_IsNotWebp()
+    {
+        // "RIFF" with fewer than 12 bytes cannot carry the WEBP fourCC at offset 8.
+        using var ms = new MemoryStream([.. Encoding.ASCII.GetBytes("RIFF"), 0x01, 0x02]);
+
+        var mime = await new MagicNumberMimeTypeDetector().DetectAsync(ms);
+
+        Assert.NotEqual("image/webp", mime);
     }
 
     [Fact]
