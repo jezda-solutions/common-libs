@@ -118,10 +118,18 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         // Malware heuristics via scanner
         if (merged.EnableMalwareHeuristics)
         {
+            // The scanner is pluggable and need not rewind; the contract promises the position is restored,
+            // also when the scan throws or is cancelled.
             var start = fileStream.Position;
-            var scan = await scanner.ScanAsync(fileStream, ct);
-            // The scanner is pluggable and need not rewind; the contract promises the position is restored.
-            fileStream.Seek(start, SeekOrigin.Begin);
+            FileScanResult scan;
+            try
+            {
+                scan = await scanner.ScanAsync(fileStream, ct);
+            }
+            finally
+            {
+                fileStream.Seek(start, SeekOrigin.Begin);
+            }
             if (!scan.IsClean)
                 errors.Add(new FileValidationError { Code = FileValidationErrorCode.MalwareSuspected, Message = scan.Report ?? "Malware suspected." });
         }

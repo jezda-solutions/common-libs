@@ -64,6 +64,29 @@ public class FileValidatorStartPositionTests
         Assert.Equal(2, ms.Position);
     }
 
+    [Fact]
+    public async Task ValidateAsync_ScannerThrows_RestoresStartPosition()
+    {
+        using var ms = new MemoryStream(Encoding.ASCII.GetBytes("xxhello world"));
+        ms.Position = 2;
+        var validator = new FileValidator(
+            new MagicNumberMimeTypeDetector(),
+            new ThrowingScanner(),
+            Options.Create(new FileValidationOptions { MaxSizeBytes = 1024, EnableMalwareHeuristics = true }));
+
+        await Assert.ThrowsAsync<IOException>(() => validator.ValidateAsync(ms, "a.txt"));
+        Assert.Equal(2, ms.Position);
+    }
+
+    private sealed class ThrowingScanner : IFileScanner
+    {
+        public async Task<FileScanResult> ScanAsync(Stream stream, CancellationToken ct = default)
+        {
+            await stream.CopyToAsync(Stream.Null, ct);
+            throw new IOException("scanner unavailable");
+        }
+    }
+
     private sealed class DrainingScanner : IFileScanner
     {
         public async Task<FileScanResult> ScanAsync(Stream stream, CancellationToken ct = default)
