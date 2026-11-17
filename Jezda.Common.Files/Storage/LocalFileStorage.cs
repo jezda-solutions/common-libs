@@ -40,9 +40,19 @@ public class LocalFileStorage : IFileStorage
             throw new ArgumentException("The sub-path must be relative and must not contain '..' segments.", nameof(subPath));
         }
 
+        // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
+        // is a folder literally named "\"; a sub-path must name at least one real folder. The
+        // resolved-path check also catches spellings the segment rule misses, such as "..." on
+        // Windows, where trailing dots are trimmed.
+        // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
         if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)
         {
             throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
+        {
+            throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
         }
 
         // Create hierarchy: Root/subPath/(yyyy/MM/dd)/
@@ -135,6 +145,21 @@ public class LocalFileStorage : IFileStorage
         => EnsureUnderRoot(
             Path.Combine(_options.RootPath, relativePath.Replace('/', Path.DirectorySeparatorChar)),
             nameof(relativePath));
+
+    /// <summary>
+    /// True when every segment of <paramref name="subPath"/> (split on both separators) is empty,
+    /// whitespace or ".", so it names no folder: "/", "\", ".", "./", " . / . ".
+    /// </summary>
+    private static bool NamesNoFolder(string subPath)
+        => subPath.Split('/', '\\').All(segment => segment.Trim() is "" or ".");
+
+    private bool ResolvesToRoot(string subPath)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_options.RootPath));
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(_options.RootPath, subPath)));
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return string.Equals(full, root, comparison);
+    }
 
     /// <summary>
     /// Resolves <paramref name="path"/> and throws unless it is the storage root or lies inside it,

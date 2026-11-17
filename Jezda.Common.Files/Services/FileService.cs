@@ -75,10 +75,11 @@ public class FileService : IFileService
         while (trimmed.Length > 0 && (trimmed[^1] is '/' or '\\' || char.IsWhiteSpace(trimmed[^1])))
             trimmed = trimmed[..^1];
 
-        // "/" or " / " is not "no subPath": it is typically a path built from an empty tenant id,
-        // and storing it in the shared root would hide that mistake.
-        if (trimmed.Length == 0)
-            throw new ArgumentException("The subPath must not consist of separators only.", nameof(subPath));
+        // "/", " / " or "./" is not "no subPath": it is typically a path built from an empty tenant id,
+        // and storing it in the shared root would hide that mistake. This segment rule runs here for
+        // every IFileStorage backend; LocalFileStorage also rejects a sub-path that resolves to its root.
+        if (trimmed.Split('/', '\\').All(segment => segment.Trim() is "" or "."))
+            throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
 
         return trimmed;
     }

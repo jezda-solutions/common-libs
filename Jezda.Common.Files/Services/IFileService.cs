@@ -25,7 +25,7 @@ public interface IFileService
     /// <exception cref="InvalidOperationException">Thrown when file validation fails or the file name is rejected by the name policy.</exception>
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="content"/> is not seekable (validation reads it, and storage must get the same bytes),
-    /// when <paramref name="subPath"/> is not blank but consists of separators only, is rooted or contains a <c>..</c> segment, when the file name has a
+    /// when <paramref name="subPath"/> is not blank but names no folder (only separators or <c>.</c> segments), is rooted or contains a <c>..</c> segment, when the file name has a
     /// directory part, or when either resolves outside the storage root.
     /// </exception>
     Task<FileDescriptor> UploadAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
