@@ -62,6 +62,21 @@ public sealed class StoragePathContainmentTests : IDisposable
         Assert.False(Directory.Exists(_root) && Directory.EnumerateFileSystemEntries(_root).Any());
     }
 
+    // Windows trims trailing dots, so "..." resolves to the root itself; on Linux it is an ordinary
+    // folder name, so the case only applies on Windows.
+    [Fact]
+    public async Task SaveAsync_SubPathResolvingToRootOnWindows_Throws()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        await using var stream = Content();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", "..."));
+
+        Assert.Equal("subPath", ex.ParamName);
+    }
+
     [Theory]
     [InlineData("./tenant-a", "tenant-a")]
     [InlineData("tenant-a/./docs", "tenant-a/docs")]

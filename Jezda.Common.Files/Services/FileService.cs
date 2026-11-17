@@ -76,9 +76,10 @@ public class FileService : IFileService
             trimmed = trimmed[..^1];
 
         // "/", " / " or "./" is not "no subPath": it is typically a path built from an empty tenant id,
-        // and storing it in the shared root would hide that mistake.
-        if (LocalFileStorage.NamesNoFolder(trimmed))
-            throw new ArgumentException("The subPath must name a folder, not only separators or '.' segments.", nameof(subPath));
+        // and storing it in the shared root would hide that mistake. Checked here, before the
+        // backend, so every IFileStorage implementation gets the same rule.
+        if (trimmed.Split('/', '\\').All(segment => segment.Trim() is "" or "."))
+            throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
 
         return trimmed;
     }
