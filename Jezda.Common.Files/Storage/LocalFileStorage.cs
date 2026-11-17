@@ -40,6 +40,13 @@ public class LocalFileStorage : IFileStorage
             throw new ArgumentException("The sub-path must be relative and must not contain '..' segments.", nameof(subPath));
         }
 
+        // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
+        // is a folder literally named "\"; a sub-path must name at least one real folder.
+        if (!string.IsNullOrWhiteSpace(subPath) && NamesNoFolder(subPath))
+        {
+            throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
+        }
+
         if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)
         {
             throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
@@ -141,6 +148,13 @@ public class LocalFileStorage : IFileStorage
     /// so a sub-path, file name or relative path with <c>..</c> segments or a rooted path cannot
     /// reach files outside <see cref="FileStorageOptions.RootPath"/>.
     /// </summary>
+    /// <summary>
+    /// True when every segment of <paramref name="subPath"/> (split on both separators) is empty,
+    /// whitespace or ".", so it names no folder: "/", "\", ".", "./", " . / . ".
+    /// </summary>
+    internal static bool NamesNoFolder(string subPath)
+        => subPath.Split('/', '\\').All(segment => segment.Trim() is "" or ".");
+
     private string EnsureUnderRoot(string path, string paramName)
     {
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_options.RootPath));

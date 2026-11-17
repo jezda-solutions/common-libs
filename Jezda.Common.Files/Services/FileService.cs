@@ -75,10 +75,10 @@ public class FileService : IFileService
         while (trimmed.Length > 0 && (trimmed[^1] is '/' or '\\' || char.IsWhiteSpace(trimmed[^1])))
             trimmed = trimmed[..^1];
 
-        // "/" or " / " is not "no subPath": it is typically a path built from an empty tenant id,
+        // "/", " / " or "./" is not "no subPath": it is typically a path built from an empty tenant id,
         // and storing it in the shared root would hide that mistake.
-        if (trimmed.Length == 0)
-            throw new ArgumentException("The subPath must not consist of separators only.", nameof(subPath));
+        if (LocalFileStorage.NamesNoFolder(trimmed))
+            throw new ArgumentException("The subPath must name a folder, not only separators or '.' segments.", nameof(subPath));
 
         return trimmed;
     }

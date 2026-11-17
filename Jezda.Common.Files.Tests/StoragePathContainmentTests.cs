@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Storage;
@@ -40,6 +41,38 @@ public sealed class StoragePathContainmentTests : IDisposable
 
         Assert.False(Directory.Exists(Path.Combine(_parent, "outside")));
         Assert.Empty(Directory.GetFiles(_parent, "*", SearchOption.TopDirectoryOnly));
+    }
+
+    // A sub-path that names no folder would store the file in the shared root instead of the
+    // caller's folder; on Linux "\" is not a separator, so it would create a folder named "\".
+    [Theory]
+    [InlineData(".")]
+    [InlineData("./")]
+    [InlineData("./.")]
+    [InlineData(" . ")]
+    [InlineData("\\")]
+    [InlineData(".\\")]
+    public async Task SaveAsync_SubPathNamingNoFolder_Throws(string subPath)
+    {
+        await using var stream = Content();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", subPath));
+
+        Assert.Equal("subPath", ex.ParamName);
+        Assert.False(Directory.Exists(_root) && Directory.EnumerateFileSystemEntries(_root).Any());
+    }
+
+    [Theory]
+    [InlineData("./tenant-a", "tenant-a")]
+    [InlineData("tenant-a/./docs", "tenant-a/docs")]
+    public async Task SaveAsync_SubPathWithDotSegments_StoresUnderNamedFolder(string subPath, string expected)
+    {
+        await using var stream = Content();
+
+        var descriptor = await _storage.SaveAsync(stream, "doc.txt", subPath);
+
+        var folder = Path.GetFullPath(Path.Combine(_root, expected));
+        Assert.StartsWith(folder + Path.DirectorySeparatorChar, Path.GetFullPath(Path.Combine(_root, descriptor.RelativePath)));
     }
 
     [Fact]

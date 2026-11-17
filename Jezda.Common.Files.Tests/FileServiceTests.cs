@@ -132,6 +132,10 @@ public class FileServiceTests
     [InlineData("//")]
     [InlineData("/ /")]
     [InlineData(" \\ / ")]
+    [InlineData(".")]
+    [InlineData("./")]
+    [InlineData(" . / . ")]
+    [InlineData(".\\")]
     public async Task UploadAsync_SeparatorOnlySubPath_IsRejected_NotStored(string subPath)
     {
         var storage = new RecordingStorage();
