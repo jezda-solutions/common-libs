@@ -44,14 +44,15 @@ public class LocalFileStorage : IFileStorage
         // is a folder literally named "\"; a sub-path must name at least one real folder. The
         // resolved-path check also catches spellings the segment rule misses, such as "..." on
         // Windows, where trailing dots are trimmed.
-        if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
-        {
-            throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
-        }
-
+        // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
         if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)
         {
             throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
+        {
+            throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
         }
 
         // Create hierarchy: Root/subPath/(yyyy/MM/dd)/
