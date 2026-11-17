@@ -159,7 +159,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
 
     private static async Task<string> ComputeSha256Async(Stream stream, CancellationToken ct)
     {
-        var pos = stream.CanSeek ? stream.Position : 0;
+        var pos = stream.Position;
         try
         {
             using var sha = SHA256.Create();
@@ -174,7 +174,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         }
         finally
         {
-            if (stream.CanSeek) stream.Seek(pos, SeekOrigin.Begin);
+            stream.Seek(pos, SeekOrigin.Begin);
         }
     }
 
