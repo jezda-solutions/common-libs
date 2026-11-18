@@ -27,7 +27,10 @@ public interface IFileValidator
     /// Validates a file stream with optional file name.
     /// </summary>
     /// <param name="fileStream">The file stream to validate. Must be seekable; a non-seekable stream throws <see cref="System.ArgumentException"/>. The content is read from its current position to the end, and the size limit applies to those bytes. Position is restored after validation.</param>
-    /// <param name="fileName">Optional file name for extension-based validation.</param>
+    /// <param name="fileName">
+    /// Optional file name for name-policy and extension-based validation. For a non-blank name, a valid result must
+    /// carry <see cref="FileValidationResult.NormalizedFileName"/>: <c>FileService</c> stores the file under it.
+    /// </param>
     /// <param name="overrides">Optional validation rule overrides for this specific file.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task containing the validation result with errors and file metadata.</returns>

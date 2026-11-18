@@ -22,7 +22,11 @@ public interface IFileService
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the uploaded file.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when file validation fails or the file name is rejected by the name policy.</exception>
+    /// <exception cref="Validation.FileValidationException">
+    /// Thrown when file validation fails, including a file name the configured <c>FileValidationOptions.Policy</c> rejects
+    /// or a blank one; <see cref="Validation.FileValidationException.Errors"/> carries the error codes.
+    /// It derives from <see cref="System.InvalidOperationException"/>.
+    /// </exception>
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="content"/> is not seekable (validation reads it, and storage must get the same bytes),
     /// when <paramref name="subPath"/> is not blank but names no folder (only separators or <c>.</c> segments), is rooted or contains a <c>..</c> segment, when the file name has a

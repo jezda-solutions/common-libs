@@ -47,7 +47,7 @@ public sealed class FileValidator(IMimeTypeDetector mimeDetector, IFileScanner s
         {
             var (isValidName, normalizedName) = merged.Policy.ValidateAndNormalize(fileName);
             if (!isValidName)
-                errors.Add(new FileValidationError { Code = FileValidationErrorCode.InvalidFileName, Message = "Invalid file name." });
+                errors.Add(FileValidationError.InvalidFileName());
             result.NormalizedFileName = normalizedName;
         }
 

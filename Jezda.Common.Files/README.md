@@ -53,5 +53,7 @@ if (!result.IsValid)
 ## Napomene
 - Stream se koristi pažljivo (seek/reset) bez nepotrebnog učitavanja u memoriju.
 - `ValidateAsync(Stream)` zahteva seekable stream (stream koji nije seekable baca `ArgumentException`); sadržaj se čita od trenutne pozicije, a pozicija se vraća posle validacije. `IFormFile.OpenReadStream()` jeste seekable.
+- `IFileService.UploadAsync` čuva fajl pod imenom koje vrati validator (`FileValidationResult.NormalizedFileName`, po `FileValidationOptions.Policy`), pa sopstvena politika imena ide u opcije validacije, ne u `FileService`. **Breaking:** `FileService` više ne prima `FileNamePolicy`; `FileNamePolicy` registrovan u DI se više ne koristi — prebacite ga u `FileValidationOptions.Policy`. Sopstveni `IFileValidator` mora da postavi `NormalizedFileName` za neprazno ime.
+- Neuspela validacija pri uploadu baca `FileValidationException` (nasleđuje `InvalidOperationException`); `Errors` nosi kodove, npr. `TooLarge` za 413.
 - MIME detekcija primarno gleda sadržaj; ekstenzije su sekundarni signal.
 - Za AV integraciju, registrujte sopstveni `IFileScanner` preko DI.

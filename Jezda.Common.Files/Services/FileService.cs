@@ -3,7 +3,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Jezda.Common.Files.Naming;
 using Jezda.Common.Files.Storage;
 using Jezda.Common.Files.Validation;
 
@@ -17,13 +16,11 @@ public class FileService : IFileService
 {
     private readonly IFileValidator _validator;
     private readonly IFileStorage _storage;
-    private readonly FileNamePolicy _namePolicy;
 
-    public FileService(IFileValidator validator, IFileStorage storage, FileNamePolicy? namePolicy = null)
+    public FileService(IFileValidator validator, IFileStorage storage)
     {
         _validator = validator;
         _storage = storage;
-        _namePolicy = namePolicy ?? new FileNamePolicy();
     }
 
     /// <inheritdoc />
@@ -40,22 +37,25 @@ public class FileService : IFileService
         // fails here, before the validator reads the stream.
         var targetSubPath = NormalizeSubPath(subPath);
 
+        // The validator treats the name as optional and skips the name check for a blank one; storage needs
+        // a name, so a blank one is refused here, before the validator reads the stream.
+        if (string.IsNullOrWhiteSpace(fileName))
+            throw new FileValidationException([FileValidationError.InvalidFileName()]);
+
         var startPosition = content.Position;
 
-        // Validate file, including ZIP safety, executable detection, etc.
+        // Validate file, including name policy, ZIP safety, executable detection, etc.
         var validation = await _validator.ValidateAsync(content, fileName, overrides: null, ct: cancellationToken);
         if (!validation.IsValid)
-        {
-            var msg = validation.Errors is { Count: > 0 }
-                ? string.Join("; ", validation.Errors.Select(e => e.Message))
-                : "File validation failed.";
-            throw new InvalidOperationException(msg);
-        }
+            throw new FileValidationException(validation.Errors);
 
-        // Normalize file name via policy (Unicode-friendly); a name the policy rejects is not stored
-        var (isValidName, normalizedName) = _namePolicy.ValidateAndNormalize(fileName);
-        if (!isValidName)
-            throw new InvalidOperationException("Invalid file name.");
+        // The validator names the file with the configured FileValidationOptions.Policy, so storage gets the
+        // same name the caller sees in the result. A valid result without one is a validator bug, not the
+        // caller's file name, so it is not reported as a validation failure.
+        var normalizedName = validation.NormalizedFileName;
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            throw new InvalidOperationException(
+                $"{_validator.GetType().Name} returned a valid result without {nameof(FileValidationResult.NormalizedFileName)}; FileService stores the file under that name.");
 
         // Store from where the caller's stream started, not from byte 0
         content.Seek(startPosition, SeekOrigin.Begin);
