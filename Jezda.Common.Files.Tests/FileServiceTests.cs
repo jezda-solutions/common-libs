@@ -191,12 +191,17 @@ public class FileServiceTests
     [Fact]
     public void FileValidationException_KeepsItsOwnCopyOfTheErrors()
     {
-        var errors = new List<FileValidationError> { new() { Code = FileValidationErrorCode.TooLarge, Message = "Too big." } };
+        var error = new FileValidationError { Code = FileValidationErrorCode.TooLarge, Message = "Too big." };
+        var errors = new List<FileValidationError> { error };
         var ex = new FileValidationException(errors);
 
+        error.Message = "Changed.";
         errors.Clear();
 
-        Assert.Equal(FileValidationErrorCode.TooLarge, Assert.Single(ex.Errors).Code);
+        var kept = Assert.Single(ex.Errors);
+        Assert.Equal(FileValidationErrorCode.TooLarge, kept.Code);
+        Assert.Equal("Too big.", kept.Message);
+        Assert.Equal("Too big.", ex.Message);
     }
 
     private static FileValidator RealValidator(FileValidationOptions options)
