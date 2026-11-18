@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -146,19 +147,56 @@ public class FileServiceTests
     }
 
     // The validator treats the name as optional and skips the name check for a blank one; storage needs a name.
+    // Refused before validation, so a large upload is not read and scanned first.
     [Theory]
+    [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task UploadAsync_BlankFileName_ThrowsInvalidFileName_NotStored(string fileName)
+    public async Task UploadAsync_BlankFileName_ThrowsInvalidFileName_BeforeValidation(string? fileName)
     {
         var storage = new RecordingStorage();
-        var service = new FileService(RealValidator(new FileValidationOptions()), storage);
+        var service = new FileService(new NotCalledValidator(), storage);
 
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("plain text content"));
-        var ex = await Assert.ThrowsAsync<FileValidationException>(() => service.UploadAsync(stream, fileName));
+        var ex = await Assert.ThrowsAsync<FileValidationException>(() => service.UploadAsync(stream, fileName!));
 
         Assert.Equal(FileValidationErrorCode.InvalidFileName, Assert.Single(ex.Errors).Code);
         Assert.Null(storage.Saved);
+    }
+
+    // A validator that passes the file but gives no name is broken; that is not the caller's file name.
+    [Fact]
+    public async Task UploadAsync_ValidResultWithoutNormalizedName_ThrowsContractError_NotValidationFailure()
+    {
+        var validator = new FixedValidator(new FileValidationResult { IsValid = true });
+        var storage = new RecordingStorage();
+        var service = new FileService(validator, storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UploadAsync(stream, "doc.txt"));
+
+        Assert.Contains(nameof(FileValidationResult.NormalizedFileName), ex.Message);
+        Assert.Null(storage.Saved);
+    }
+
+    [Fact]
+    public void FileValidationException_NullErrors_GivesEmptyErrors()
+    {
+        var ex = new FileValidationException(null);
+
+        Assert.Empty(ex.Errors);
+        Assert.Equal("File validation failed.", ex.Message);
+    }
+
+    [Fact]
+    public void FileValidationException_KeepsItsOwnCopyOfTheErrors()
+    {
+        var errors = new List<FileValidationError> { new() { Code = FileValidationErrorCode.TooLarge, Message = "Too big." } };
+        var ex = new FileValidationException(errors);
+
+        errors.Clear();
+
+        Assert.Equal(FileValidationErrorCode.TooLarge, Assert.Single(ex.Errors).Code);
     }
 
     private static FileValidator RealValidator(FileValidationOptions options)
@@ -253,6 +291,15 @@ public class FileServiceTests
 
         public Task<FileValidationResult> ValidateAsync(Stream fileStream, string? fileName = null, FileValidationOverrides? overrides = null, CancellationToken ct = default)
             => Task.FromResult(new FileValidationResult { IsValid = true, MimeType = "text/plain", NormalizedFileName = fileName });
+    }
+
+    private sealed class NotCalledValidator : IFileValidator
+    {
+        public Task<FileValidationResult> ValidateAsync(IFormFile file, FileValidationOverrides? overrides = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("The validator must not be called.");
+
+        public Task<FileValidationResult> ValidateAsync(Stream fileStream, string? fileName = null, FileValidationOverrides? overrides = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("The validator must not be called.");
     }
 
     private sealed class FixedValidator(FileValidationResult result) : IFileValidator

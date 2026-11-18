@@ -37,19 +37,25 @@ public class FileService : IFileService
         // fails here, before the validator reads the stream.
         var targetSubPath = NormalizeSubPath(subPath);
 
+        // The validator treats the name as optional and skips the name check for a blank one; storage needs
+        // a name, so a blank one is refused here, before the validator reads the stream.
+        if (string.IsNullOrWhiteSpace(fileName))
+            throw new FileValidationException([FileValidationError.InvalidFileName()]);
+
         var startPosition = content.Position;
 
         // Validate file, including name policy, ZIP safety, executable detection, etc.
         var validation = await _validator.ValidateAsync(content, fileName, overrides: null, ct: cancellationToken);
         if (!validation.IsValid)
-            throw new FileValidationException(validation.Errors ?? []);
+            throw new FileValidationException(validation.Errors);
 
         // The validator names the file with the configured FileValidationOptions.Policy, so storage gets the
-        // same name the caller sees in the result. It skips the name check for a blank name; storage needs one.
+        // same name the caller sees in the result. A valid result without one is a validator bug, not the
+        // caller's file name, so it is not reported as a validation failure.
         var normalizedName = validation.NormalizedFileName;
         if (string.IsNullOrWhiteSpace(normalizedName))
-            throw new FileValidationException(
-                [new FileValidationError { Code = FileValidationErrorCode.InvalidFileName, Message = "Invalid file name." }]);
+            throw new InvalidOperationException(
+                $"{_validator.GetType().Name} returned a valid result without {nameof(FileValidationResult.NormalizedFileName)}; FileService stores the file under that name.");
 
         // Store from where the caller's stream started, not from byte 0
         content.Seek(startPosition, SeekOrigin.Begin);

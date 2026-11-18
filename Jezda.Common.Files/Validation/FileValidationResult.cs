@@ -23,7 +23,7 @@ public sealed class FileValidationResult
     /// </summary>
     /// <remarks>
     /// <c>FileService</c> stores the file under this name, so an <see cref="IFileValidator"/> must set it for every
-    /// non-blank file name; a valid result without it is refused as <see cref="FileValidationErrorCode.InvalidFileName"/>.
+    /// non-blank file name; <c>FileService</c> throws <see cref="System.InvalidOperationException"/> on a valid result without it.
     /// </remarks>
     public string? NormalizedFileName { get; set; }
 

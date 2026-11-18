@@ -13,7 +13,13 @@ namespace Jezda.Common.Files.Validation;
 /// </remarks>
 public sealed class FileValidationException : InvalidOperationException
 {
-    public FileValidationException(IReadOnlyList<FileValidationError> errors)
+    public FileValidationException(IReadOnlyList<FileValidationError>? errors)
+        : this(errors?.ToArray() ?? [])
+    {
+    }
+
+    // A copy, so a later change to the validator's list does not change the exception.
+    private FileValidationException(FileValidationError[] errors)
         : base(BuildMessage(errors))
     {
         Errors = errors;
@@ -22,8 +28,8 @@ public sealed class FileValidationException : InvalidOperationException
     /// <summary>The validation errors, in the order the validator reported them; empty when it gave none.</summary>
     public IReadOnlyList<FileValidationError> Errors { get; }
 
-    private static string BuildMessage(IReadOnlyList<FileValidationError>? errors)
-        => errors is { Count: > 0 }
+    private static string BuildMessage(FileValidationError[] errors)
+        => errors.Length > 0
             ? string.Join("; ", errors.Select(e => e.Message))
             : "File validation failed.";
 }

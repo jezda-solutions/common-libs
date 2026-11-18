@@ -14,4 +14,8 @@ public sealed class FileValidationError
     /// Gets or sets a human-readable description of the validation error.
     /// </summary>
     public string Message { get; set; } = string.Empty;
+
+    // One wording for the validator and FileService, which both refuse a file name.
+    internal static FileValidationError InvalidFileName()
+        => new() { Code = FileValidationErrorCode.InvalidFileName, Message = "Invalid file name." };
 }
