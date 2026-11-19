@@ -32,6 +32,14 @@ public class LocalFileStorage : IFileStorage
     /// <inheritdoc />
     public async Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
+        // On Linux "\" is not a separator: "tenant-a\docs" would become one folder literally named
+        // that, while GetPublicUrl turns "\" into "/" and points at a path that does not exist.
+        // Treat it as a separator on every OS.
+        if (!string.IsNullOrWhiteSpace(subPath))
+        {
+            subPath = subPath.Replace('\\', '/');
+        }
+
         // A rooted subPath, a ".." in it or a directory part in fileName could reach another
         // sub-path's folder (another tenant's) while still staying inside the root, so all are refused
         if (!string.IsNullOrWhiteSpace(subPath)
@@ -53,6 +61,11 @@ public class LocalFileStorage : IFileStorage
         if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
         {
             throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
+        }
+
+        if (!string.IsNullOrWhiteSpace(subPath) && HasBlankSegment(subPath))
+        {
+            throw new ArgumentException("The sub-path must not contain whitespace-only or whitespace-padded '.' segments.", nameof(subPath));
         }
 
         // Create hierarchy: Root/subPath/(yyyy/MM/dd)/
@@ -152,6 +165,14 @@ public class LocalFileStorage : IFileStorage
     /// </summary>
     private static bool NamesNoFolder(string subPath)
         => subPath.Split('/', '\\').All(segment => segment.Trim() is "" or ".");
+
+    /// <summary>
+    /// True when a segment of <paramref name="subPath"/> is whitespace only (" ") or a "." padded
+    /// with whitespace (" . "). The filesystem keeps such a segment as a folder literally named
+    /// " " or " . ", unlike an empty or plain "." segment, which resolves away.
+    /// </summary>
+    internal static bool HasBlankSegment(string subPath)
+        => subPath.Split('/', '\\').Any(segment => segment is not ("" or ".") && segment.Trim() is "" or ".");
 
     private bool ResolvesToRoot(string subPath)
     {

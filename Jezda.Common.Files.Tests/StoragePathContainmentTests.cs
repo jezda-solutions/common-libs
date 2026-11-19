@@ -90,6 +90,35 @@ public sealed class StoragePathContainmentTests : IDisposable
         Assert.StartsWith(folder + Path.DirectorySeparatorChar, Path.GetFullPath(Path.Combine(_root, descriptor.RelativePath)));
     }
 
+    // On Linux "\" is not a separator; it must still split folders, so the public URL (which
+    // turns "\" into "/") points at the file that was actually written.
+    [Fact]
+    public async Task SaveAsync_BackslashSubPath_StoresInNestedFolders()
+    {
+        await using var stream = Content();
+
+        var descriptor = await _storage.SaveAsync(stream, "doc.txt", "tenant-a\\docs");
+
+        var folder = Path.GetFullPath(Path.Combine(_root, "tenant-a", "docs"));
+        Assert.StartsWith(folder + Path.DirectorySeparatorChar, Path.GetFullPath(Path.Combine(_root, descriptor.RelativePath)));
+        Assert.Single(Directory.EnumerateDirectories(_root));
+    }
+
+    [Theory]
+    [InlineData("tenant-a/ /docs")]
+    [InlineData("tenant-a/ . /docs")]
+    [InlineData("tenant-a/ ")]
+    [InlineData("tenant-a\\ \\docs")]
+    public async Task SaveAsync_SubPathWithBlankSegment_Throws(string subPath)
+    {
+        await using var stream = Content();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", subPath));
+
+        Assert.Equal("subPath", ex.ParamName);
+        Assert.False(Directory.Exists(_root) && Directory.EnumerateFileSystemEntries(_root).Any());
+    }
+
     [Fact]
     public async Task SaveAsync_RootedSubPath_Throws()
     {

@@ -244,7 +244,8 @@ public class FileServiceTests
     [InlineData(" work-items/42 ", "work-items/42")]
     [InlineData("a/ /", "a")]
     [InlineData("work-items/42/", "work-items/42")]
-    [InlineData("work-items\\42\\", "work-items\\42")]
+    [InlineData("work-items\\42\\", "work-items/42")]
+    [InlineData("tenant-a\\docs", "tenant-a/docs")]
     public async Task UploadAsync_SubPath_IsTrimmed(string subPath, string? expected)
     {
         var storage = new RecordingStorage();
@@ -268,6 +269,24 @@ public class FileServiceTests
     [InlineData(" . / . ")]
     [InlineData(".\\")]
     public async Task UploadAsync_SubPathNamingNoFolder_IsRejected_NotStored(string subPath)
+    {
+        var storage = new RecordingStorage();
+        var service = new FileService(new AcceptingValidator(), storage);
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("data"));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UploadAsync(stream, "doc.txt", subPath));
+
+        Assert.Equal("subPath", ex.ParamName);
+        Assert.Null(storage.Saved);
+    }
+
+    // On Linux a " " or " . " segment would become a folder with that literal name
+    [Theory]
+    [InlineData("tenant-a/ /docs")]
+    [InlineData("tenant-a/ . /docs")]
+    [InlineData("tenant-a\\ \\docs")]
+    [InlineData(" . /tenant-a")]
+    public async Task UploadAsync_SubPathWithBlankSegment_IsRejected_NotStored(string subPath)
     {
         var storage = new RecordingStorage();
         var service = new FileService(new AcceptingValidator(), storage);
