@@ -13,7 +13,7 @@ public interface IFileStorage
     /// Saves a file stream to storage with optional sub-path organization.
     /// </summary>
     /// <param name="content">The file content stream to save.</param>
-    /// <param name="fileName">The name of the file.</param>
+    /// <param name="fileName">The name of the file. A null or blank name is stored as <c>file</c> (unlike <c>IFileService.UploadAsync</c>, which rejects it). <see cref="LocalFileStorage"/> stores it as <c>&lt;guid&gt;-&lt;name&gt;</c> and shortens the base of the name, keeping the extension, so the stored name fits 255 UTF-8 bytes; <see cref="FileDescriptor.Name"/> keeps the full name.</param>
     /// <param name="subPath">Optional sub-path for organizing files (e.g., tenant ID). <c>\</c> is treated as <c>/</c> on every OS, so a leading <c>\</c> makes it rooted.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the saved file.</returns>

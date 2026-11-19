@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Jezda.Common.Files.Detection;
@@ -14,6 +15,10 @@ namespace Jezda.Common.Files.Storage;
 /// </summary>
 public class LocalFileStorage : IFileStorage
 {
+    // NAME_MAX on Linux (ext4 and most others) is 255 bytes; Windows allows 255 UTF-16 units,
+    // which a 255-byte UTF-8 name never exceeds, so one byte limit covers both.
+    private const int MaxStoredNameBytes = 255;
+
     private readonly FileStorageOptions _options;
     private readonly IMimeTypeDetector? _mimeTypeDetector;
 
@@ -83,9 +88,10 @@ public class LocalFileStorage : IFileStorage
         basePath = EnsureUnderRoot(basePath, nameof(subPath));
         Directory.CreateDirectory(basePath);
 
-        // Unique file name: <guid>-<original>
+        // Unique file name: <guid>-<original>, cut to fit the file system's name limit.
+        // A blank name is stored as "file"; FileService rejects it before it gets here.
         var safeFileName = string.IsNullOrWhiteSpace(fileName) ? "file" : fileName;
-        var uniqueName = $"{Guid.NewGuid():N}-{safeFileName}";
+        var uniqueName = FitStoredName($"{Guid.NewGuid():N}-", safeFileName);
         var fullPath = EnsureUnderRoot(Path.Combine(basePath, uniqueName), nameof(fileName));
 
         // Detect MIME type before saving
@@ -151,6 +157,49 @@ public class LocalFileStorage : IFileStorage
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
+    }
+
+    /// <summary>
+    /// Joins <paramref name="prefix"/> and <paramref name="fileName"/>, shortening the base of the
+    /// name so the result fits <see cref="MaxStoredNameBytes"/> UTF-8 bytes. The extension is kept
+    /// unless it alone leaves no room for the base; the cut never splits a surrogate pair.
+    /// </summary>
+    private static string FitStoredName(string prefix, string fileName)
+    {
+        var budget = MaxStoredNameBytes - Encoding.UTF8.GetByteCount(prefix);
+        if (Encoding.UTF8.GetByteCount(fileName) <= budget)
+        {
+            return prefix + fileName;
+        }
+
+        var extension = Path.GetExtension(fileName);
+        var extensionBytes = Encoding.UTF8.GetByteCount(extension);
+        if (extensionBytes >= budget)
+        {
+            extension = string.Empty;
+            extensionBytes = 0;
+        }
+
+        var stem = fileName[..^extension.Length];
+        // Windows drops trailing dots and spaces from a name, which would break the stored path
+        var cut = TruncateUtf8(stem, budget - extensionBytes).TrimEnd('.', ' ');
+        return prefix + cut + extension;
+    }
+
+    private static string TruncateUtf8(string value, int maxBytes)
+    {
+        var bytes = 0;
+        var length = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            bytes += rune.Utf8SequenceLength;
+            if (bytes > maxBytes)
+            {
+                break;
+            }
+            length += rune.Utf16SequenceLength;
+        }
+        return value[..length];
     }
 
     private string ResolveRelativePath(string relativePath)
