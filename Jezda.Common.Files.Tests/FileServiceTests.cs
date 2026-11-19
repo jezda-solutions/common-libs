@@ -286,6 +286,8 @@ public class FileServiceTests
     [InlineData("tenant-a/ . /docs")]
     [InlineData("tenant-a\\ \\docs")]
     [InlineData(" . /tenant-a")]
+    [InlineData("tenant-b/.. /tenant-a")]
+    [InlineData("tenant-a/.../docs")]
     public async Task UploadAsync_SubPathWithBlankSegment_IsRejected_NotStored(string subPath)
     {
         var storage = new RecordingStorage();

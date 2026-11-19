@@ -48,19 +48,19 @@ public class LocalFileStorage : IFileStorage
             throw new ArgumentException("The sub-path must be relative and must not contain '..' segments.", nameof(subPath));
         }
 
-        // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
-        // is a folder literally named "\"; a sub-path must name at least one real folder. The
-        // resolved-path check also catches spellings the segment rule misses, such as "..." on
-        // Windows, where trailing dots are trimmed.
-        // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
         if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)
         {
             throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
         }
 
+        // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
+        // is a folder literally named "\"; a sub-path must name at least one real folder. The
+        // resolved-path check also catches spellings the segment rule misses, such as "..." on
+        // Windows, where trailing dots are trimmed.
+        // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
         if (!string.IsNullOrWhiteSpace(subPath) && !NamesNoFolder(subPath) && HasBlankSegment(subPath))
         {
-            throw new ArgumentException("The sub-path must not contain whitespace-only or whitespace-padded '.' segments.", nameof(subPath));
+            throw new ArgumentException("The sub-path must not contain segments made only of dots and whitespace, other than a plain '.'.", nameof(subPath));
         }
 
         if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
@@ -167,12 +167,13 @@ public class LocalFileStorage : IFileStorage
         => subPath.Split('/', '\\').All(segment => segment.Trim() is "" or ".");
 
     /// <summary>
-    /// True when a segment of <paramref name="subPath"/> is whitespace only (" ") or a "." padded
-    /// with whitespace (" . "). The filesystem keeps such a segment as a folder literally named
-    /// " " or " . ", unlike an empty or plain "." segment, which resolves away.
+    /// True when a segment of <paramref name="subPath"/> other than an empty or plain "." one is
+    /// made only of dots and whitespace: " ", " . ", "...", ".. ". Linux keeps such a segment as a
+    /// folder with that literal name; Windows trims trailing dots and spaces, so ".. " becomes ".."
+    /// and would step into a sibling (another tenant's) folder past the exact ".." check.
     /// </summary>
     internal static bool HasBlankSegment(string subPath)
-        => subPath.Split('/', '\\').Any(segment => segment is not ("" or ".") && segment.Trim() is "" or ".");
+        => subPath.Split('/', '\\').Any(segment => segment is not ("" or ".") && segment.All(c => c == '.' || char.IsWhiteSpace(c)));
 
     private bool ResolvesToRoot(string subPath)
     {

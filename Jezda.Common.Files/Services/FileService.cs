@@ -82,9 +82,10 @@ public class FileService : IFileService
         if (trimmed.Split('/', '\\').All(segment => segment.Trim() is "" or "."))
             throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
 
-        // " " or " . " in the middle ("a/ /b", "a/ . /b") would become a folder with that literal name
+        // " ", " . " or "..." ("a/ /b") would become a folder with that literal name on Linux, and on
+        // Windows ".. " is trimmed to ".." and steps into a sibling folder
         if (LocalFileStorage.HasBlankSegment(trimmed))
-            throw new ArgumentException("The sub-path must not contain whitespace-only or whitespace-padded '.' segments.", nameof(subPath));
+            throw new ArgumentException("The sub-path must not contain segments made only of dots and whitespace, other than a plain '.'.", nameof(subPath));
 
         return trimmed;
     }

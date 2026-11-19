@@ -59,6 +59,7 @@ public sealed class StoragePathContainmentTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", subPath));
 
         Assert.Equal("subPath", ex.ParamName);
+        Assert.DoesNotContain("dots and whitespace", ex.Message);
         Assert.False(Directory.Exists(_root) && Directory.EnumerateFileSystemEntries(_root).Any());
     }
 
@@ -109,6 +110,10 @@ public sealed class StoragePathContainmentTests : IDisposable
     [InlineData("tenant-a/ . /docs")]
     [InlineData("tenant-a/ ")]
     [InlineData("tenant-a\\ \\docs")]
+    [InlineData("tenant-b/.. /tenant-a")]
+    [InlineData("tenant-b/... /tenant-a")]
+    [InlineData("tenant-a/.../docs")]
+    [InlineData("...")]
     public async Task SaveAsync_SubPathWithBlankSegment_Throws(string subPath)
     {
         await using var stream = Content();
@@ -116,6 +121,7 @@ public sealed class StoragePathContainmentTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _storage.SaveAsync(stream, "doc.txt", subPath));
 
         Assert.Equal("subPath", ex.ParamName);
+        Assert.Contains("only of dots and whitespace", ex.Message);
         Assert.False(Directory.Exists(_root) && Directory.EnumerateFileSystemEntries(_root).Any());
     }
 
