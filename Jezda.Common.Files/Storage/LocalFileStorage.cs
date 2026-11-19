@@ -58,14 +58,14 @@ public class LocalFileStorage : IFileStorage
             throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
         }
 
+        if (!string.IsNullOrWhiteSpace(subPath) && !NamesNoFolder(subPath) && HasBlankSegment(subPath))
+        {
+            throw new ArgumentException("The sub-path must not contain whitespace-only or whitespace-padded '.' segments.", nameof(subPath));
+        }
+
         if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
         {
             throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
-        }
-
-        if (!string.IsNullOrWhiteSpace(subPath) && HasBlankSegment(subPath))
-        {
-            throw new ArgumentException("The sub-path must not contain whitespace-only or whitespace-padded '.' segments.", nameof(subPath));
         }
 
         // Create hierarchy: Root/subPath/(yyyy/MM/dd)/
