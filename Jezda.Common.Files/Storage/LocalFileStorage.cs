@@ -32,6 +32,14 @@ public class LocalFileStorage : IFileStorage
     /// <inheritdoc />
     public async Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default)
     {
+        // On Linux "\" is not a separator: "tenant-a\docs" would become one folder literally named
+        // that, while GetPublicUrl turns "\" into "/" and points at a path that does not exist.
+        // Treat it as a separator on every OS.
+        if (!string.IsNullOrWhiteSpace(subPath))
+        {
+            subPath = subPath.Replace('\\', '/');
+        }
+
         // A rooted subPath, a ".." in it or a directory part in fileName could reach another
         // sub-path's folder (another tenant's) while still staying inside the root, so all are refused
         if (!string.IsNullOrWhiteSpace(subPath)
@@ -40,14 +48,18 @@ public class LocalFileStorage : IFileStorage
             throw new ArgumentException("The sub-path must be relative and must not contain '..' segments.", nameof(subPath));
         }
 
-        // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
-        // is a folder literally named "\"; a sub-path must name at least one real folder. The
-        // resolved-path check also catches spellings the segment rule misses, such as "..." on
-        // Windows, where trailing dots are trimmed.
-        // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
         if (!string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) != fileName)
         {
             throw new ArgumentException("The file name must not contain a directory part.", nameof(fileName));
+        }
+
+        // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
+        // is a folder literally named "\"; a sub-path must name at least one real folder. The
+        // resolved-path check is defense in depth behind the segment rules.
+        // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
+        if (!string.IsNullOrWhiteSpace(subPath) && !NamesNoFolder(subPath) && HasBlankSegment(subPath))
+        {
+            throw new ArgumentException("The sub-path must not contain segments made only of dots and whitespace, other than a plain '.'.", nameof(subPath));
         }
 
         if (!string.IsNullOrWhiteSpace(subPath) && (NamesNoFolder(subPath) || ResolvesToRoot(subPath)))
@@ -152,6 +164,15 @@ public class LocalFileStorage : IFileStorage
     /// </summary>
     private static bool NamesNoFolder(string subPath)
         => subPath.Split('/', '\\').All(segment => segment.Trim() is "" or ".");
+
+    /// <summary>
+    /// True when a segment of <paramref name="subPath"/> other than an empty or plain "." one is
+    /// made only of dots and whitespace: " ", " . ", "...", ".. ". Linux keeps such a segment as a
+    /// folder with that literal name; Windows trims trailing dots and spaces, so ".. " becomes ".."
+    /// and would step into a sibling (another tenant's) folder past the exact ".." check.
+    /// </summary>
+    internal static bool HasBlankSegment(string subPath)
+        => subPath.Split('/', '\\').Any(segment => segment is not ("" or ".") && segment.All(c => c == '.' || char.IsWhiteSpace(c)));
 
     private bool ResolvesToRoot(string subPath)
     {

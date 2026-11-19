@@ -70,8 +70,9 @@ public class FileService : IFileService
         if (string.IsNullOrWhiteSpace(subPath))
             return null;
 
+        // "\" is a separator on every OS (on Linux it would otherwise be part of a folder name).
         // Drop trailing separators and the whitespace between them, so "a/ /" ends as "a"
-        var trimmed = subPath.Trim();
+        var trimmed = subPath.Trim().Replace('\\', '/');
         while (trimmed.Length > 0 && (trimmed[^1] is '/' or '\\' || char.IsWhiteSpace(trimmed[^1])))
             trimmed = trimmed[..^1];
 
@@ -80,6 +81,11 @@ public class FileService : IFileService
         // every IFileStorage backend; LocalFileStorage also rejects a sub-path that resolves to its root.
         if (trimmed.Split('/', '\\').All(segment => segment.Trim() is "" or "."))
             throw new ArgumentException("The sub-path must name a folder, not only separators or '.' segments.", nameof(subPath));
+
+        // " ", " . " or "..." ("a/ /b") would become a folder with that literal name on Linux, and on
+        // Windows ".. " is trimmed to ".." and steps into a sibling folder
+        if (LocalFileStorage.HasBlankSegment(trimmed))
+            throw new ArgumentException("The sub-path must not contain segments made only of dots and whitespace, other than a plain '.'.", nameof(subPath));
 
         return trimmed;
     }

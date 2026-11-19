@@ -14,11 +14,11 @@ public interface IFileStorage
     /// </summary>
     /// <param name="content">The file content stream to save.</param>
     /// <param name="fileName">The name of the file.</param>
-    /// <param name="subPath">Optional sub-path for organizing files (e.g., tenant ID).</param>
+    /// <param name="subPath">Optional sub-path for organizing files (e.g., tenant ID). <c>\</c> is treated as <c>/</c> on every OS, so a leading <c>\</c> makes it rooted.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task containing the file descriptor with metadata about the saved file.</returns>
     /// <exception cref="System.ArgumentException">
-    /// Thrown when <paramref name="subPath"/> is rooted, contains a <c>..</c> segment or names no folder (only separators or <c>.</c> segments), <paramref name="fileName"/> has a
+    /// Thrown when <paramref name="subPath"/> is rooted, contains a <c>..</c> segment or names no folder (only separators or <c>.</c> segments) or has a segment made only of dots and whitespace (other than a plain <c>.</c>), <paramref name="fileName"/> has a
     /// directory part, or either resolves outside the storage root.
     /// </exception>
     Task<FileDescriptor> SaveAsync(Stream content, string fileName, string? subPath = null, CancellationToken cancellationToken = default);
