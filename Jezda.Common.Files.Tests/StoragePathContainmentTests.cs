@@ -63,8 +63,8 @@ public sealed class StoragePathContainmentTests : IDisposable
         Assert.False(Directory.Exists(_root) && Directory.EnumerateFileSystemEntries(_root).Any());
     }
 
-    // Windows trims trailing dots, so "..." resolves to the root itself; on Linux it is an ordinary
-    // folder name, so the case only applies on Windows.
+    // Windows trims trailing dots, so "..." would resolve to the root itself. The dots-and-whitespace
+    // segment rule now rejects it first on every OS; this keeps the Windows case covered end to end.
     [Fact]
     public async Task SaveAsync_SubPathResolvingToRootOnWindows_Throws()
     {

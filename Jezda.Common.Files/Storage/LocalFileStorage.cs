@@ -55,8 +55,7 @@ public class LocalFileStorage : IFileStorage
 
         // "." or "./" resolves to the shared root rather than the caller's folder, and on Linux "\"
         // is a folder literally named "\"; a sub-path must name at least one real folder. The
-        // resolved-path check also catches spellings the segment rule misses, such as "..." on
-        // Windows, where trailing dots are trimmed.
+        // resolved-path check is defense in depth behind the segment rules.
         // The string checks run first; ResolvesToRoot calls GetFullPath, which can throw on odd input.
         if (!string.IsNullOrWhiteSpace(subPath) && !NamesNoFolder(subPath) && HasBlankSegment(subPath))
         {
